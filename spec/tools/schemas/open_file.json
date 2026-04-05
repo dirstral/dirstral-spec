@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.dirstral.com/tools/schemas/open_file.json",
+  "title": "dir2mcp.open_file",
+  "description": "Open an exact source slice for verification.",
+  "definitions": {
+    "Span": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "lines" },
+            "start_line": { "type": "integer" },
+            "end_line": { "type": "integer" }
+          },
+          "required": ["kind", "start_line", "end_line"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "page" },
+            "page": { "type": "integer" }
+          },
+          "required": ["kind", "page"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "time" },
+            "start_ms": { "type": "integer" },
+            "end_ms": { "type": "integer" }
+          },
+          "required": ["kind", "start_ms", "end_ms"]
+        }
+      ]
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rel_path": { "type": "string", "minLength": 1 },
+      "start_line": { "type": "integer", "minimum": 1 },
+      "end_line": { "type": "integer", "minimum": 1 },
+      "page": { "type": "integer", "minimum": 1 },
+      "start_ms": { "type": "integer", "minimum": 0 },
+      "end_ms": { "type": "integer", "minimum": 0 },
+      "max_chars": { "type": "integer", "minimum": 200, "maximum": 50000, "default": 20000 }
+    },
+    "required": ["rel_path"]
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rel_path": { "type": "string" },
+      "doc_type": { "type": "string" },
+      "span": { "$ref": "#/definitions/Span" },
+      "content": { "type": "string" },
+      "truncated": { "type": "boolean" }
+    },
+    "required": ["rel_path", "doc_type", "content", "truncated"]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.dirstral.com/tools/schemas/search.json",
+  "title": "dir2mcp.search",
+  "description": "Semantic retrieval across indexed content.",
+  "definitions": {
+    "Span": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "lines" },
+            "start_line": { "type": "integer" },
+            "end_line": { "type": "integer" }
+          },
+          "required": ["kind", "start_line", "end_line"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "page" },
+            "page": { "type": "integer" }
+          },
+          "required": ["kind", "page"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "time" },
+            "start_ms": { "type": "integer" },
+            "end_ms": { "type": "integer" }
+          },
+          "required": ["kind", "start_ms", "end_ms"]
+        }
+      ]
+    },
+    "Hit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": { "type": "integer" },
+        "rel_path": { "type": "string" },
+        "doc_type": { "type": "string" },
+        "rep_type": { "type": "string" },
+        "score": { "type": "number" },
+        "snippet": { "type": "string" },
+        "span": { "$ref": "#/definitions/Span" }
+      },
+      "required": ["chunk_id", "rel_path", "score", "snippet", "span"]
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "query": { "type": "string", "minLength": 1 },
+      "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 },
+      "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
+      "path_prefix": { "type": "string" },
+      "file_glob": { "type": "string" },
+      "doc_types": { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["query"]
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "query": { "type": "string" },
+      "k": { "type": "integer" },
+      "index_used": { "type": "string", "enum": ["text", "code", "both"] },
+      "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
+      "indexing_complete": { "type": "boolean" }
+    },
+    "required": ["query", "k", "index_used", "hits", "indexing_complete"]
+  }
+}

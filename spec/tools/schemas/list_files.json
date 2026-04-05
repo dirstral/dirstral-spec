@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.dirstral.com/tools/schemas/list_files.json",
+  "title": "dir2mcp.list_files",
+  "description": "List files under root for navigation and filter selection.",
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "path_prefix": { "type": "string" },
+      "glob": { "type": "string" },
+      "limit": { "type": "integer", "minimum": 1, "maximum": 5000, "default": 200 },
+      "offset": { "type": "integer", "minimum": 0, "default": 0 },
+      "include_hidden": { "type": "boolean", "default": false }
+    }
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "limit": { "type": "integer" },
+      "offset": { "type": "integer" },
+      "total": { "type": "integer" },
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rel_path": { "type": "string" },
+            "doc_type": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "mtime_unix": { "type": "integer" },
+            "status": { "type": "string", "enum": ["ok", "skipped", "error"] },
+            "deleted": { "type": "boolean" }
+          },
+          "required": ["rel_path", "doc_type", "size_bytes", "mtime_unix", "status", "deleted"]
+        }
+      }
+    },
+    "required": ["limit", "offset", "total", "files"]
+  }
+}
