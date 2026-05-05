@@ -1,0 +1,15 @@
+name: Spec Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release-note:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish tag summary
+        run: |
+          echo "Spec release tag: ${GITHUB_REF_NAME}"

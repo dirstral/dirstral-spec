@@ -1,0 +1,28 @@
+name: Spec CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  validate-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Required files
+        run: |
+          test -f docs/SPEC.md
+          test -f docs/ECOSYSTEM.md
+          test -f docs/x402-payment-adapter-spec.md
+          test -f spec/versioning.md
+          test -f spec/tools/schemas.md
+          test -f spec/errors/taxonomy.md
+  links-basic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Markdown link sanity
+        run: |
+          ! rg -n "\]\(\.\./SPEC.md\)" docs spec || (echo "Use local relative links from repo root layout" && exit 1)
