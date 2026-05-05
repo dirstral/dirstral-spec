@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.dirstral.com/tools/schemas/stats.json",
+  "title": "dir2mcp.stats",
+  "description": "Status/progress/health for indexing and models.",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root": { "type": "string" },
+        "state_dir": { "type": "string" },
+        "protocol_version": { "type": "string" },
+        "doc_counts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "total_docs": { "type": "integer" },
+        "doc_counts_available": {
+          "type": "boolean",
+          "description": "When false, doc_counts and total_docs are zero-valued and must not be interpreted as an empty corpus."
+        },
+        "indexing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "job_id": { "type": "string" },
+            "running": { "type": "boolean" },
+            "mode": { "type": "string", "enum": ["incremental", "full"] },
+            "scanned": { "type": "integer" },
+            "indexed": { "type": "integer" },
+            "skipped": { "type": "integer" },
+            "deleted": { "type": "integer" },
+            "representations": { "type": "integer" },
+            "chunks_total": { "type": "integer" },
+            "embedded_ok": { "type": "integer" },
+            "errors": { "type": "integer" }
+          },
+          "required": ["job_id", "running", "mode", "scanned", "indexed", "skipped", "deleted", "representations", "chunks_total", "embedded_ok", "errors"]
+        },
+        "models": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "embed_text": { "type": "string" },
+            "embed_code": { "type": "string" },
+            "ocr": { "type": "string" },
+            "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+            "stt_model": { "type": "string" },
+            "chat": { "type": "string" }
+          },
+          "required": ["embed_text", "embed_code", "ocr", "stt_provider", "stt_model", "chat"]
+        }
+      },
+      "required": ["root", "state_dir", "protocol_version", "doc_counts", "total_docs", "doc_counts_available", "indexing", "models"]
+    }
+  }
+}

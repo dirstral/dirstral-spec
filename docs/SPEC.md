@@ -1384,7 +1384,7 @@ filters is impossible.
   "additionalProperties": false,
   "properties": {
     "rel_path": { "type": "string" },
-    "provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+    "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
     "model": { "type": "string" },
     "indexed": { "type": "boolean" },
     "segments": {
@@ -1401,7 +1401,7 @@ filters is impossible.
       }
     }
   },
-  "required": ["rel_path", "provider", "model", "indexed"]
+  "required": ["rel_path", "stt_provider", "model", "indexed"]
 }
 ```
 
@@ -1466,13 +1466,17 @@ filters is impossible.
 
 **Output schema:** same as `dir2mcp.ask` output schema, plus:
 
-* `transcript_provider`, `transcript_model`, and `transcribed` boolean.
+* `stt_provider`, `transcript_model`, and `transcribed` boolean.
 
 ---
 
 ### 15.10 `dir2mcp.ask_audio` (optional extension)
 
 **Description:** same as `ask` but includes audio output (TTS). Optional and additive.
+
+Input is the same as `dir2mcp.ask`, with additive audio options:
+- `voice_id` (optional)
+- `format` (optional; `mp3` or `wav`, default `mp3`)
 
 Input schema:
 

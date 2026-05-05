@@ -54,6 +54,10 @@ Client                              Server            Facilitator
 
 ## Challenge payload (`PAYMENT-REQUIRED` header value)
 
+The JSON value is serialized to a string and placed in the `PAYMENT-REQUIRED` response header.
+
+Supported schemes: `exact` (fixed amount) and `upto` (amount up to a maximum).
+
 ```json
 {
   "x402Version": 2,
@@ -62,6 +66,25 @@ Client                              Server            Facilitator
       "scheme": "exact",
       "network": "eip155:8453",
       "amount": "1000000",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payTo": "0xYourWalletAddress",
+      "resource": "https://your-endpoint/mcp"
+    }
+  ]
+}
+```
+
+For the `upto` scheme, `maxAmountRequired` is also present in the accept entry. Both `amount` and `maxAmountRequired` are represented as decimal integer strings (not JSON numbers) to avoid floating-point precision issues. `maxAmountRequired` MUST parse as a positive integer >= `amount`:
+
+```json
+{
+  "x402Version": 2,
+  "accepts": [
+    {
+      "scheme": "upto",
+      "network": "eip155:8453",
+      "amount": "500000",
+      "maxAmountRequired": "1000000",
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "payTo": "0xYourWalletAddress",
       "resource": "https://your-endpoint/mcp"

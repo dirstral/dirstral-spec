@@ -53,9 +53,11 @@ Client                            Server
 | `MCP-Session-Id` | Server → Client (initialize response) | UUID |
 | `MCP-Session-Id` | Client → Server (subsequent requests) | Same UUID |
 
+<!-- spec-gap: The spec previously listed SESSION_NOT_FOUND as JSON-RPC code -32002, but the implementation uses -32001. Updated below. -->
+
 ## Session recovery
 
-If a client receives `SESSION_NOT_FOUND` (`-32002`), it MUST:
+If a client receives `SESSION_NOT_FOUND` (JSON-RPC `-32001`, HTTP 404), it MUST:
 1. Re-send `initialize` without a session ID
 2. Re-send `notifications/initialized`
 3. Retry the failed request with the new session ID
@@ -73,6 +75,17 @@ Content-Length: <N>\r\n
 ```
 
 No session ID is issued or required. Session state is implicit in the subprocess lifetime.
+
+## Session expiry
+
+Sessions expire server-side due to inactivity or max lifetime. There is no client-initiated teardown method — clients simply stop sending requests.
+
+When a session expires, subsequent requests using the old session ID receive `SESSION_NOT_FOUND` (HTTP 404, JSON-RPC `-32001`). The server MAY include an `X-MCP-Session-Expired` header with a reason value of `inactivity` or `max-lifetime` to help clients distinguish expiry cause from other session-not-found conditions.
+
+| Expiry cause | `X-MCP-Session-Expired` value |
+|---|---|
+| Inactivity timeout exceeded | `inactivity` |
+| Maximum session lifetime exceeded | `max-lifetime` |
 
 ## Protocol version negotiation
 

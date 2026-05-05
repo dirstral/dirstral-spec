@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.dirstral.com/tools/schemas/ask_audio.json",
+  "title": "dir2mcp.ask_audio",
+  "description": "RAG answer with optional ElevenLabs audio synthesis.",
+  "definitions": {
+    "Span": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Span" },
+    "Hit": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Hit" },
+    "Citation": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Citation" }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "question": { "type": "string", "minLength": 1 },
+      "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 },
+      "mode": { "type": "string", "enum": ["answer", "search_only"], "default": "answer" },
+      "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
+      "path_prefix": { "type": "string" },
+      "file_glob": { "type": "string" },
+      "doc_types": { "type": "array", "items": { "type": "string" } },
+      "voice_id": { "type": "string", "minLength": 1 },
+      "format": { "type": "string", "enum": ["mp3", "wav"], "default": "mp3" }
+    },
+    "required": ["question"]
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "question": { "type": "string" },
+      "answer": { "type": "string" },
+      "citations": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/Citation" }
+      },
+      "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
+      "indexing_complete": { "type": "boolean" },
+      "audio": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mime_type": { "type": "string", "enum": ["audio/mpeg", "audio/wav"] },
+          "data": { "type": "string" }
+        },
+        "required": ["mime_type", "data"]
+      }
+    },
+    "required": ["question", "answer", "citations", "hits", "indexing_complete"]
+  }
+}
