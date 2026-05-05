@@ -15,13 +15,14 @@ These are returned as JSON-RPC error objects (`{"error": {"code": ..., "message"
 | Code string | JSON-RPC code | HTTP status | Retryable | Description |
 |-------------|--------------|-------------|-----------|-------------|
 | `UNAUTHORIZED` | -32000 | 401 | No | Missing or invalid bearer token |
-| `SESSION_NOT_FOUND` | -32001 | 404 | No | Session ID not recognised; client should re-initialize |
+| `SESSION_NOT_FOUND` | -32001 | 404 | Yes (after re-initialize) | Session ID not recognised; client should re-initialize, then retry the request |
 | `RATE_LIMIT_EXCEEDED` | -32000 | 429 | Yes | Request rate exceeded; back off and retry |
 | `FORBIDDEN_ORIGIN` | -32000 | 403 | No | Origin header not in the server's allowed-origins list |
 | `MISSING_FIELD` | -32600 | 400 | No | Required field absent in request body |
 | `INVALID_FIELD` | -32600 | 400 | No | Field present but invalid type or value |
 | `METHOD_NOT_FOUND` | -32601 | 200 | No | Unknown JSON-RPC method (returned in tool call result, not as HTTP error) |
 
+`Retryable` indicates whether the operation may succeed after the documented client recovery step, if any. For example, `SESSION_NOT_FOUND` is retryable only after the client re-initializes the session.
 ### Tool execution errors (carried in toolCallResult.structuredContent.error)
 
 These are returned with HTTP 200. The `isError: true` flag is set on the result. The error shape is `{"code": "<CODE>", "message": "...", "retryable": <bool>}` in `structuredContent.error`.
