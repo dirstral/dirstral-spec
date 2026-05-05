@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.dirstral.com/tools/schemas/common.json",
+  "title": "dir2mcp.common",
+  "description": "Shared schema definitions used by multiple tool contract documents.",
+  "definitions": {
+    "Span": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["start", "end"]
+    },
+    "Hit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rel_path": { "type": "string" },
+        "doc_type": { "type": "string" },
+        "rep": { "type": "string" },
+        "chunk_id": { "type": "string" },
+        "score": { "type": "number" },
+        "text": { "type": "string" },
+        "span": { "$ref": "#/definitions/Span" }
+      },
+      "required": ["rel_path", "doc_type", "rep", "chunk_id", "score", "text"]
+    },
+    "Citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rel_path": { "type": "string" },
+        "doc_type": { "type": "string" },
+        "rep": { "type": "string" },
+        "chunk_id": { "type": "string" },
+        "span": { "$ref": "#/definitions/Span" },
+        "score": { "type": "number" },
+        "quote": { "type": "string" }
+      },
+      "required": ["rel_path", "doc_type", "rep", "chunk_id", "score"]
+    }
+  }
+}

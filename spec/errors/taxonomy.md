@@ -10,7 +10,7 @@ These are returned as JSON-RPC error objects (`{"error": {"code": ..., "message"
 
 <!-- spec-gap: The JSON-RPC numeric codes in the original spec (-32001 through -32006) do not match the implementation. The Go server uses -32000 for UNAUTHORIZED and -32001 for SESSION_NOT_FOUND. The implementation does not define unique numeric codes for INDEX_NOT_READY, FILE_NOT_FOUND, PERMISSION_DENIED, or RATE_LIMIT_EXCEEDED — these all use -32000 as the JSON-RPC code. The canonical code is carried in error.data.code, not in error.code. -->
 
-### Session and auth errors (JSON-RPC level)
+### Session/auth/request errors
 
 | Code string | JSON-RPC code | HTTP status | Retryable | Description |
 |-------------|--------------|-------------|-----------|-------------|
@@ -20,7 +20,7 @@ These are returned as JSON-RPC error objects (`{"error": {"code": ..., "message"
 | `FORBIDDEN_ORIGIN` | -32000 | 403 | No | Origin header not in the server's allowed-origins list |
 | `MISSING_FIELD` | -32600 | 400 | No | Required field absent in request body |
 | `INVALID_FIELD` | -32600 | 400 | No | Field present but invalid type or value |
-| `METHOD_NOT_FOUND` | -32601 | 200 | No | Unknown JSON-RPC method (returned in tool call result, not as HTTP error) |
+| `METHOD_NOT_FOUND` | -32601 | 200 | No | Unknown JSON-RPC method in this transport profile |
 
 `Retryable` indicates whether the operation may succeed after the documented client recovery step, if any. For example, `SESSION_NOT_FOUND` is retryable only after the client re-initializes the session.
 ### Tool execution errors (carried in toolCallResult.structuredContent.error)
@@ -53,7 +53,7 @@ Returned when x402 mode is `on` or `required`. See `spec/x402/extension.md`.
 
 ## Error shape contract
 
-### JSON-RPC level errors (HTTP 4xx responses)
+### Session/auth/request errors (transport semantics)
 
 ```json
 {
@@ -70,7 +70,7 @@ Returned when x402 mode is `on` or `required`. See `spec/x402/extension.md`.
 }
 ```
 
-The `error.data.code` field carries the canonical string error code. The `error.code` is a standard JSON-RPC numeric code. The `error.message` field is human-readable.
+The `error.data.code` field carries the canonical string error code. The `error.code` is a standard JSON-RPC numeric code. The `error.message` field is human-readable. Status is usually 4xx for session/auth/request validation failures, except `METHOD_NOT_FOUND`, which is returned as HTTP 200 in this implementation profile.
 
 ### Tool execution errors (HTTP 200 with isError: true)
 
