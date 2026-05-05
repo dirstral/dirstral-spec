@@ -4,64 +4,9 @@
   "title": "dir2mcp.transcribe_and_ask",
   "description": "Ensure transcript exists for audio file, then answer a question with citations.",
   "definitions": {
-    "Span": {
-      "type": "object",
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "lines" },
-            "start_line": { "type": "integer" },
-            "end_line": { "type": "integer" }
-          },
-          "required": ["kind", "start_line", "end_line"]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "page" },
-            "page": { "type": "integer" }
-          },
-          "required": ["kind", "page"]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "time" },
-            "start_ms": { "type": "integer" },
-            "end_ms": { "type": "integer" }
-          },
-          "required": ["kind", "start_ms", "end_ms"]
-        }
-      ]
-    },
-    "Hit": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "chunk_id": { "type": "integer" },
-        "rel_path": { "type": "string" },
-        "doc_type": { "type": "string" },
-        "rep_type": { "type": "string" },
-        "score": { "type": "number" },
-        "snippet": { "type": "string" },
-        "span": { "$ref": "#/definitions/Span" }
-      },
-      "required": ["chunk_id", "rel_path", "score", "snippet", "span"]
-    },
-    "Citation": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "chunk_id": { "type": "integer" },
-        "rel_path": { "type": "string" },
-        "span": { "$ref": "#/definitions/Span" }
-      },
-      "required": ["chunk_id", "rel_path", "span"]
-    }
+    "Span": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Span" },
+    "Hit": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Hit" },
+    "Citation": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Citation" }
   },
   "input": {
     "type": "object",
@@ -85,11 +30,11 @@
       },
       "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
       "indexing_complete": { "type": "boolean" },
-      "transcript_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+      "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
       "transcript_model": { "type": "string" },
       "transcribed": { "type": "boolean" },
       "transcribed_now": { "type": "boolean" }
     },
-    "required": ["question", "answer", "citations", "hits", "indexing_complete", "transcript_provider", "transcript_model", "transcribed"]
+    "required": ["question", "answer", "citations", "hits", "indexing_complete", "stt_provider", "transcript_model", "transcribed"]
   }
 }

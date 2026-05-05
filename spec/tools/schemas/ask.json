@@ -3,64 +3,9 @@
   "title": "dir2mcp.ask",
   "description": "Tool contract document containing nested input and output schemas for RAG answers with citations; can run search-only mode.",
   "definitions": {
-    "Span": {
-      "type": "object",
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "lines" },
-            "start_line": { "type": "integer" },
-            "end_line": { "type": "integer" }
-          },
-          "required": ["kind", "start_line", "end_line"]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "page" },
-            "page": { "type": "integer" }
-          },
-          "required": ["kind", "page"]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "time" },
-            "start_ms": { "type": "integer" },
-            "end_ms": { "type": "integer" }
-          },
-          "required": ["kind", "start_ms", "end_ms"]
-        }
-      ]
-    },
-    "Hit": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "chunk_id": { "type": "integer" },
-        "rel_path": { "type": "string" },
-        "doc_type": { "type": "string" },
-        "rep_type": { "type": "string" },
-        "score": { "type": "number" },
-        "snippet": { "type": "string" },
-        "span": { "$ref": "#/definitions/Span" }
-      },
-      "required": ["chunk_id", "rel_path", "score", "snippet", "span"]
-    },
-    "Citation": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "chunk_id": { "type": "integer" },
-        "rel_path": { "type": "string" },
-        "span": { "$ref": "#/definitions/Span" }
-      },
-      "required": ["chunk_id", "rel_path", "span"]
-    }
+    "Span": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Span" },
+    "Hit": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Hit" },
+    "Citation": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Citation" }
   },
   "input": {
     "type": "object",

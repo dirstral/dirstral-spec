@@ -4,54 +4,8 @@
   "title": "dir2mcp.search",
   "description": "Semantic retrieval across indexed content.",
   "definitions": {
-    "Span": {
-      "type": "object",
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "lines" },
-            "start_line": { "type": "integer" },
-            "end_line": { "type": "integer" }
-          },
-          "required": ["kind", "start_line", "end_line"]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "page" },
-            "page": { "type": "integer" }
-          },
-          "required": ["kind", "page"]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "const": "time" },
-            "start_ms": { "type": "integer" },
-            "end_ms": { "type": "integer" }
-          },
-          "required": ["kind", "start_ms", "end_ms"]
-        }
-      ]
-    },
-    "Hit": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "chunk_id": { "type": "integer" },
-        "rel_path": { "type": "string" },
-        "doc_type": { "type": "string" },
-        "rep_type": { "type": "string" },
-        "score": { "type": "number" },
-        "snippet": { "type": "string" },
-        "span": { "$ref": "#/definitions/Span" }
-      },
-      "required": ["chunk_id", "rel_path", "score", "snippet", "span"]
-    }
+    "Span": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Span" },
+    "Hit": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Hit" }
   },
   "input": {
     "type": "object",

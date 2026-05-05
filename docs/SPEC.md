@@ -1384,7 +1384,7 @@ filters is impossible.
   "additionalProperties": false,
   "properties": {
     "rel_path": { "type": "string" },
-    "provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+    "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
     "model": { "type": "string" },
     "indexed": { "type": "boolean" },
     "segments": {
@@ -1401,7 +1401,7 @@ filters is impossible.
       }
     }
   },
-  "required": ["rel_path", "provider", "model", "indexed"]
+  "required": ["rel_path", "stt_provider", "model", "indexed"]
 }
 ```
 
@@ -1466,7 +1466,7 @@ filters is impossible.
 
 **Output schema:** same as `dir2mcp.ask` output schema, plus:
 
-* `transcript_provider`, `transcript_model`, and `transcribed` boolean.
+* `stt_provider`, `transcript_model`, and `transcribed` boolean.
 
 ---
 

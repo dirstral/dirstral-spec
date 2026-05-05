@@ -18,7 +18,7 @@
       "additionalProperties": false,
       "properties": {
         "rel_path": { "type": "string" },
-        "provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+        "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
         "model": { "type": "string" },
         "indexed": { "type": "boolean" },
         "transcribed": { "type": "boolean" },
@@ -37,7 +37,7 @@
           }
         }
       },
-      "required": ["rel_path", "provider", "model", "indexed", "transcribed"]
+      "required": ["rel_path", "stt_provider", "model", "indexed", "transcribed"]
     }
   }
 }
