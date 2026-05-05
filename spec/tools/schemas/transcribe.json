@@ -3,41 +3,41 @@
   "$id": "https://spec.dirstral.com/tools/schemas/transcribe.json",
   "title": "dir2mcp.transcribe",
   "description": "Force transcription for an indexed audio document.",
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "rel_path": { "type": "string", "minLength": 1 },
-    "language": { "type": "string" },
-    "timestamps": { "type": "boolean", "default": true },
-    "retranscribe": { "type": "boolean", "default": false }
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rel_path": { "type": "string", "minLength": 1 },
+      "language": { "type": "string" },
+      "timestamps": { "type": "boolean", "default": true },
+      "retranscribe": { "type": "boolean", "default": false }
+    },
+    "required": ["rel_path"]
   },
-  "required": ["rel_path"],
-  "definitions": {
-    "output": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rel_path": { "type": "string" },
-        "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
-        "model": { "type": "string" },
-        "indexed": { "type": "boolean" },
-        "transcribed": { "type": "boolean" },
-        "transcribed_now": { "type": "boolean" },
-        "segments": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "start_ms": { "type": "integer" },
-              "end_ms": { "type": "integer" },
-              "text": { "type": "string" }
-            },
-            "required": ["start_ms", "end_ms", "text"]
-          }
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rel_path": { "type": "string" },
+      "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+      "model": { "type": "string" },
+      "indexed": { "type": "boolean" },
+      "transcribed": { "type": "boolean" },
+      "transcribed_now": { "type": "boolean" },
+      "segments": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start_ms": { "type": "integer" },
+            "end_ms": { "type": "integer" },
+            "text": { "type": "string" }
+          },
+          "required": ["start_ms", "end_ms", "text"]
         }
-      },
-      "required": ["rel_path", "stt_provider", "model", "indexed", "transcribed"]
-    }
+      }
+    },
+    "required": ["rel_path", "stt_provider", "model", "indexed", "transcribed"]
   }
 }

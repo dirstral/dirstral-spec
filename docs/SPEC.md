@@ -1474,6 +1474,10 @@ filters is impossible.
 
 **Description:** same as `ask` but includes audio output (TTS). Optional and additive.
 
+Input is the same as `dir2mcp.ask`, with additive audio options:
+- `voice_id` (optional)
+- `format` (optional; `mp3` or `wav`, default `mp3`)
+
 Input schema:
 
 ```json
