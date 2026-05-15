@@ -860,7 +860,7 @@ Body:
     "serverInfo": {
       "name": "dir2mcp-stas-legal-a1b2c3",
       "title": "dir2mcp: Directory RAG MCP Server",
-      "version": "0.4.0"
+      "version": "0.5.0"
     },
     "instructions": "Use tools/list then tools/call. Results include citations."
   }
