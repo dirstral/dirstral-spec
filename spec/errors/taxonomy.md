@@ -1,6 +1,6 @@
 # Error Taxonomy
 
-**Spec version:** `0.4.0`
+**Spec version:** `0.5.0`
 
 Canonical error codes for all dir2mcp MCP tools and session operations.
 
@@ -31,6 +31,7 @@ These are returned with HTTP 200. The `isError: true` flag is set on the result.
 |-------------|-----------|-------------|
 | `INDEX_NOT_READY` | Yes | Index is still building or retriever not configured |
 | `FILE_NOT_FOUND` | No | Requested file path does not exist in the corpus |
+| `OCR_NOT_READY` | Yes | `dir2mcp_open_file` on a binary doc type (PDF, audio) before its OCR/transcript representation is cached; retry once ingestion completes |
 | `PERMISSION_DENIED` | No | Path is outside the root or excluded by policy |
 | `MISSING_FIELD` | No | Required tool argument absent |
 | `INVALID_FIELD` | No | Tool argument present but invalid type or value |

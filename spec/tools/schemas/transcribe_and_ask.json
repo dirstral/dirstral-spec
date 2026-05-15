@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://spec.dirstral.com/tools/schemas/transcribe_and_ask.json",
-  "title": "dir2mcp.transcribe_and_ask",
+  "title": "dir2mcp_transcribe_and_ask",
   "description": "Ensure transcript exists for audio file, then answer a question with citations.",
   "definitions": {
     "Span": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Span" },
@@ -14,7 +14,7 @@
     "properties": {
       "rel_path": { "type": "string", "minLength": 1 },
       "question": { "type": "string", "minLength": 1 },
-      "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 }
+      "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 }
     },
     "required": ["rel_path", "question"]
   },

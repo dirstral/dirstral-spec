@@ -10,15 +10,15 @@ JSON Schema contract documents live in `spec/tools/schemas/*.json`.
 
 | Tool name | Status |
 |-----------|--------|
-| `dir2mcp.search` | stable |
-| `dir2mcp.ask` | stable |
-| `dir2mcp.open_file` | stable |
-| `dir2mcp.list_files` | stable |
-| `dir2mcp.stats` | stable |
-| `dir2mcp.transcribe` | stable |
-| `dir2mcp.annotate` | stable |
-| `dir2mcp.transcribe_and_ask` | stable |
-| `dir2mcp.ask_audio` | stable |
+| `dir2mcp_search` | stable |
+| `dir2mcp_ask` | stable |
+| `dir2mcp_open_file` | stable |
+| `dir2mcp_list_files` | stable |
+| `dir2mcp_stats` | stable |
+| `dir2mcp_transcribe` | stable |
+| `dir2mcp_annotate` | stable |
+| `dir2mcp_transcribe_and_ask` | stable |
+| `dir2mcp_ask_audio` | stable |
 
 > **Note:** JSON Schema files for each tool are tracked in `spec/tools/schemas/` and are the authoritative machine-readable contracts. This markdown is an index only.
 
@@ -26,19 +26,19 @@ JSON Schema contract documents live in `spec/tools/schemas/*.json`.
 
 | Tool name | Schema file |
 |-----------|-------------|
-| `dir2mcp.search` | [`schemas/search.json`](schemas/search.json) |
-| `dir2mcp.ask` | [`schemas/ask.json`](schemas/ask.json) |
-| `dir2mcp.open_file` | [`schemas/open_file.json`](schemas/open_file.json) |
-| `dir2mcp.list_files` | [`schemas/list_files.json`](schemas/list_files.json) |
-| `dir2mcp.stats` | [`schemas/stats.json`](schemas/stats.json) |
-| `dir2mcp.transcribe` | [`schemas/transcribe.json`](schemas/transcribe.json) |
-| `dir2mcp.annotate` | [`schemas/annotate.json`](schemas/annotate.json) |
-| `dir2mcp.transcribe_and_ask` | [`schemas/transcribe_and_ask.json`](schemas/transcribe_and_ask.json) |
-| `dir2mcp.ask_audio` | [`schemas/ask_audio.json`](schemas/ask_audio.json) |
+| `dir2mcp_search` | [`schemas/search.json`](schemas/search.json) |
+| `dir2mcp_ask` | [`schemas/ask.json`](schemas/ask.json) |
+| `dir2mcp_open_file` | [`schemas/open_file.json`](schemas/open_file.json) |
+| `dir2mcp_list_files` | [`schemas/list_files.json`](schemas/list_files.json) |
+| `dir2mcp_stats` | [`schemas/stats.json`](schemas/stats.json) |
+| `dir2mcp_transcribe` | [`schemas/transcribe.json`](schemas/transcribe.json) |
+| `dir2mcp_annotate` | [`schemas/annotate.json`](schemas/annotate.json) |
+| `dir2mcp_transcribe_and_ask` | [`schemas/transcribe_and_ask.json`](schemas/transcribe_and_ask.json) |
+| `dir2mcp_ask_audio` | [`schemas/ask_audio.json`](schemas/ask_audio.json) |
 
 ## Schema authoring rules
 
-1. All tool names are prefixed with `dir2mcp.` to namespace them within the ecosystem.
+1. All tool names are prefixed with `dir2mcp_` to namespace them within the ecosystem.
 2. Each schema file is a contract document with two top-level sections:
    - `input`: JSON Schema Draft-07 for tool arguments
    - `output`: JSON Schema Draft-07 for tool result payload

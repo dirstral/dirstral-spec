@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://spec.dirstral.com/tools/schemas/ask_audio.json",
-  "title": "dir2mcp.ask_audio",
+  "title": "dir2mcp_ask_audio",
   "description": "RAG answer with optional ElevenLabs audio synthesis.",
   "definitions": {
     "Span": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Span" },
@@ -13,7 +13,7 @@
     "additionalProperties": false,
     "properties": {
       "question": { "type": "string", "minLength": 1 },
-      "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 },
+      "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
       "mode": { "type": "string", "enum": ["answer", "search_only"], "default": "answer" },
       "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
       "path_prefix": { "type": "string" },
