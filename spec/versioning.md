@@ -10,7 +10,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 | New optional fields, new optional tools | Minor |
 | Clarifications, doc fixes | Patch |
 
-**Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`, *breaking* wire/schema changes bump the `MINOR` (e.g. `0.4.0 → 0.5.0`), and non-breaking additions/clarifications bump the `PATCH`. The table above describes post-`1.0` semantics and takes effect when the spec reaches `1.0.0`.
+**Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
 **Current spec version:** `0.5.0`
 **MCP protocol target:** `2025-11-25`

@@ -885,7 +885,7 @@ Server returns: HTTP 202.
 
 ### 12.1 Tool naming
 
-All tools are prefixed with `dir2mcp.`
+All tools are prefixed with `dir2mcp_`. The historical dotted form `dir2mcp.<tool>` is **superseded** as of spec `0.5.0` (see `spec/versioning.md`).
 
 ### 12.2 Tool discovery: `tools/list`
 
