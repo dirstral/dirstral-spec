@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://spec.dirstral.com/tools/schemas/annotate.json",
-  "title": "dir2mcp.annotate",
+  "title": "dir2mcp_annotate",
   "description": "Structured extraction using provided JSON schema.",
   "type": "object",
   "additionalProperties": false,

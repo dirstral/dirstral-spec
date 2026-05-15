@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://spec.dirstral.com/tools/schemas/list_files.json",
-  "title": "dir2mcp.list_files",
+  "title": "dir2mcp_list_files",
   "description": "List files under root for navigation and filter selection.",
   "type": "object",
   "additionalProperties": false,

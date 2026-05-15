@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.4.0`  
+**Spec version:** `0.5.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** maximize Mistral capability utilization by flowing OCR + transcription + optional structured extraction into the same RAG pipeline, while allowing optional alternate providers where adapters exist.  
@@ -42,7 +42,7 @@ When `x402` mode is enabled, implementations SHOULD align with these references:
 - Network and facilitator support (CAIP-2 identifiers): <https://docs.cdp.coinbase.com/x402/network-support>
 - Bazaar discovery extension model: <https://docs.cdp.coinbase.com/x402/bazaar>
 
-### 0.2 Implementation status notes (March 2026)
+### 0.2 Implementation status notes (April 2026)
 
 Status tags used in this spec:
 
@@ -55,8 +55,8 @@ Current high-level status:
 
 - CLI + MCP server lifecycle, indexing pipeline, and core tool surface: **Implemented**
 - Multimodal ingestion (OCR/transcription/annotation) and retrieval workflows: **Implemented** (with ongoing quality/perf hardening)
-- Retrieval `Stats()` service contract: **Planned** (see issue #71)
-- Advanced retrieval answer quality/completion work: **In progress** (see issue #70)
+- Retrieval `Stats()` service contract: **Implemented** (issue #71 closed)
+- Retrieval answer generation path (`Engine.Ask()` / `AskWithContext`): **Implemented** (issue #70 closed)
 - Native x402 tools/call gating path: **Implemented** (optional and facilitator-backed)
 - Hosted smoke/runbook guidance: **Implemented** (see issue #19)
 - Release-completion checklist hardening: **In progress** (see issue #12)
@@ -71,7 +71,7 @@ Current high-level status:
 - **Document**: ingestible unit (file or archive member).
 - **Representation (rep)**: a text view derived from a document:
   - `raw_text` (code/text/md/data/html converted to text)
-  - `ocr_markdown` (OCR output for PDFs/images)
+  - `extracted_markdown` (extractor output for PDFs/images/documents; formerly `ocr_markdown`)
   - `transcript` (STT output for audio)
   - `annotation_json` (structured JSON result)
   - `annotation_text` (flattened `key: value` text derived from annotation_json)
@@ -268,7 +268,7 @@ Expected pass conditions:
 
 * `initialize` returns HTTP `200` and includes `MCP-Session-Id`.
 * `tools/list` returns HTTP `200` and includes tool metadata.
-* `tools/call` against `dir2mcp.list_files` returns either:
+* `tools/call` against `dir2mcp_list_files` returns either:
   * HTTP `200` with JSON-RPC body, or
   * HTTP `402` with `PAYMENT-REQUIRED` when x402 route gating is enabled.
 
@@ -421,7 +421,7 @@ The exact SQL types may vary; semantics must match.
 
 * `rep_id` (PK)
 * `doc_id` (FK)
-* `rep_type` (`raw_text|ocr_markdown|transcript|annotation_text|annotation_json`)
+* `rep_type` (`raw_text|extracted_markdown|transcript|annotation_text|annotation_json`)
 * `rep_hash` (stable; changes when rep changes)
 * `created_unix`
 * `meta_json` (must include provider/model for OCR/transcription/annotations when applicable)
@@ -580,15 +580,19 @@ Use extension + MIME sniff + binary heuristics to classify:
   * code → `index_kind=code`
   * others → `index_kind=text`
 
-#### B) PDF/image
+#### B) PDF/image/document
 
-* Default: generate `ocr_markdown` via **Mistral OCR**.
-* OCR is page-aware:
+* Generate `extracted_markdown` via configured extractor (`ingest.extractor`):
+  * `auto` (default): prefer docling, fallback to Mistral OCR
+  * `docling`: require docling command/binary
+  * `mistral`: require Mistral OCR key/config
+  * `off`: skip extracted representation
+* OCR-like/page-aware behavior applies when provider emits page-separated output:
 
   * store page numbers as spans
   * chunk per page first
 * Route to `index_kind=text`.
-* Cache OCR output if enabled.
+* Cache extracted output if enabled.
 
 #### C) Audio (STT provider is configurable)
 
@@ -830,6 +834,18 @@ HTTP response headers include:
 
 * `MCP-Session-Id: sess_...`
 
+`serverInfo.name` is per-instance: by default it is auto-derived as
+`dir2mcp-<slug>-<6-hex>` from the absolute path of the indexed directory
+so that operators running many `dir2mcp` instances can distinguish them
+in their MCP client list. Builds whose embedded version is recognized
+as a dev version (specifically `0.0.0-dev` or `dev-<sha>[+dirty]`) use
+a `dir2mcp-dev-<slug>-<6-hex>` prefix so local dev binaries can coexist
+with brew-installed releases without identity collision. Other non-release
+builds, including `go install` snapshots or pseudo-versions, still use
+the normal `dir2mcp-<slug>-<6-hex>` prefix. It can be overridden via the
+`server.name` YAML key or the `DIR2MCP_SERVER_NAME` env variable;
+overrides apply verbatim regardless of build type.
+
 Body:
 
 ```json
@@ -842,9 +858,9 @@ Body:
       "tools": { "listChanged": false }
     },
     "serverInfo": {
-      "name": "dir2mcp",
+      "name": "dir2mcp-stas-legal-a1b2c3",
       "title": "dir2mcp: Directory RAG MCP Server",
-      "version": "0.4.0"
+      "version": "0.5.0"
     },
     "instructions": "Use tools/list then tools/call. Results include citations."
   }
@@ -869,7 +885,7 @@ Server returns: HTTP 202.
 
 ### 12.1 Tool naming
 
-All tools are prefixed with `dir2mcp.`
+All tools are prefixed with `dir2mcp_`. The historical dotted form `dir2mcp.<tool>` is **superseded** as of spec `0.5.0` (see `spec/versioning.md`).
 
 ### 12.2 Tool discovery: `tools/list`
 
@@ -895,7 +911,7 @@ Request:
   "jsonrpc": "2.0",
   "id": 3,
   "method": "tools/call",
-  "params": { "name": "dir2mcp.search", "arguments": { "query": "..." } }
+  "params": { "name": "dir2mcp_search", "arguments": { "query": "..." } }
 }
 ```
 
@@ -942,21 +958,21 @@ Example tool execution error:
 
 ### 13.1 Core tool set
 
-* `dir2mcp.search`
-* `dir2mcp.ask`
-* `dir2mcp.open_file`
-* `dir2mcp.list_files`
-* `dir2mcp.stats`
+* `dir2mcp_search`
+* `dir2mcp_ask`
+* `dir2mcp_open_file`
+* `dir2mcp_list_files`
+* `dir2mcp_stats`
 
 ### 13.2 Recommended extended tools
 
-* `dir2mcp.transcribe` (audio → transcript, uses configured provider)
-* `dir2mcp.annotate` (document → structured JSON + flattened text)
-* `dir2mcp.transcribe_and_ask` (audio → transcript → ask)
+* `dir2mcp_transcribe` (audio → transcript, uses configured provider)
+* `dir2mcp_annotate` (document → structured JSON + flattened text)
+* `dir2mcp_transcribe_and_ask` (audio → transcript → ask)
 
 ### 13.3 Optional extension
 
-* `dir2mcp.ask_audio` (answer → audio via ElevenLabs TTS)
+* `dir2mcp_ask_audio` (answer → audio via ElevenLabs TTS)
 
 ---
 
@@ -979,6 +995,7 @@ Example tool execution error:
 * `PATH_OUTSIDE_ROOT`
 * `FILE_NOT_FOUND`
 * `DOC_TYPE_UNSUPPORTED`
+* `OCR_NOT_READY` (returned by `dir2mcp_open_file` for binary doc types — PDF, audio — when no OCR/transcript representation is cached yet; retryable once ingestion completes)
 
 ### 14.3 Index/state
 
@@ -1037,10 +1054,21 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
       "additionalProperties": false,
       "properties": { "kind": { "const": "time" }, "start_ms": { "type": "integer" }, "end_ms": { "type": "integer" } },
       "required": ["kind", "start_ms", "end_ms"]
+    },
+    {
+      "additionalProperties": false,
+      "properties": { "kind": { "const": "document" } },
+      "required": ["kind"]
     }
   ]
 }
 ```
+
+The `document` variant is emitted by `dir2mcp_open_file` when the requested
+`rel_path` is a binary doc type (PDF, audio) and the caller did not supply
+`page`, `start_ms/end_ms`, or `start_line/end_line`. It signals that
+`content` is the full OCR / transcript representation rather than a paged or
+timed slice.
 
 #### 15.1.2 `Hit`
 
@@ -1065,7 +1093,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
 
 ---
 
-### 15.2 `dir2mcp.search`
+### 15.2 `dir2mcp_search`
 
 **Description:** semantic retrieval across indexed content.
 
@@ -1077,7 +1105,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
   "additionalProperties": false,
   "properties": {
     "query": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
     "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
     "path_prefix": { "type": "string" },
     "file_glob": { "type": "string" },
@@ -1113,7 +1141,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
 
 ---
 
-### 15.3 `dir2mcp.ask`
+### 15.3 `dir2mcp_ask`
 
 **Description:** RAG answer with citations; can run search-only.
 
@@ -1125,7 +1153,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
   "additionalProperties": false,
   "properties": {
     "question": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
     "mode": { "type": "string", "enum": ["answer", "search_only"], "default": "answer" },
     "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
     "path_prefix": { "type": "string" },
@@ -1171,7 +1199,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
 
 ---
 
-### 15.4 `dir2mcp.open_file`
+### 15.4 `dir2mcp_open_file`
 
 **Description:** open an exact source slice for verification (lines/page/time).
 
@@ -1208,9 +1236,13 @@ filters is impossible.
 * Else if `start_line/end_line` provided → return file lines.
 * Else default:
 
-  * return first `max_chars` (or first N lines) for text/code,
-  * return page 1 for PDF OCR if available,
-  * return transcript beginning for audio.
+  * for text/code/markdown/html: return first `max_chars` of the file with no `span` set,
+  * for PDF: return the cached full-document OCR markdown with `span.kind="document"`; if the OCR cache hasn't been populated yet (e.g. ingest is still running) the tool MUST return error `OCR_NOT_READY` rather than the raw bytes,
+  * for audio: return the cached full-document transcript with `span.kind="document"`; same `OCR_NOT_READY` semantics as PDF when no transcript exists yet.
+
+The handler MUST NOT emit raw binary bytes through `content[].text` — that
+field is documented as text. PDFs and audio without a span argument resolve
+through the OCR / transcript cache, never through a direct file read.
 
 **Output schema (structuredContent):**
 
@@ -1231,7 +1263,7 @@ filters is impossible.
 
 ---
 
-### 15.5 `dir2mcp.list_files`
+### 15.5 `dir2mcp_list_files`
 
 **Description:** list files under root for navigation and filter selection.
 
@@ -1283,7 +1315,7 @@ filters is impossible.
 
 ---
 
-### 15.6 `dir2mcp.stats`
+### 15.6 `dir2mcp_stats`
 
 **Description:** status/progress/health for indexing and models.
 
@@ -1356,7 +1388,7 @@ filters is impossible.
 
 ---
 
-### 15.7 `dir2mcp.transcribe` (recommended)
+### 15.7 `dir2mcp_transcribe` (recommended)
 
 **Description:** force transcription for an audio file, persist transcript representation, and (optionally) return segments.
 
@@ -1407,7 +1439,7 @@ filters is impossible.
 
 ---
 
-### 15.8 `dir2mcp.annotate` (recommended)
+### 15.8 `dir2mcp_annotate` (recommended)
 
 **Description:** run structured extraction on a document with provided JSON schema; store JSON; optionally index flattened text.
 
@@ -1445,7 +1477,7 @@ filters is impossible.
 
 ---
 
-### 15.9 `dir2mcp.transcribe_and_ask` (recommended)
+### 15.9 `dir2mcp_transcribe_and_ask` (recommended)
 
 **Description:** ensure transcript exists (transcribe if missing/stale), then answer a question using transcript (and optionally whole corpus if configured).
 
@@ -1458,27 +1490,27 @@ filters is impossible.
   "properties": {
     "rel_path": { "type": "string", "minLength": 1 },
     "question": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 }
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 }
   },
   "required": ["rel_path", "question"]
 }
 ```
 
-**Output schema:** same as `dir2mcp.ask` output schema, plus:
+**Output schema:** same as `dir2mcp_ask` output schema, plus:
 
 * `stt_provider`, `transcript_model`, and `transcribed` boolean.
 
 ---
 
-### 15.10 `dir2mcp.ask_audio` (optional extension)
+### 15.10 `dir2mcp_ask_audio` (optional extension)
 
-**Description:** same as `ask` but includes audio output (TTS). Optional and additive.
+**Description:** same as `ask` but includes audio output (TTS). Optional and additive. The input schema inherits all fields of `dir2mcp_ask` (`question`, `k`, `mode`, `index`, `path_prefix`, `file_glob`, `doc_types`) plus the audio-specific fields shown below.
 
-Input is the same as `dir2mcp.ask`, with additive audio options:
+Input is the same as `dir2mcp_ask`, with additive audio options:
 - `voice_id` (optional)
 - `format` (optional; `mp3` or `wav`, default `mp3`)
 
-Input schema:
+Input schema (audio-specific fields; the rest mirror `dir2mcp_ask`):
 
 ```json
 {
@@ -1486,6 +1518,7 @@ Input schema:
   "additionalProperties": false,
   "properties": {
     "question": { "type": "string", "minLength": 1 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
     "voice_id": { "type": "string" },
     "format": { "type": "string", "enum": ["mp3", "wav"], "default": "mp3" }
   },
@@ -1534,7 +1567,7 @@ mistral:
 
 rag:
   generate_answer: true
-  k_default: 10
+  k_default: 15
   system_prompt: |
     You are a retrieval-augmented assistant.
     Use citations and never invent sources.
