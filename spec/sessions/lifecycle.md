@@ -1,6 +1,6 @@
 # Session Lifecycle
 
-**Spec version:** `0.5.0`
+**Spec version:** `0.6.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Transport
