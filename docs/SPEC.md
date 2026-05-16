@@ -149,7 +149,7 @@ Current high-level status:
 - Server-first semantics: server starts immediately when preflight requirements are satisfied. If required credentials for enabled ingestion/retrieval paths are missing, setup/validation runs before bind.
 - Prompt masking: secret inputs (API keys/tokens) MUST be masked and never echoed.
 - Preflight checks (minimum), evaluated per capability against its selected (or auto-selected) provider profile (see 8.1):
-  - embeddings (required) -> requires the embed provider's credential; if none of the credentialed profiles can serve `embed`, preflight fails
+  - embeddings (required) -> requires the embed provider's credential **or connector**; if no eligible profile (a credential is present, or a credential-less connector such as a local endpoint — see 8.1.1/8.1.3) can serve `embed`, preflight fails
   - OCR enabled for present/targeted PDFs/images -> requires the OCR provider's credential/connector
   - STT enabled -> requires the selected STT provider's credentials/connectors
 - Prompt parity examples:
@@ -674,17 +674,17 @@ Fatal errors:
 
 ### 8.1 Provider model (provider-agnostic)
 
-dir2mcp is **provider-agnostic**. Each model capability — `embed`, `chat`, `ocr`, `stt`, `rerank` — binds to a named **provider profile**. Mistral is the default profile but is **not** privileged. Rationale and full design: [Design 0001](design/0001-multi-provider.md).
+dir2mcp is **provider-agnostic**. Each model capability — `embed`, `chat`, `ocr`, `stt`, `tts`, `rerank` — binds to a named **provider profile**. Mistral is the default profile but is **not** privileged. Rationale and full design: [Design 0001](design/0001-multi-provider.md).
 
 #### 8.1.1 Provider profiles
 
-A profile declares a `kind` (the adapter / wire protocol), a `base_url` (defaulted per kind; overridable), an `api_key` secret reference (resolved per 16.1.1, never persisted), and per-capability default model names. Defined `kind`s:
+A profile declares a `kind` (the adapter / wire protocol), a `base_url` (defaulted per kind; overridable), an **optional** `api_key` secret reference (resolved per 16.1.1, never persisted), and per-capability default model names. A profile with no `api_key` is **credential-less** (e.g. a local Ollama/vLLM/LM Studio endpoint that requires no key); credential-less profiles are first-class and count as **eligible** for selection and preflight (8.1.3). Defined `kind`s:
 
 * `openai` — the OpenAI-compatible **backbone**: OpenAI, OpenRouter, Groq, Together, Azure-style, and local Ollama/vLLM/LM Studio — **and Mistral chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and `/v1/embeddings`).
 * `mistral` — native `/v1/ocr` (and Voxtral STT); the only genuinely non-OpenAI Mistral surface.
 * `anthropic` — Messages API (chat only).
 * `gemini` — native embed/chat (may alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint).
-* `cohere` — rerank (8.4).
+* `cohere` — rerank (8.4) **only** in 0.7.0. (Cohere's API also offers embed/chat; those are a documented future extension, not part of the 0.7.0 contract — see 8.1.2.)
 * `elevenlabs` — STT/TTS.
 
 Built-in profiles ship for common providers so operators typically only supply a credential.
@@ -697,18 +697,18 @@ Built-in profiles ship for common providers so operators typically only supply a
 | `mistral` | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | `anthropic` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `gemini` | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| `cohere` | ❌² | ❌² | ❌ | ❌ | ❌ | ✅ |
 | `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
-⚠️ = depends on the concrete endpoint (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). Binding a capability to a `kind` that cannot serve it MUST be rejected as `CONFIG_INVALID`.
+⚠️ = depends on the concrete endpoint (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). ² = Cohere's API supports embed/chat, but `kind: cohere` implements **only** `rerank` in 0.7.0; embed/chat are a documented future extension and an implementation MUST NOT auto-select or accept `kind: cohere` for them in 0.7.0. Binding a capability to a `kind` that cannot serve it MUST be rejected as `CONFIG_INVALID`.
 
 #### 8.1.3 Provider selection
 
 For each capability, with `<cap>.provider`:
 
-1. **Set** → use that profile, validated against 8.1.2. If it is required and its credential is absent → `CONFIG_INVALID` with remediation.
-2. **Unset (auto)** → select the first profile, by a fixed deterministic precedence, that both (a) has a credential present and (b) can serve the capability. This generalizes the capability-driven activation rule already used by rerank (8.4) and STT (8.2).
-3. **None qualify** → a *required* capability (`embed`) fails preflight (149); an *optional* one (`rerank`) stays off silently.
+1. **Set** → use that profile, validated against 8.1.2. If it is required and the profile is not eligible (no credential present **and** not credential-less) → `CONFIG_INVALID` with remediation.
+2. **Unset (auto)** → select the first profile, by a fixed deterministic precedence, that both (a) is **eligible** — a credential is present, or the profile is credential-less (e.g. a local endpoint) — and (b) can serve the capability. This generalizes the capability-driven activation rule already used by rerank (8.4) and STT (8.2).
+3. **None qualify** → a *required* capability (`embed`) fails the startup preflight (§2.5); an *optional* one (`rerank`) stays off silently.
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 

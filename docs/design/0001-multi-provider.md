@@ -31,18 +31,20 @@ Therefore the OpenAI-compatible adapter is not just "OpenAI + OpenRouter + local
 
 > Caveat: OpenAI chat compatibility is ~90%, not 100% (tool-call JSON nuances, assistant prefill, FIM, embedding `dimensions`/`encoding_format`). The adapter targets the common path; provider-specific knobs live in the profile.
 
-## 4. Capability matrix (normative source for §8)
+## 4. Capability matrix (informative — SPEC §8.1.2 is normative)
+
+This table is informative and MUST stay identical to the normative matrix in SPEC §8.1.2 (same symbols, same footnotes):
 
 | Provider `kind` | embed | chat | ocr | stt | tts | rerank |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|
-| `openai` (OpenAI-compatible: OpenAI, OpenRouter, Groq, Together, Azure, Ollama, vLLM, …) | ✅ | ✅ | ❌ | ✅¹ | ✅¹ | ❌ |
-| `mistral` (native OCR + Voxtral STT) | — | — | ✅ | ✅ | – | – |
+| `openai` (OpenAI-compatible: OpenAI, OpenRouter, Groq, Together, Azure, Ollama, vLLM, …) | ✅ | ✅ | ❌ | ⚠️ | ⚠️ | ❌ |
+| `mistral` (native OCR + Voxtral STT) | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | `anthropic` (Messages API) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `gemini` (native; also has an OpenAI-compat endpoint) | ✅ | ✅ | ❌ | ✅ | – | ❌ |
-| `cohere` | ✅ | ✅ | – | – | – | ✅ |
-| `elevenlabs` | – | – | – | ✅ | ✅ | – |
+| `gemini` (native; also has an OpenAI-compat endpoint) | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `cohere` | ❌² | ❌² | ❌ | ❌ | ❌ | ✅ |
+| `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
-¹ Depends on the concrete endpoint (e.g. OpenAI Whisper/TTS; a bare OpenRouter gateway exposes chat only).
+⚠️ = endpoint-dependent (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). ² = Cohere's API supports embed/chat, but `kind: cohere` implements **only** `rerank` in 0.7.0 (embed/chat are a future extension — see §10).
 
 Selection and preflight **MUST** validate against this matrix: binding a capability to a `kind` that cannot serve it is `CONFIG_INVALID`.
 
@@ -89,7 +91,7 @@ This preserves "credentials are the opt-in" while making selection deterministic
 | `mistral` (existing, shrinks) | **only** `/v1/ocr` (+ Voxtral STT) | retained, reduced |
 | `anthropic` (new) | chat only (Messages API) | new |
 | `gemini` (new) | embed + chat (native, or via its OpenAI-compat endpoint as a `kind: openai` profile) | new |
-| `cohere` (existing) | rerank (+ optionally embed later) | unchanged |
+| `cohere` (existing) | rerank **only** in 0.7.0 (embed/chat = future extension, §10) | unchanged |
 | `elevenlabs` (existing) | STT/TTS | unchanged |
 
 ### 5.5 The "full modification" — re-express Mistral now
@@ -177,7 +179,7 @@ Spec `0.6.0 → 0.7.0`. Pre-1.0 beta policy: a config-shape break **and** new op
 
 1. **Backbone**: `openai` adapter (embed+chat) + `providers:`/`model.*` config + generalized selection + Mistral re-expressed (OCR retained). Covers OpenAI, OpenRouter, Groq, local, Mistral.
 2. **Anthropic** (chat) + **Gemini** (embed+chat).
-3. **Voyage** (embed + rerank) as an additional `kind` if desired.
+3. **Voyage** (embed + rerank), and **Cohere embed/chat** (extending `kind: cohere` beyond rerank), as additional capabilities if desired. These are explicitly *out of scope for 0.7.0*.
 
 ## 11. Non-goals
 
