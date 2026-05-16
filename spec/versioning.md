@@ -55,6 +55,7 @@ Generalizes the model pipeline from Mistral-centric to **provider-agnostic**: ev
 - §8.1.4 **Embeddings corpus-lifetime invariant**: embed identity is bound to the index; mismatched reload MUST error or reindex (no silent vector-space mixing).
 - §8.1.5 **Asymmetric embeddings (input role)**: every embedding call carries a document/query input role; asymmetric providers (Cohere `input_type`, Voyage) MUST honor it, symmetric providers ignore it. The reference `Embedder` interface gains the role parameter (clean internal pre-1.0 break).
 - **Full Cohere**: `kind: cohere` serves embed + chat (`/v2/chat`) + rerank in 0.7.0 (not rerank-only).
+- **Provider-agnostic STT/TTS**: §8.2/§8.3 generalized — STT/TTS are selected per §8.1.3 among capable profiles (Mistral/ElevenLabs/OpenAI/Gemini for STT; ElevenLabs/OpenAI/Gemini for TTS). `kind: openai` audio is endpoint-dependent (validated at first use, never `CONFIG_INVALID`); every other matrix `✅` is statically valid. No provider is left half-wired.
 - §16.2 config template: monolithic `mistral:` replaced by `providers:` map + `model:` capability bindings; `stt:`/`rerank:` shapes retained.
 - §2.5 startup preflight generalized from "requires Mistral API key" to per-capability provider credentials.
 - **No new tool, tool-schema field, or error code** (one new config-validation case reuses `CONFIG_INVALID`). `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged; `dirstral-conformance` unaffected.

@@ -680,10 +680,10 @@ dir2mcp is **provider-agnostic**. Each model capability — `embed`, `chat`, `oc
 
 A profile declares a `kind` (the adapter / wire protocol), a `base_url` (defaulted per kind; overridable), an **optional** `api_key` secret reference (resolved per 16.1.1, never persisted), and per-capability default model names. A profile with no `api_key` is **credential-less** (e.g. a local Ollama/vLLM/LM Studio endpoint that requires no key); credential-less profiles are first-class and count as **eligible** for selection and preflight (8.1.3). Defined `kind`s:
 
-* `openai` — the OpenAI-compatible **backbone**: OpenAI, OpenRouter, Groq, Together, Azure-style, and local Ollama/vLLM/LM Studio — **and Mistral chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and `/v1/embeddings`).
+* `openai` — the OpenAI-compatible **backbone**: OpenAI, OpenRouter, Groq, Together, Azure-style, and local Ollama/vLLM/LM Studio — **and Mistral chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and `/v1/embeddings`). Endpoints that expose audio also serve STT (`/v1/audio/transcriptions`, Whisper / `gpt-4o-transcribe`) and TTS (`/v1/audio/speech`) — endpoint-dependent, see 8.1.2.
 * `mistral` — native `/v1/ocr` (and Voxtral STT); the only genuinely non-OpenAI Mistral surface.
 * `anthropic` — Messages API (chat only).
-* `gemini` — native embed/chat (may alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint).
+* `gemini` — native embed, chat, STT (audio transcription), and TTS (may alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint).
 * `cohere` — embed, chat, and rerank (8.4). Cohere embeddings are **asymmetric** (see 8.1.5).
 * `elevenlabs` — STT/TTS.
 
@@ -693,14 +693,14 @@ Built-in profiles ship for common providers so operators typically only supply a
 
 | `kind` | embed | chat | ocr | stt | tts | rerank |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|
-| `openai` | ✅ | ✅ | ❌ | ⚠️ | ⚠️ | ❌ |
+| `openai` | ✅ | ✅ | ❌ | ✅³ | ✅³ | ❌ |
 | `mistral` | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | `anthropic` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `gemini` | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `gemini` | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
-⚠️ = depends on the concrete endpoint (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). Binding a capability to a `kind` that cannot serve it MUST be rejected as `CONFIG_INVALID`.
+Binding a capability to a `kind` whose cell is `❌` MUST be rejected as `CONFIG_INVALID` (static validation). ³ = `kind: openai` audio (STT/TTS) is **endpoint-dependent** and cannot be statically validated (an arbitrary OpenAI-compatible `base_url` may omit `/v1/audio/*`). The adapter implements it; if the configured endpoint lacks it, the failure surfaces **at first use** as a provider error — a required STT path fails that ingest item, optional TTS fails open (8.3) — never as `CONFIG_INVALID`. All other `✅` cells are statically valid.
 
 #### 8.1.3 Provider selection
 
@@ -725,13 +725,14 @@ Some embedding providers (notably **Cohere** via `input_type`, and Voyage) are *
 
 ### 8.2 STT providers
 
-* STT provider is selected per 8.1.3. Default profile: **Mistral** (Voxtral); optional: **ElevenLabs** (Scribe).
+* STT provider is selected per 8.1.3 among STT-capable profiles (8.1.2): **Mistral** (Voxtral), **ElevenLabs** (Scribe), **OpenAI** (Whisper / `gpt-4o-transcribe`), **Gemini**. Default profile: **Mistral**.
 * Outputs MUST be normalized to the same `transcript` representation format regardless of provider.
 
 ### 8.3 Note on TTS
 
 * TTS is optional and not required for core retrieval/inspection functionality.
-* If enabled, it must remain additive and must not break non-TTS workflows.
+* When used, the TTS provider is selected per 8.1.3 among TTS-capable profiles (8.1.2): **ElevenLabs**, **OpenAI** (`/v1/audio/speech`), **Gemini**.
+* It must remain additive and must not break non-TTS workflows; a TTS provider error fails open (the workflow proceeds without audio).
 
 ### 8.4 Rerank providers (optional)
 

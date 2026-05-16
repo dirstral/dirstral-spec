@@ -37,14 +37,14 @@ This table is informative and MUST stay identical to the normative matrix in SPE
 
 | Provider `kind` | embed | chat | ocr | stt | tts | rerank |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|
-| `openai` (OpenAI-compatible: OpenAI, OpenRouter, Groq, Together, Azure, Ollama, vLLM, …) | ✅ | ✅ | ❌ | ⚠️ | ⚠️ | ❌ |
+| `openai` (OpenAI-compatible: OpenAI, OpenRouter, Groq, Together, Azure, Ollama, vLLM, …) | ✅ | ✅ | ❌ | ✅³ | ✅³ | ❌ |
 | `mistral` (native OCR + Voxtral STT) | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | `anthropic` (Messages API) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `gemini` (native; also has an OpenAI-compat endpoint) | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `gemini` (native; also has an OpenAI-compat endpoint) | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
-⚠️ = endpoint-dependent (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). Cohere `embed` is **asymmetric** — see §5.6 and SPEC §8.1.5.
+³ = `kind: openai` audio (STT/TTS) is endpoint-dependent: implemented by the adapter but validated **at first use** (an arbitrary OpenAI-compatible `base_url` may omit `/v1/audio/*`), never `CONFIG_INVALID`. See SPEC §8.1.2. Cohere `embed` is **asymmetric** — see §5.6 and SPEC §8.1.5.
 
 Selection and preflight **MUST** validate against this matrix: binding a capability to a `kind` that cannot serve it is `CONFIG_INVALID`.
 
@@ -87,10 +87,10 @@ This preserves "credentials are the opt-in" while making selection deterministic
 
 | Adapter | Scope | Status |
 |---|---|---|
-| `openai` (new) | embed + chat for OpenAI/OpenRouter/Groq/Together/Azure/local **and Mistral** | new, the backbone |
+| `openai` (new) | embed + chat **+ STT/TTS** (audio endpoint-dependent) for OpenAI/OpenRouter/Groq/Together/Azure/local **and Mistral** | new, the backbone |
 | `mistral` (existing, shrinks) | **only** `/v1/ocr` (+ Voxtral STT) | retained, reduced |
 | `anthropic` (new) | chat only (Messages API) | new |
-| `gemini` (new) | embed + chat (native, or via its OpenAI-compat endpoint as a `kind: openai` profile) | new |
+| `gemini` (new) | embed + chat + STT + TTS (native, or via its OpenAI-compat endpoint as a `kind: openai` profile) | new |
 | `cohere` (existing, extended) | rerank + **embed** (asymmetric, §5.6) + **chat** (`/v2/chat`, bespoke envelope) | extended in 0.7.0 |
 | `elevenlabs` (existing) | STT/TTS | unchanged |
 
@@ -199,9 +199,9 @@ Spec `0.6.0 → 0.7.0`. Pre-1.0 beta policy: a config-shape break **and** new op
 
 All of the following are **in scope for 0.7.0**:
 
-1. **Backbone + interface**: `openai` adapter (embed+chat) + `providers:`/`model.*` config + generalized selection + Mistral re-expressed (OCR retained) + the `Embedder` input-role generalization (§5.6) applied across all adapters and both call sites. Covers OpenAI, OpenRouter, Groq, local, Mistral.
+1. **Backbone + interface**: `openai` adapter (embed+chat **+ STT/TTS via `/v1/audio/*`**, endpoint-dependent) + `providers:`/`model.*` config + generalized selection + Mistral re-expressed (OCR retained) + the `Embedder` input-role generalization (§5.6) applied across all adapters and both call sites. Covers OpenAI, OpenRouter, Groq, local, Mistral.
 2. **Cohere full**: extend `kind: cohere` to embed (asymmetric, §5.6) and chat (`/v2/chat`), alongside the existing rerank.
-3. **Anthropic** (chat) + **Gemini** (embed+chat).
+3. **Anthropic** (chat) + **Gemini** (embed + chat + STT + TTS).
 
 Later (post-0.7.0, out of scope here): **Voyage** (embed + rerank), AWS Bedrock / Vertex.
 
