@@ -684,7 +684,7 @@ A profile declares a `kind` (the adapter / wire protocol), a `base_url` (default
 * `mistral` — native `/v1/ocr` (and Voxtral STT); the only genuinely non-OpenAI Mistral surface.
 * `anthropic` — Messages API (chat only).
 * `gemini` — native embed/chat (may alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint).
-* `cohere` — rerank (8.4) **only** in 0.7.0. (Cohere's API also offers embed/chat; those are a documented future extension, not part of the 0.7.0 contract — see 8.1.2.)
+* `cohere` — embed, chat, and rerank (8.4). Cohere embeddings are **asymmetric** (see 8.1.5).
 * `elevenlabs` — STT/TTS.
 
 Built-in profiles ship for common providers so operators typically only supply a credential.
@@ -697,10 +697,10 @@ Built-in profiles ship for common providers so operators typically only supply a
 | `mistral` | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | `anthropic` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `gemini` | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| `cohere` | ❌² | ❌² | ❌ | ❌ | ❌ | ✅ |
+| `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
-⚠️ = depends on the concrete endpoint (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). ² = Cohere's API supports embed/chat, but `kind: cohere` implements **only** `rerank` in 0.7.0; embed/chat are a documented future extension and an implementation MUST NOT auto-select or accept `kind: cohere` for them in 0.7.0. Binding a capability to a `kind` that cannot serve it MUST be rejected as `CONFIG_INVALID`.
+⚠️ = depends on the concrete endpoint (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). Binding a capability to a `kind` that cannot serve it MUST be rejected as `CONFIG_INVALID`.
 
 #### 8.1.3 Provider selection
 
@@ -713,6 +713,15 @@ For each capability, with `<cap>.provider`:
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
 Vectors from different embed providers/models are not comparable. The embed provider+model identity is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/`embed.text_model`/`embed.code_model` are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable.
+
+#### 8.1.5 Asymmetric embeddings (input role)
+
+Some embedding providers (notably **Cohere** via `input_type`, and Voyage) are **asymmetric**: documents and queries MUST be embedded with a distinct input role to achieve their stated retrieval quality. Therefore:
+
+* Every embedding call carries an **input role** ∈ {`document`, `query`}: corpus/index-time embeddings use `document`; search-time query embeddings use `query`. The role is determined by the call site, not by configuration.
+* Adapters for asymmetric providers MUST map the role to the provider's mechanism (e.g. Cohere `input_type=search_document` / `search_query`). Adapters for symmetric providers (OpenAI, Mistral) MUST accept the role and MAY ignore it; behavior MUST NOT differ for symmetric providers.
+* The input role is **not** a configuration knob and does not affect the corpus-lifetime invariant (8.1.4): the recorded embed identity is the provider+model, independent of role.
+* The reference `Embedder` interface gains the role parameter (a clean, internal, pre-1.0 break — no compatibility users); see [Design 0001 §5.6](design/0001-multi-provider.md).
 
 ### 8.2 STT providers
 

@@ -41,10 +41,10 @@ This table is informative and MUST stay identical to the normative matrix in SPE
 | `mistral` (native OCR + Voxtral STT) | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | `anthropic` (Messages API) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `gemini` (native; also has an OpenAI-compat endpoint) | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| `cohere` | ❌² | ❌² | ❌ | ❌ | ❌ | ✅ |
+| `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
-⚠️ = endpoint-dependent (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). ² = Cohere's API supports embed/chat, but `kind: cohere` implements **only** `rerank` in 0.7.0 (embed/chat are a future extension — see §10).
+⚠️ = endpoint-dependent (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). Cohere `embed` is **asymmetric** — see §5.6 and SPEC §8.1.5.
 
 Selection and preflight **MUST** validate against this matrix: binding a capability to a `kind` that cannot serve it is `CONFIG_INVALID`.
 
@@ -91,12 +91,32 @@ This preserves "credentials are the opt-in" while making selection deterministic
 | `mistral` (existing, shrinks) | **only** `/v1/ocr` (+ Voxtral STT) | retained, reduced |
 | `anthropic` (new) | chat only (Messages API) | new |
 | `gemini` (new) | embed + chat (native, or via its OpenAI-compat endpoint as a `kind: openai` profile) | new |
-| `cohere` (existing) | rerank **only** in 0.7.0 (embed/chat = future extension, §10) | unchanged |
+| `cohere` (existing, extended) | rerank + **embed** (asymmetric, §5.6) + **chat** (`/v2/chat`, bespoke envelope) | extended in 0.7.0 |
 | `elevenlabs` (existing) | STT/TTS | unchanged |
 
 ### 5.5 The "full modification" — re-express Mistral now
 
 `internal/mistral` is reduced to the OCR (and Voxtral STT) client. Mistral chat + embeddings flow through the generic `openai` adapter via the built-in `mistral` profile (`base_url: https://api.mistral.ai/v1`, default models `mistral-small-*`, `mistral-embed`, `codestral-embed`). One code path for chat/embed across *all* providers; bespoke code only where the protocol truly differs.
+
+### 5.6 Embedder input role (asymmetric embeddings)
+
+Cohere and Voyage are **asymmetric** embedders: they require `input_type=search_document` at index time and `input_type=search_query` at query time. The current `model.Embedder` —
+
+```go
+Embed(ctx, model string, inputs []string) ([][]float32, error)
+```
+
+cannot express this, so naïvely routing Cohere through it would silently degrade retrieval quality (queries embedded as documents). The interface gains an explicit input role:
+
+```go
+type EmbedRole int // RoleDocument | RoleQuery
+Embed(ctx, model string, role EmbedRole, inputs []string) ([][]float32, error)
+```
+
+- Call sites set the role: ingestion/index → `RoleDocument`; search → `RoleQuery`.
+- Asymmetric adapters (Cohere, Voyage) map it to `input_type`; symmetric adapters (OpenAI/Mistral) accept and ignore it — observable behavior for symmetric providers is unchanged.
+- This is a clean **internal, pre-1.0** interface break (no compatibility users); all adapters and both call sites change in one commit. It is *not* a wire/MCP change and is independent of the corpus-lifetime invariant (§6) — recorded embed identity remains provider+model.
+- Cohere chat uses the bespoke `/v2/chat` envelope (its own `documents`/`citations` shape); it rides the `cohere` adapter, not the OpenAI backbone. Normative: SPEC §8.1.5.
 
 ## 6. Embeddings are a corpus-lifetime invariant (normative)
 
@@ -177,9 +197,13 @@ Spec `0.6.0 → 0.7.0`. Pre-1.0 beta policy: a config-shape break **and** new op
 
 ## 10. Phasing
 
-1. **Backbone**: `openai` adapter (embed+chat) + `providers:`/`model.*` config + generalized selection + Mistral re-expressed (OCR retained). Covers OpenAI, OpenRouter, Groq, local, Mistral.
-2. **Anthropic** (chat) + **Gemini** (embed+chat).
-3. **Voyage** (embed + rerank), and **Cohere embed/chat** (extending `kind: cohere` beyond rerank), as additional capabilities if desired. These are explicitly *out of scope for 0.7.0*.
+All of the following are **in scope for 0.7.0**:
+
+1. **Backbone + interface**: `openai` adapter (embed+chat) + `providers:`/`model.*` config + generalized selection + Mistral re-expressed (OCR retained) + the `Embedder` input-role generalization (§5.6) applied across all adapters and both call sites. Covers OpenAI, OpenRouter, Groq, local, Mistral.
+2. **Cohere full**: extend `kind: cohere` to embed (asymmetric, §5.6) and chat (`/v2/chat`), alongside the existing rerank.
+3. **Anthropic** (chat) + **Gemini** (embed+chat).
+
+Later (post-0.7.0, out of scope here): **Voyage** (embed + rerank), AWS Bedrock / Vertex.
 
 ## 11. Non-goals
 
