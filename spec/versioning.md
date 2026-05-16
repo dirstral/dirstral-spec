@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.5.0`
+**Current spec version:** `0.6.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,8 +23,8 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.5.x` | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. |
-| `dirstral-cli` | `0.4.x` | MUST update to `0.5.x` before releasing against spec `0.5.0` (no client code change required — result contract is unchanged; tool names are the only wire-visible delta). |
+| `dir2mcp` (Go) | `0.6.x` | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. |
+| `dirstral-cli` | `0.4.x` | MUST update to `0.6.x` before releasing against spec `0.6.0`. No client code change for `0.6.0` (reranking is server-side and the result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
 ## Contract freeze (issue #104)
@@ -43,6 +43,15 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.6.0 — optional reranking (Cohere)
+
+New **optional** retrieval-quality stage; capability-driven (auto-activates only when a rerank provider credential is present, off otherwise), non-breaking — `MINOR` bump per the pre-1.0 policy (new optional surface → `MINOR`).
+
+- §8.4 **Rerank providers (optional)**: Cohere (`POST /v2/rerank`, default `rerank-v3.5`); capability-driven activation (auto-on when a credential is present, mirroring embedding/OCR provider gating); `rerank.enabled` is a tri-state override (unset → auto, `false` → force off, `true` → require + warn/fail-open if absent); fail-open; key not persisted.
+- §9.1.1 **Optional reranking**: post-fusion re-scoring of the top `rerank.candidate_pool` (default 50) candidates before truncation to `k`; reorder-only (result structure §9.2 unchanged); `index=both` reranks once on the merged pool; deterministic tie-break by `chunk_id`.
+- §16.2 config template: `rerank:` block (mirrors the `stt:` provider-selector shape).
+- No new tool, tool-schema field, or error code (fail-open surfaces no new tool error). `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.5.0 — reconcile shipped dir2mcp (spec-gap resolution)
 

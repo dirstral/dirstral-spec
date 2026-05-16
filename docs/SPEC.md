@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.5.0`  
+**Spec version:** `0.6.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** maximize Mistral capability utilization by flowing OCR + transcription + optional structured extraction into the same RAG pipeline, while allowing optional alternate providers where adapters exist.  
@@ -692,6 +692,18 @@ dir2mcp MUST support direct HTTP calls from Go for:
 * TTS is optional and not required for core retrieval/inspection functionality.
 * If enabled, it must remain additive and must not break non-TTS workflows.
 
+### 8.4 Rerank providers (optional)
+
+* Reranking is **optional** and **capability-driven**: it activates automatically when a rerank provider credential is present and is disabled otherwise. No explicit enable flag is required (this mirrors how embedding/OCR providers activate on credential presence under the server-first preflight model).
+* `rerank.enabled` is an **optional override**, not the activation switch:
+  * unset → auto (reranking on **iff** a credential is present);
+  * `false` → force reranking **off** even when a credential is present;
+  * `true` → require reranking — if no credential is present the server MUST fall back (fail-open) and SHOULD emit a warning.
+* Optional rerank provider: **Cohere** (`POST /v2/rerank`, default model `rerank-v3.5`).
+* When active, the reranker re-scores the fused candidate pool before truncation to `k` (see 9.1.1).
+* Reranking MUST be **fail-open**: any provider error (missing key, network failure, non-2xx) falls back to the pre-rerank fused order and MUST NOT fail the query.
+* The rerank API key follows the same secret-source rules as other provider credentials (16.1.1) and MUST NOT be persisted to the config snapshot.
+
 ---
 
 ## 9) Retrieval and answer generation
@@ -708,6 +720,24 @@ At query time:
 
   * query both indices and fuse results
   * normalization: per-index score normalization then merge
+
+### 9.1.1 Optional reranking
+
+Reranking is optional; it is a retrieval-quality optimization, not a hard dependency. It is **auto-enabled when a rerank provider credential is present** (e.g. `COHERE_API_KEY`) and disabled otherwise. `rerank.enabled` is an optional override (see 8.4): `false` forces it off even with a credential present; an explicit `true` without a credential MUST fall back (fail-open) and SHOULD warn.
+
+When active, after candidate generation/fusion and **before** truncation to `k`:
+
+* the top `rerank.candidate_pool` (default 50) fused candidates are re-scored by the configured rerank provider (8.4) using the query text and each candidate's `snippet`;
+* those candidates are reordered by the provider's relevance score; when `rerank.candidate_pool < k`, the remaining (un-reranked) fused candidates MUST be appended **after** the reranked ones in their original deterministic fused order;
+* the combined list is then truncated to `k`.
+
+Rules:
+
+* For `index=both`, reranking is applied **once to the merged candidate pool** (after per-index normalization and merge), not per-index.
+* **Fail-open**: any provider error falls back to the pre-rerank fused order, truncated to `k`. A query MUST NOT fail because reranking failed.
+* **No result loss**: reranking MUST NOT reduce the result count below what the pre-rerank fused order would return for the same `k`. When `rerank.candidate_pool < k`, the un-reranked fused tail is appended (in fused order) before truncation, so reranking only reorders and never drops results.
+* Reranking only reorders results and MAY overwrite `score` with the provider's relevance score; it MUST NOT change the result structure (9.2) or add/remove fields.
+* **Determinism**: ties in rerank score MUST be broken deterministically (e.g. by `chunk_id`).
 
 ### 9.2 Result structure and provenance
 
@@ -860,7 +890,7 @@ Body:
     "serverInfo": {
       "name": "dir2mcp-stas-legal-a1b2c3",
       "title": "dir2mcp: Directory RAG MCP Server",
-      "version": "0.5.0"
+      "version": "0.6.0"
     },
     "instructions": "Use tools/list then tools/call. Results include citations."
   }
@@ -1609,6 +1639,17 @@ stt:
     api_key: ${ELEVENLABS_API_KEY}
     model: scribe_v1
     timestamps: true
+
+rerank:
+  # Reranking auto-activates when a provider credential is present
+  # (cohere.api_key / COHERE_API_KEY). `enabled` is an optional
+  # override: omit for auto, `false` to force off even with a
+  # credential, `true` to require it (warns + fails open if absent).
+  provider: cohere        # cohere
+  candidate_pool: 50      # fused candidates re-scored before truncation to k
+  cohere:
+    api_key: ${COHERE_API_KEY}   # presence of this credential auto-enables reranking
+    model: rerank-v3.5
 
 x402:
   # `mode` is the primary, authoritative field controlling whether

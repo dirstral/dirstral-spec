@@ -1,6 +1,6 @@
 # Tool Schemas
 
-**Spec version:** `0.5.0`
+**Spec version:** `0.6.0`
 **MCP protocol target:** `2025-11-25`
 
 This document defines the canonical input/output schemas for all dir2mcp MCP tools.
