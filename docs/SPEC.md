@@ -728,12 +728,14 @@ Reranking is optional; it is a retrieval-quality optimization, not a hard depend
 When active, after candidate generation/fusion and **before** truncation to `k`:
 
 * the top `rerank.candidate_pool` (default 50) fused candidates are re-scored by the configured rerank provider (8.4) using the query text and each candidate's `snippet`;
-* candidates are reordered by the provider's relevance score, then truncated to `k`.
+* those candidates are reordered by the provider's relevance score; when `rerank.candidate_pool < k`, the remaining (un-reranked) fused candidates MUST be appended **after** the reranked ones in their original deterministic fused order;
+* the combined list is then truncated to `k`.
 
 Rules:
 
 * For `index=both`, reranking is applied **once to the merged candidate pool** (after per-index normalization and merge), not per-index.
-* **Fail-open**: any provider error falls back to the pre-rerank fused order. A query MUST NOT fail because reranking failed.
+* **Fail-open**: any provider error falls back to the pre-rerank fused order, truncated to `k`. A query MUST NOT fail because reranking failed.
+* **No result loss**: reranking MUST NOT reduce the result count below what the pre-rerank fused order would return for the same `k`. When `rerank.candidate_pool < k`, the un-reranked fused tail is appended (in fused order) before truncation, so reranking only reorders and never drops results.
 * Reranking only reorders results and MAY overwrite `score` with the provider's relevance score; it MUST NOT change the result structure (9.2) or add/remove fields.
 * **Determinism**: ties in rerank score MUST be broken deterministically (e.g. by `chunk_id`).
 
@@ -888,7 +890,7 @@ Body:
     "serverInfo": {
       "name": "dir2mcp-stas-legal-a1b2c3",
       "title": "dir2mcp: Directory RAG MCP Server",
-      "version": "0.5.0"
+      "version": "0.6.0"
     },
     "instructions": "Use tools/list then tools/call. Results include citations."
   }
