@@ -694,9 +694,13 @@ dir2mcp MUST support direct HTTP calls from Go for:
 
 ### 8.4 Rerank providers (optional)
 
-* Reranking is **optional** and **disabled by default**.
+* Reranking is **optional** and **capability-driven**: it activates automatically when a rerank provider credential is present and is disabled otherwise. No explicit enable flag is required (this mirrors how embedding/OCR providers activate on credential presence under the server-first preflight model).
+* `rerank.enabled` is an **optional override**, not the activation switch:
+  * unset → auto (reranking on **iff** a credential is present);
+  * `false` → force reranking **off** even when a credential is present;
+  * `true` → require reranking — if no credential is present the server MUST fall back (fail-open) and SHOULD emit a warning.
 * Optional rerank provider: **Cohere** (`POST /v2/rerank`, default model `rerank-v3.5`).
-* When enabled, the reranker re-scores the fused candidate pool before truncation to `k` (see 9.1.1).
+* When active, the reranker re-scores the fused candidate pool before truncation to `k` (see 9.1.1).
 * Reranking MUST be **fail-open**: any provider error (missing key, network failure, non-2xx) falls back to the pre-rerank fused order and MUST NOT fail the query.
 * The rerank API key follows the same secret-source rules as other provider credentials (16.1.1) and MUST NOT be persisted to the config snapshot.
 
@@ -719,9 +723,9 @@ At query time:
 
 ### 9.1.1 Optional reranking
 
-Reranking is optional and **disabled by default**; it is a retrieval-quality optimization, not a hard dependency.
+Reranking is optional; it is a retrieval-quality optimization, not a hard dependency. It is **auto-enabled when a rerank provider credential is present** (e.g. `COHERE_API_KEY`) and disabled otherwise. `rerank.enabled` is an optional override (see 8.4): `false` forces it off even with a credential present; an explicit `true` without a credential MUST fall back (fail-open) and SHOULD warn.
 
-When enabled, after candidate generation/fusion and **before** truncation to `k`:
+When active, after candidate generation/fusion and **before** truncation to `k`:
 
 * the top `rerank.candidate_pool` (default 50) fused candidates are re-scored by the configured rerank provider (8.4) using the query text and each candidate's `snippet`;
 * candidates are reordered by the provider's relevance score, then truncated to `k`.
@@ -1635,11 +1639,14 @@ stt:
     timestamps: true
 
 rerank:
-  enabled: false          # optional; off by default
+  # Reranking auto-activates when a provider credential is present
+  # (cohere.api_key / COHERE_API_KEY). `enabled` is an optional
+  # override: omit for auto, `false` to force off even with a
+  # credential, `true` to require it (warns + fails open if absent).
   provider: cohere        # cohere
   candidate_pool: 50      # fused candidates re-scored before truncation to k
   cohere:
-    api_key: ${COHERE_API_KEY}
+    api_key: ${COHERE_API_KEY}   # presence of this credential auto-enables reranking
     model: rerank-v3.5
 
 x402:

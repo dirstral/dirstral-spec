@@ -46,9 +46,9 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 
 ## 0.6.0 — optional reranking (Cohere)
 
-New **optional** retrieval-quality stage; off by default, non-breaking — `MINOR` bump per the pre-1.0 policy (new optional surface → `MINOR`).
+New **optional** retrieval-quality stage; capability-driven (auto-activates only when a rerank provider credential is present, off otherwise), non-breaking — `MINOR` bump per the pre-1.0 policy (new optional surface → `MINOR`).
 
-- §8.4 **Rerank providers (optional)**: Cohere (`POST /v2/rerank`, default `rerank-v3.5`); fail-open; key not persisted.
+- §8.4 **Rerank providers (optional)**: Cohere (`POST /v2/rerank`, default `rerank-v3.5`); capability-driven activation (auto-on when a credential is present, mirroring embedding/OCR provider gating); `rerank.enabled` is a tri-state override (unset → auto, `false` → force off, `true` → require + warn/fail-open if absent); fail-open; key not persisted.
 - §9.1.1 **Optional reranking**: post-fusion re-scoring of the top `rerank.candidate_pool` (default 50) candidates before truncation to `k`; reorder-only (result structure §9.2 unchanged); `index=both` reranks once on the merged pool; deterministic tie-break by `chunk_id`.
 - §16.2 config template: `rerank:` block (mirrors the `stt:` provider-selector shape).
 - No new tool, tool-schema field, or error code (fail-open surfaces no new tool error). `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
