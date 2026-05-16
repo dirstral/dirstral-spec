@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.6.0`
+**Current spec version:** `0.7.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,8 +23,8 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.6.x` | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. |
-| `dirstral-cli` | `0.4.x` | MUST update to `0.6.x` before releasing against spec `0.6.0`. No client code change for `0.6.0` (reranking is server-side and the result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
+| `dir2mcp` (Go) | `0.7.x` | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. |
+| `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
 ## Contract freeze (issue #104)
@@ -43,6 +43,19 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.7.0 — multi-provider model abstraction
+
+Generalizes the model pipeline from Mistral-centric to **provider-agnostic**: every capability (embed/chat/ocr/stt/rerank) binds to a configurable provider profile. A `MINOR` bump per the pre-1.0 policy — it is both a config-shape break (the monolithic `mistral:` block is removed) and new optional surface; a clean break is acceptable (no compatibility users). Design: [docs/design/0001-multi-provider.md](../docs/design/0001-multi-provider.md).
+
+- §1 **Implementation goal** rewritten provider-agnostic; Mistral is the default profile, not privileged.
+- §8.1 **Provider model**: profiles (`kind` = `openai`/`mistral`/`anthropic`/`gemini`/`cohere`/`elevenlabs`), the OpenAI-compatible backbone covering OpenAI/OpenRouter/Groq/Azure/local **and Mistral chat+embed**, bespoke adapters only for non-OpenAI surfaces (Mistral `/v1/ocr`, Anthropic, Cohere rerank, ElevenLabs).
+- §8.1.2 **Capability matrix** (normative): binding a capability to an incapable `kind` is `CONFIG_INVALID`.
+- §8.1.3 **Provider selection**: explicit `<cap>.provider`, else capability-driven auto-pick by precedence among credentialed+capable profiles (generalizes the rerank/STT rule).
+- §8.1.4 **Embeddings corpus-lifetime invariant**: embed identity is bound to the index; mismatched reload MUST error or reindex (no silent vector-space mixing).
+- §16.2 config template: monolithic `mistral:` replaced by `providers:` map + `model:` capability bindings; `stt:`/`rerank:` shapes retained.
+- §2.5 startup preflight generalized from "requires Mistral API key" to per-capability provider credentials.
+- **No new tool, tool-schema field, or error code** (one new config-validation case reuses `CONFIG_INVALID`). `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged; `dirstral-conformance` unaffected.
 
 ## 0.6.0 — optional reranking (Cohere)
 

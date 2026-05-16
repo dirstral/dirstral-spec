@@ -1,10 +1,10 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.6.0`  
+**Spec version:** `0.7.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
-**Implementation goal:** maximize Mistral capability utilization by flowing OCR + transcription + optional structured extraction into the same RAG pipeline, while allowing optional alternate providers where adapters exist.  
+**Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
 **Scope note:** x402 support is optional and additive; retrieval and MCP interoperability remain first-class regardless of payment mode.
 
 ---
@@ -148,12 +148,12 @@ Current high-level status:
 - Non-interactive mode: with `--non-interactive` (or non-TTY), missing required values MUST return exit code `2` with explicit remediation instructions.
 - Server-first semantics: server starts immediately when preflight requirements are satisfied. If required credentials for enabled ingestion/retrieval paths are missing, setup/validation runs before bind.
 - Prompt masking: secret inputs (API keys/tokens) MUST be masked and never echoed.
-- Preflight checks (minimum):
-  - embeddings enabled -> requires Mistral API key (or configured local/on-prem embed connector)
-  - OCR enabled for present/targeted PDFs/images -> requires OCR-capable provider credentials/connectors
-  - STT enabled -> requires selected provider credentials/connectors
+- Preflight checks (minimum), evaluated per capability against its selected (or auto-selected) provider profile (see 8.1):
+  - embeddings (required) -> requires the embed provider's credential; if none of the credentialed profiles can serve `embed`, preflight fails
+  - OCR enabled for present/targeted PDFs/images -> requires the OCR provider's credential/connector
+  - STT enabled -> requires the selected STT provider's credentials/connectors
 - Prompt parity examples:
-  - Mistral API key -> `MISTRAL_API_KEY` or config-managed secret source
+  - provider credential -> the profile's env var (for example `MISTRAL_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or config-managed secret source
   - STT provider credentials -> provider-specific env vars or secret source
   - OCR/transcription enablement -> config keys under `ingest.*` and `stt.*`
 
@@ -338,11 +338,14 @@ A lightweight summary:
     "code_ratio": 0.62
   },
   "models": {
+    "embed_provider": "mistral",
     "embed_text": "mistral-embed",
     "embed_code": "codestral-embed",
+    "ocr_provider": "mistral-ocr",
     "ocr": "mistral-ocr-latest",
     "stt_provider": "mistral",
     "stt_model": "voxtral-mini-latest",
+    "chat_provider": "mistral",
     "chat": "mistral-small-2506"
   },
   "indexing": {
@@ -375,11 +378,14 @@ Example snapshot emitted via the ListFiles-only fallback path:
     "code_ratio": 0.77
   },
   "models": {
+    "embed_provider": "mistral",
     "embed_text": "mistral-embed",
     "embed_code": "codestral-embed",
+    "ocr_provider": "mistral-ocr",
     "ocr": "mistral-ocr-latest",
     "stt_provider": "mistral",
     "stt_model": "voxtral-mini-latest",
+    "chat_provider": "mistral",
     "chat": "mistral-small-2506"
   },
   "indexing": {
@@ -666,26 +672,52 @@ Fatal errors:
 
 ## 8) Model/provider utilization requirements
 
-### 8.1 Mistral (required)
+### 8.1 Provider model (provider-agnostic)
 
-dir2mcp MUST support direct HTTP calls from Go for:
+dir2mcp is **provider-agnostic**. Each model capability — `embed`, `chat`, `ocr`, `stt`, `rerank` — binds to a named **provider profile**. Mistral is the default profile but is **not** privileged. Rationale and full design: [Design 0001](design/0001-multi-provider.md).
 
-* Embeddings:
+#### 8.1.1 Provider profiles
 
-  * `mistral-embed` (text index)
-  * `codestral-embed` (code index)
-* OCR:
+A profile declares a `kind` (the adapter / wire protocol), a `base_url` (defaulted per kind; overridable), an `api_key` secret reference (resolved per 16.1.1, never persisted), and per-capability default model names. Defined `kind`s:
 
-  * `mistral-ocr-latest` (default) for PDFs/images
-* Chat completions:
+* `openai` — the OpenAI-compatible **backbone**: OpenAI, OpenRouter, Groq, Together, Azure-style, and local Ollama/vLLM/LM Studio — **and Mistral chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and `/v1/embeddings`).
+* `mistral` — native `/v1/ocr` (and Voxtral STT); the only genuinely non-OpenAI Mistral surface.
+* `anthropic` — Messages API (chat only).
+* `gemini` — native embed/chat (may alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint).
+* `cohere` — rerank (8.4).
+* `elevenlabs` — STT/TTS.
 
-  * for RAG answering (default enabled)
+Built-in profiles ship for common providers so operators typically only supply a credential.
+
+#### 8.1.2 Capability matrix (normative)
+
+| `kind` | embed | chat | ocr | stt | tts | rerank |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| `openai` | ✅ | ✅ | ❌ | ⚠️ | ⚠️ | ❌ |
+| `mistral` | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `anthropic` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `gemini` | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+
+⚠️ = depends on the concrete endpoint (e.g. OpenAI exposes Whisper/TTS; a bare OpenRouter gateway is chat-only). Binding a capability to a `kind` that cannot serve it MUST be rejected as `CONFIG_INVALID`.
+
+#### 8.1.3 Provider selection
+
+For each capability, with `<cap>.provider`:
+
+1. **Set** → use that profile, validated against 8.1.2. If it is required and its credential is absent → `CONFIG_INVALID` with remediation.
+2. **Unset (auto)** → select the first profile, by a fixed deterministic precedence, that both (a) has a credential present and (b) can serve the capability. This generalizes the capability-driven activation rule already used by rerank (8.4) and STT (8.2).
+3. **None qualify** → a *required* capability (`embed`) fails preflight (149); an *optional* one (`rerank`) stays off silently.
+
+#### 8.1.4 Embeddings are a corpus-lifetime invariant
+
+Vectors from different embed providers/models are not comparable. The embed provider+model identity is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/`embed.text_model`/`embed.code_model` are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable.
 
 ### 8.2 STT providers
 
-* Default STT provider: **Mistral** (offline transcription model).
-* Optional STT provider: **ElevenLabs** (Scribe).
-* Outputs MUST be normalized to the same `transcript` representation format.
+* STT provider is selected per 8.1.3. Default profile: **Mistral** (Voxtral); optional: **ElevenLabs** (Scribe).
+* Outputs MUST be normalized to the same `transcript` representation format regardless of provider.
 
 ### 8.3 Note on TTS
 
@@ -890,7 +922,7 @@ Body:
     "serverInfo": {
       "name": "dir2mcp-stas-legal-a1b2c3",
       "title": "dir2mcp: Directory RAG MCP Server",
-      "version": "0.6.0"
+      "version": "0.7.0"
     },
     "instructions": "Use tools/list then tools/call. Results include citations."
   }
@@ -1588,12 +1620,44 @@ The config snapshot (`.dir2mcp.yaml.snapshot`) MUST record secret source metadat
 ```yaml
 version: 1
 
-mistral:
-  api_key: ${MISTRAL_API_KEY}
-  chat_model: mistral-small-2506
-  embed_text_model: mistral-embed
-  embed_code_model: codestral-embed
-  ocr_model: mistral-ocr-latest
+# Provider profiles (built-ins exist; declare only what you override).
+# `kind` selects the adapter/wire protocol; credentials follow 16.1.1
+# and are never persisted to the snapshot.
+providers:
+  mistral:                                 # chat+embed are OpenAI-shaped
+    kind: openai
+    base_url: https://api.mistral.ai/v1
+    api_key: ${MISTRAL_API_KEY}
+  mistral-ocr:                             # native /v1/ocr (non-OpenAI)
+    kind: mistral
+    api_key: ${MISTRAL_API_KEY}
+  openai:
+    kind: openai
+    api_key: ${OPENAI_API_KEY}
+  openrouter:
+    kind: openai
+    base_url: https://openrouter.ai/api/v1
+    api_key: ${OPENROUTER_API_KEY}
+  anthropic:
+    kind: anthropic
+    api_key: ${ANTHROPIC_API_KEY}
+  local:
+    kind: openai
+    base_url: http://localhost:11434/v1    # Ollama / vLLM / LM Studio
+
+# Per-capability bindings. `provider` unset => auto-select the first
+# credentialed profile that can serve the capability (8.1.3).
+model:
+  embed:                                   # reindex-bound (8.1.4)
+    provider: mistral
+    text_model: mistral-embed
+    code_model: codestral-embed
+  chat:
+    provider: mistral
+    model: mistral-small-2506
+  ocr:
+    provider: mistral-ocr
+    model: mistral-ocr-latest
 
 rag:
   generate_answer: true
