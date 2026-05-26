@@ -52,6 +52,24 @@
             "chat": { "type": "string" }
           },
           "required": ["embed_text", "embed_code", "ocr", "stt_provider", "stt_model", "chat"]
+        },
+        "recent_failures": {
+          "type": "array",
+          "description": "Optional. Up to recent_failures_limit (default 20) of the most-recent documents with status='error', newest first by mtime_unix. Implementations MAY omit when no failures are recorded; clients MUST treat omission as 'no recent failures', not as 'unsupported'.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "rel_path": { "type": "string" },
+              "doc_type": { "type": "string" },
+              "mtime_unix": { "type": "integer" },
+              "error_message": {
+                "type": "string",
+                "description": "Short, single-line, length-capped (SHOULD cap at 512 bytes on a UTF-8 rune boundary) explanation of why this document failed ingest. Control characters MUST be stripped. Never contains secrets or raw file content."
+              }
+            },
+            "required": ["rel_path", "doc_type", "mtime_unix", "error_message"]
+          }
         }
       },
       "required": ["root", "state_dir", "protocol_version", "doc_counts", "total_docs", "doc_counts_available", "indexing", "models"]

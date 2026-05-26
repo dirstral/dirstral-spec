@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.7.0`
+**Current spec version:** `0.8.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -43,6 +43,17 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.8.0 — stats.recent_failures (per-document failure visibility)
+
+Extends `dir2mcp_stats` output with an **optional** `recent_failures` array surfacing the most-recent documents with `status='error'` along with a short, sanitized `error_message`. `MINOR` bump per the pre-1.0 policy (new optional field on an existing tool, non-breaking — clients that ignore the field continue to work).
+
+Motivation: a maintainer triaging a failed corpus today can see *that* documents failed (existing `indexing.errors` counter) but not *which* documents or *why*. The information already exists in the implementation's metadata store (per-document `error_message`) and ships in `dir2mcp support-bundle`'s `list-files.json`; this spec change makes it available programmatically through the spec-blessed diagnostic surface (`stats`) so doctor-style dashboards and remote diagnostics can render it without scraping the bundle.
+
+- §15.6 `dir2mcp_stats` output: optional `recent_failures` array (`additionalProperties: false`), each item `{rel_path, doc_type, mtime_unix, error_message}` (all required when an item is present), newest-first by `mtime_unix`. Implementations SHOULD cap at 20 entries by default and SHOULD cap `error_message` at 512 bytes on a UTF-8 rune boundary with control characters stripped (one-line render). Implementations MAY omit the field entirely when no failures are recorded; clients MUST treat omission as "no recent failures" (not "unsupported") per the existing "Clients MUST ignore unknown fields" rule. `error_message` is normative as a **diagnostic** signal — it MUST NOT contain secrets, raw file content, or unsanitized provider response bodies.
+- `spec/tools/schemas/stats.json`: mirrored.
+- No new tool, no new error code, no config-shape change. `spec/errors/taxonomy.md`, the rest of `spec/tools/schemas/*`, and the `dirstral-conformance` suites are unaffected (a new conformance test for the optional field is recommended-not-required).
+- Implementation note: dir2mcp reference impl 0.5.8+ persists per-document `documents.error_message` (additive SQLite migration; introduced in dir2mcp #212). The stats wiring lands in a follow-up dir2mcp PR once this spec change is merged.
 
 ## 0.7.0 — multi-provider model abstraction
 

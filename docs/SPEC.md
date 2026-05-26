@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.7.0`  
+**Spec version:** `0.8.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1452,6 +1452,24 @@ through the OCR / transcript cache, never through a direct file read.
         "chat": { "type": "string" }
       },
       "required": ["embed_text", "embed_code", "ocr", "stt_provider", "stt_model", "chat"]
+    },
+    "recent_failures": {
+      "type": "array",
+      "description": "Optional. Up to recent_failures_limit (default 20) of the most-recent documents with status='error', newest first by mtime_unix. Each entry carries a short, sanitized error_message explaining why ingest failed (extraction crash, representation generation failure). Implementations MAY omit this field when no failures are recorded; clients MUST treat omission as 'no recent failures', not as 'unsupported'. Intended for diagnostic UIs (doctor-style consoles); the per-failure detail also surfaces in dir2mcp support-bundle's list-files.json.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rel_path": { "type": "string" },
+          "doc_type": { "type": "string" },
+          "mtime_unix": { "type": "integer" },
+          "error_message": {
+            "type": "string",
+            "description": "Short, single-line, length-capped (implementations SHOULD cap at 512 bytes on a UTF-8 rune boundary) explanation of why this document failed ingest. Control characters MUST be stripped so the field renders as one line. Never contains secrets or raw file content."
+          }
+        },
+        "required": ["rel_path", "doc_type", "mtime_unix", "error_message"]
+      }
     }
   },
   "required": ["root", "state_dir", "protocol_version", "doc_counts", "total_docs", "doc_counts_available", "indexing", "models"]
