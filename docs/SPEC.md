@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.8.0`  
+**Spec version:** `0.9.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -457,10 +457,34 @@ The exact SQL types may vary; semantics must match.
 ### 5.4 `spans` (provenance for citations)
 
 * `chunk_id` (FK)
-* `span_kind` (`lines|page|time`)
-* `start` (integer)  # start_line / page / start_ms
-* `end` (integer)    # end_line / page / end_ms
-* `extra_json` (nullable)  # speaker, confidence, section title, etc.
+* `span_kind` (`lines|page|time|region`)
+* `start` (integer)  # start_line / page / start_ms / page (region)
+* `end` (integer)    # end_line / page / end_ms / page (region)
+* `extra_json` (nullable)  # speaker, confidence, section breadcrumb, bbox, etc.
+
+The `region` span kind localizes a chunk to a rectangular area on a page.
+For `region` spans, `start` and `end` carry the first and last page the
+chunk's source elements appear on (equal when single-page), and
+`extra_json` MUST carry the bounding box and SHOULD carry the section
+breadcrumb:
+
+```jsonc
+{
+  "bbox": { "page": 1, "l": 72.0, "t": 90.5, "r": 523.0, "b": 410.2, "coord_origin": "TOPLEFT" },
+  "section": ["Chapter 2", "2.1 Background"],   // heading breadcrumb, outermost first
+  "label": "paragraph|section_header|list_item|table|caption|code|formula|picture",
+  "charspan": [120, 884]                          // optional, char offsets into the source element
+}
+```
+
+* `bbox` coordinates are in the source document's point space. `coord_origin`
+  is `TOPLEFT` or `BOTTOMLEFT`; implementations SHOULD normalize to `TOPLEFT`
+  and record the origin actually stored.
+* When a chunk aggregates multiple source elements spanning more than one
+  bounding box, `extra_json.bbox` is the union (smallest enclosing rectangle)
+  on the chunk's primary page; `start`/`end` still record the full page range.
+* `region` spans are produced by structured document extraction (§7.4.B).
+  Extractors that emit only page-separated text continue to use `page` spans.
 
 ### 5.5 `settings`
 
@@ -593,12 +617,39 @@ Use extension + MIME sniff + binary heuristics to classify:
   * `docling`: require docling command/binary
   * `mistral`: require Mistral OCR key/config
   * `off`: skip extracted representation
-* OCR-like/page-aware behavior applies when provider emits page-separated output:
-
-  * store page numbers as spans
-  * chunk per page first
 * Route to `index_kind=text`.
 * Cache extracted output if enabled.
+
+**Structured extraction (docling).** When the extractor emits a structured
+document model (docling's `DoclingDocument`, obtained via `--to json`), the
+ingest pipeline MUST preserve, not discard, the structure:
+
+* Walk the document body in **reading order** (the `body` tree and group
+  children), resolving internal references.
+* Maintain a **section breadcrumb** from the heading hierarchy
+  (`section_header` items and their levels); attach the active breadcrumb to
+  every chunk emitted beneath it.
+* Carry per-element **provenance**: page number and bounding box (`bbox`) from
+  each element's provenance, stored as `region` spans (§5.4). When provenance
+  is unavailable for an element, fall back to a `page` span (or none).
+* Preserve element **labels** (`paragraph`, `section_header`, `list_item`,
+  `table`, `caption`, `code`, `formula`, `picture`) in span `extra_json.label`.
+* **Tables** are rendered to faithful Markdown for the chunk text and kept
+  atomic (a table is not split across chunks); cell structure (row/column
+  spans) MAY additionally be retained in span `extra_json`.
+* **Pictures/figures** contribute their captions and any classification
+  annotations as searchable text, attributed to the figure's provenance.
+* The document **title**, when the model exposes a `title` element, SHOULD be
+  used to populate `documents.title` in preference to the text heuristic.
+
+See [Design 0002](design/0002-structured-extraction.md) for rationale and the
+structure-to-provenance mapping.
+
+**Page-separated extraction (OCR fallback).** When the extractor emits only
+page-separated text (e.g. Mistral OCR), page-aware behavior applies:
+
+* store page numbers as `page` spans
+* chunk per page first
 
 #### C) Audio (STT provider is configurable)
 
@@ -634,7 +685,15 @@ Use extension + MIME sniff + binary heuristics to classify:
 
   * line-window chunking (max_lines, overlap_lines)
   * store `lines` spans
-* OCR:
+* Structured document (docling):
+
+  * section/element-aware: group consecutive elements under the same section
+    breadcrumb, then split by size constraints (`max_chars`, `overlap_chars`,
+    `min_chars`)
+  * keep tables atomic (never split a table across chunks)
+  * store `region` spans (page + bbox + section breadcrumb); fall back to
+    `page` spans where provenance is missing
+* OCR (page-separated):
 
   * per page, then within page by size constraints
   * store `page` spans
@@ -798,6 +857,8 @@ Within answers, citations must be rendered as:
 
 * code/text: `[path:L<start>-L<end>]`
 * pdf OCR: `[path#p=<page>]`
+* pdf structured (region): `[path#p=<page>]`, optionally suffixed with the
+  section breadcrumb when present, e.g. `[report.pdf#p=3 › Results › 3.1 Revenue]`
 * transcript: `[path@t=<start>-<end>]` where `<start>/<end>` are `mm:ss` or `ms`
 
 ### 9.4 RAG generation
@@ -1129,12 +1190,40 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
     },
     {
       "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "region" },
+        "start_page": { "type": "integer" },
+        "end_page": { "type": "integer" },
+        "bbox": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "page": { "type": "integer" },
+            "l": { "type": "number" }, "t": { "type": "number" },
+            "r": { "type": "number" }, "b": { "type": "number" },
+            "coord_origin": { "enum": ["TOPLEFT", "BOTTOMLEFT"] }
+          },
+          "required": ["page", "l", "t", "r", "b", "coord_origin"]
+        },
+        "section": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["kind", "start_page", "end_page"]
+    },
+    {
+      "additionalProperties": false,
       "properties": { "kind": { "const": "document" } },
       "required": ["kind"]
     }
   ]
 }
 ```
+
+The `region` variant is emitted by structured document extraction (§7.4.B). It
+localizes a chunk to a page range (`start_page`/`end_page`, equal when
+single-page) and SHOULD carry the bounding box (`bbox`, `null` when unknown)
+and section breadcrumb (`section`, `[]` when none). `bbox` and `section` are
+additive: clients that do not recognize the `region` kind, or that ignore these
+fields, MUST degrade gracefully (treat as a page-level citation).
 
 The `document` variant is emitted by `dir2mcp_open_file` when the requested
 `rel_path` is a binary doc type (PDF, audio) and the caller did not supply
