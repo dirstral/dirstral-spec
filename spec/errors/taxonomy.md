@@ -1,6 +1,6 @@
 # Error Taxonomy
 
-**Spec version:** `0.8.0`
+**Spec version:** `0.9.0`
 
 Canonical error codes for all dir2mcp MCP tools and session operations.
 

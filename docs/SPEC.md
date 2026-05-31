@@ -472,17 +472,25 @@ breadcrumb:
 {
   "bbox": { "page": 1, "l": 72.0, "t": 90.5, "r": 523.0, "b": 410.2, "coord_origin": "TOPLEFT" },
   "section": ["Chapter 2", "2.1 Background"],   // heading breadcrumb, outermost first
-  "label": "paragraph|section_header|list_item|table|caption|code|formula|picture",
+  "label": "paragraph",                          // a single value (see enum below)
   "charspan": [120, 884]                          // optional, char offsets into the source element
 }
 ```
 
+* `label` is a **single** discrete value, not a pipe-delimited set. It MUST be
+  one of: `paragraph`, `section_header`, `list_item`, `table`, `caption`,
+  `code`, `formula`, `picture`. When a chunk aggregates elements of mixed
+  labels, the label of the chunk's dominant (first/longest) element is used.
 * `bbox` coordinates are in the source document's point space. `coord_origin`
   is `TOPLEFT` or `BOTTOMLEFT`; implementations SHOULD normalize to `TOPLEFT`
   and record the origin actually stored.
-* When a chunk aggregates multiple source elements spanning more than one
-  bounding box, `extra_json.bbox` is the union (smallest enclosing rectangle)
-  on the chunk's primary page; `start`/`end` still record the full page range.
+* `bbox.page` is the **primary page**: the page of the chunk's first source
+  element in reading order. It MUST satisfy `start ≤ bbox.page ≤ end`. For a
+  single-page chunk `start == end == bbox.page`.
+* When a chunk aggregates multiple source elements, `extra_json.bbox` is the
+  union (smallest enclosing rectangle) of only those elements **on the primary
+  page**; elements on other pages within `start..end` contribute to the page
+  range but not to the rectangle. A single bounding box never spans pages.
 * `region` spans are produced by structured document extraction (§7.4.B).
   Extractors that emit only page-separated text continue to use `page` spans.
 
@@ -641,6 +649,26 @@ ingest pipeline MUST preserve, not discard, the structure:
   annotations as searchable text, attributed to the figure's provenance.
 * The document **title**, when the model exposes a `title` element, SHOULD be
   used to populate `documents.title` in preference to the text heuristic.
+
+**What is persisted.** The structured path does not change the persisted
+representation type or the indexed content shape:
+
+* The `extracted_markdown` representation stores **rendered Markdown** — the
+  document's structure linearized to Markdown in reading order (tables as
+  Markdown tables, figure captions inline). This is the text that is chunked,
+  embedded, and returned in snippets, exactly as in the flat path. `rep_hash`
+  is computed over this rendered Markdown.
+* The structure that flat Markdown cannot carry — page, `bbox`, section
+  breadcrumb, element label — is persisted as `region` **spans** (§5.4)
+  attached to each chunk, not as a separate representation.
+* The raw `DoclingDocument` JSON is **not** a representation. Implementations
+  MAY cache it (alongside the extracted output, when caching is enabled) to
+  avoid re-running docling on re-index, but it is an implementation-private
+  cache artifact, not part of the spec'd store contract.
+* Re-indexing semantics are unchanged (§7.6): a document re-ingested under the
+  structured path produces the same `extracted_markdown` representation; only
+  the span provenance is richer. Documents previously ingested via flat
+  Markdown keep their `page`/no spans until re-indexed.
 
 See [Design 0002](design/0002-structured-extraction.md) for rationale and the
 structure-to-provenance mapping.
