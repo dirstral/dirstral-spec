@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.8.0`
+**Current spec version:** `0.9.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.7.x` | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. |
+| `dir2mcp` (Go) | `0.7.x` | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. MUST update to `0.9.x` before releasing the structured-docling-extraction pipeline (spec `0.9.0`). |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -43,6 +43,18 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.9.0 — structured docling extraction (region provenance)
+
+Formalizes structured `DoclingDocument` ingestion as the docling extraction contract (previously flat Markdown) and adds region-level provenance for precise citations. `MINOR` bump per the pre-1.0 policy (new optional span kind + new optional citation fields, non-breaking — clients that ignore the new fields continue to work). Design: [docs/design/0002-structured-extraction.md](../docs/design/0002-structured-extraction.md).
+
+- §5.4 **spans**: new `region` span kind — page range in `start`/`end`, with `bbox` (primary-page bounding box), `section` breadcrumb, and element `label` carried in the existing `extra_json` column. **No schema migration** (reuses `extra_json`).
+- §7.4.B **representation**: structured extraction preserves reading order, section hierarchy, per-element page/bbox provenance, atomic tables, and figure captions/classifications; title from the model's title element. The persisted `extracted_markdown` representation remains rendered Markdown (structure lands in spans); raw `DoclingDocument` JSON is an implementation-private cache, not a representation. Page-separated OCR fallback (Mistral) is unchanged.
+- §7.5 **chunking**: section/element-aware chunking for structured documents (group by section breadcrumb, keep tables atomic).
+- §15.1.1 **`Span`** (client-facing) + `spec/tools/schemas/common.json`: additive `region` variant (`start_page`/`end_page`, required `bbox`, optional `section`). A `region` span always carries a `bbox` — an element without provenance is recorded as a `page` span instead. The machine-readable `common.json` `Span` (previously the drifted minimal `{start,end}` shape) is brought in line with the kind-tagged `§15.1.1` union (`lines|page|time|region|document`) so the authoritative JSON schema matches the prose. Backward compatible — existing kinds unchanged; clients MUST ignore unrecognized kinds/fields.
+- §9.2 **result objects** / §9.3 **citation rendering**: `region` added to the hit span-kind list; region citations render the primary page (`bbox.page`), or a page range when `start_page != end_page`, optionally suffixed with the section breadcrumb.
+- No new tool, no new error code, no config-shape change. `spec/errors/taxonomy.md` and `spec/sessions/lifecycle.md` are unaffected (header version bump only). A new `dirstral-conformance` test for the `region` span variant is recommended-not-required.
+- Implementation note: the structured pipeline lands in a follow-up dir2mcp PR (extractor → `--to json`, store `extra_json` read/write, section-aware chunking, retrieval + MCP citation surface) once this spec change is merged.
 
 ## 0.8.0 — stats.recent_failures (per-document failure visibility)
 

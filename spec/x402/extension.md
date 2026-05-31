@@ -1,6 +1,6 @@
 # x402 Payment Extension
 
-**Spec version:** `0.8.0`
+**Spec version:** `0.9.0`
 **Status:** Optional extension — not required for core MCP conformance.
 
 ## Overview

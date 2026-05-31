@@ -6,12 +6,49 @@
   "definitions": {
     "Span": {
       "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "start": { "type": "integer", "minimum": 0 },
-        "end": { "type": "integer", "minimum": 0 }
-      },
-      "required": ["start", "end"]
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "lines" }, "start_line": { "type": "integer" }, "end_line": { "type": "integer" } },
+          "required": ["kind", "start_line", "end_line"]
+        },
+        {
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "page" }, "page": { "type": "integer" } },
+          "required": ["kind", "page"]
+        },
+        {
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "time" }, "start_ms": { "type": "integer" }, "end_ms": { "type": "integer" } },
+          "required": ["kind", "start_ms", "end_ms"]
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "region" },
+            "start_page": { "type": "integer" },
+            "end_page": { "type": "integer" },
+            "bbox": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "page": { "type": "integer" },
+                "l": { "type": "number" }, "t": { "type": "number" },
+                "r": { "type": "number" }, "b": { "type": "number" },
+                "coord_origin": { "enum": ["TOPLEFT", "BOTTOMLEFT"] }
+              },
+              "required": ["page", "l", "t", "r", "b", "coord_origin"]
+            },
+            "section": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["kind", "start_page", "end_page", "bbox"]
+        },
+        {
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "document" } },
+          "required": ["kind"]
+        }
+      ]
     },
     "Hit": {
       "type": "object",
