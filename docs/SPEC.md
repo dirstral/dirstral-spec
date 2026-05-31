@@ -885,8 +885,11 @@ Within answers, citations must be rendered as:
 
 * code/text: `[path:L<start>-L<end>]`
 * pdf OCR: `[path#p=<page>]`
-* pdf structured (region): `[path#p=<page>]`, optionally suffixed with the
-  section breadcrumb when present, e.g. `[report.pdf#p=3 › Results › 3.1 Revenue]`
+* pdf structured (region): render the primary page (`bbox.page`) as
+  `[path#p=<page>]`; when the span covers multiple pages
+  (`start_page != end_page`) render the range `[path#p=<start_page>-<end_page>]`.
+  Optionally suffix with the section breadcrumb when present, e.g.
+  `[report.pdf#p=3 › Results › 3.1 Revenue]`
 * transcript: `[path@t=<start>-<end>]` where `<start>/<end>` are `mm:ss` or `ms`
 
 ### 9.4 RAG generation
@@ -1223,7 +1226,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
         "start_page": { "type": "integer" },
         "end_page": { "type": "integer" },
         "bbox": {
-          "type": ["object", "null"],
+          "type": "object",
           "additionalProperties": false,
           "properties": {
             "page": { "type": "integer" },
@@ -1235,7 +1238,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
         },
         "section": { "type": "array", "items": { "type": "string" } }
       },
-      "required": ["kind", "start_page", "end_page"]
+      "required": ["kind", "start_page", "end_page", "bbox"]
     },
     {
       "additionalProperties": false,
@@ -1248,10 +1251,12 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
 
 The `region` variant is emitted by structured document extraction (§7.4.B). It
 localizes a chunk to a page range (`start_page`/`end_page`, equal when
-single-page) and SHOULD carry the bounding box (`bbox`, `null` when unknown)
-and section breadcrumb (`section`, `[]` when none). `bbox` and `section` are
-additive: clients that do not recognize the `region` kind, or that ignore these
-fields, MUST degrade gracefully (treat as a page-level citation).
+single-page) and always carries a bounding box (`bbox`); an element without
+provenance is recorded as a `page` span instead, never a `region` span with a
+missing `bbox` (§7.4.B). The section breadcrumb (`section`) is optional (`[]`
+when none). The `region` kind and its `section` field are additive: clients that
+do not recognize the `region` kind, or that ignore `section`, MUST degrade
+gracefully (treat as a page-level citation on `start_page`).
 
 The `document` variant is emitted by `dir2mcp_open_file` when the requested
 `rel_path` is a binary doc type (PDF, audio) and the caller did not supply
