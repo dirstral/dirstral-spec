@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.9.0`
+**Current spec version:** `0.10.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -43,6 +43,22 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.10.0 — docling-serve HTTP extraction transport (docling-serve)
+
+Adds `docling-serve` as an `ingest.extractor` value: an alternative *transport*
+for docling extraction that talks to a local docling-serve HTTP container
+instead of the docling CLI subprocess. Extraction remains its own selection axis
+(`ingest.extractor`), independent of the §8 model/provider bindings — it is
+deliberately **not** modeled as a provider capability (the §8.1.2 matrix is
+unchanged). `MINOR` bump per the pre-1.0 policy (new optional `ingest.extractor`
+value + one new optional config field, non-breaking). Output is byte-identical
+to the docling CLI path (same `extracted_markdown` + `region` spans from 0.9.0).
+
+- §7.4.B **representation**: `ingest.extractor` gains `docling-serve`; clarifies that extractor *transport* (CLI subprocess vs HTTP service) is implementation-determined, that both transports MUST produce identical output, and that extraction is independent of the §8 provider bindings. A configured-but-unreachable `docling-serve` endpoint is a disabled extractor for diagnostics (§7.7), like a missing docling binary.
+- §16.2 **config template**: add `ingest.docling.serve_url` (default empty => docling CLI). One new optional config field; no provider/matrix change.
+- No new tool, error code, span kind, provider kind, or wire-contract change. The MCP tool surface and persisted store shape are unchanged.
+- Implementation note: the dir2mcp docling-serve backend lands in a follow-up code PR once this spec change is merged (HTTP extractor reusing the existing DoclingDocument parser; doctor probes the endpoint's `/ready`). Container lifecycle is user-managed (dir2mcp probes and fails fast; it does not start/stop the container).
 
 ## 0.9.0 — structured docling extraction (region provenance)
 

@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.9.0`  
+**Spec version:** `0.10.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -623,10 +623,24 @@ Use extension + MIME sniff + binary heuristics to classify:
 * Generate `extracted_markdown` via configured extractor (`ingest.extractor`):
   * `auto` (default): prefer docling, fallback to Mistral OCR
   * `docling`: require docling command/binary
+  * `docling-serve`: require a reachable docling-serve HTTP endpoint (see below)
   * `mistral`: require Mistral OCR key/config
   * `off`: skip extracted representation
 * Route to `index_kind=text`.
 * Cache extracted output if enabled.
+
+**Extractor transport is implementation-determined.** The `docling` family
+names *which engine* produces the structured document, not *how* it is invoked.
+An implementation MAY obtain docling's `DoclingDocument` from a local CLI
+subprocess (`docling`) or from a docling-serve HTTP service (`docling-serve`),
+a local endpoint addressed by `ingest.docling.serve_url` (§16.2). Extraction is
+selected via `ingest.extractor` and is independent of the model/provider
+bindings in §8 — it is not a provider capability. Both transports MUST produce
+identical output (the same `extracted_markdown` representation and `region`
+spans defined below); the choice is operational and carries no wire- or
+schema-level difference. A `docling-serve` endpoint that is configured but
+unreachable is a disabled extractor for diagnostic purposes (§7.7), exactly as
+a missing docling binary is.
 
 **Structured extraction (docling).** When the extractor emits a structured
 document model (docling's `DoclingDocument`, obtained via `--to json`), the
@@ -1820,6 +1834,11 @@ rag:
 
 ingest:
   gitignore: true
+  extractor: auto      # auto|docling|docling-serve|mistral|off
+  docling:
+    # Used only when extractor selects docling-serve: the HTTP endpoint of a
+    # running docling-serve container. Empty => use the docling CLI subprocess.
+    serve_url: ""      # e.g. http://127.0.0.1:5001
   pdf:
     mode: ocr          # off|ocr|auto
   images:
