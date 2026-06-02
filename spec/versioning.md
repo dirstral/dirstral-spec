@@ -61,7 +61,7 @@ wire-contract change — STT/TTS knobs `stt_model`/`stt_language`/`tts_model`/
   an inline-data part; output normalized to the `transcript` representation
   like every other provider. `stt_model` default `gemini-2.5-flash`.
 - §8.3 **TTS**: Gemini synthesizes via `generateContent` with
-  `responseModalities: ["AUDIO"]` + a `speechConfig` voice (`tts_voice`,
+  `generationConfig.responseModalities: ["AUDIO"]` + a `speechConfig` voice (`tts_voice`,
   default `Kore`; `tts_model` default `gemini-2.5-flash-preview-tts`). The
   returned raw PCM (s16le, 24 kHz, mono) MUST be wrapped in a WAV container
   so the bytes are directly playable, matching ElevenLabs/OpenAI. TTS stays
