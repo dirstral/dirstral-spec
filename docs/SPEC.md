@@ -789,7 +789,7 @@ A profile declares a `kind` (the adapter / wire protocol), a `base_url` (default
 * `openai` — the OpenAI-compatible **backbone**: OpenAI, OpenRouter, Groq, Together, Azure-style, and local Ollama/vLLM/LM Studio — **and Mistral chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and `/v1/embeddings`). Endpoints that expose audio also serve STT (`/v1/audio/transcriptions`, Whisper / `gpt-4o-transcribe`) and TTS (`/v1/audio/speech`) — endpoint-dependent, see 8.1.2.
 * `mistral` — native `/v1/ocr` (and Voxtral STT); the only genuinely non-OpenAI Mistral surface.
 * `anthropic` — Messages API (chat only).
-* `gemini` — native embed (**asymmetric** via `task_type`, with Matryoshka output dimensionality — see 8.1.5/8.1.6), chat, STT (audio transcription), and TTS. The native embed surface (`models/{model}:batchEmbedContents`) is required for `task_type`/`output_dimensionality`; a `gemini` profile MAY alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint, which forgoes `task_type` (and thus the asymmetric/role behavior).
+* `gemini` — native embed (**asymmetric** via `taskType`, with Matryoshka output dimensionality — see 8.1.5/8.1.6), chat, STT (audio transcription), and TTS. The native embed surface (`models/{model}:batchEmbedContents`) is required for `taskType`/`outputDimensionality`; a `gemini` profile MAY alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint, which forgoes `taskType` (and thus the asymmetric/role behavior).
 * `cohere` — embed, chat, and rerank (8.4). Cohere embeddings are **asymmetric** (see 8.1.5).
 * `elevenlabs` — STT/TTS.
 
@@ -822,12 +822,12 @@ Vectors from different embed providers/models are not comparable. The embed **id
 
 #### 8.1.5 Asymmetric embeddings (input role)
 
-Some embedding providers (notably **Cohere** via `input_type`, **Gemini** via `task_type`, and Voyage) are **asymmetric**: documents and queries MUST be embedded with a distinct input role to achieve their stated retrieval quality. Therefore:
+Some embedding providers (notably **Cohere** via `input_type`, **Gemini** via `taskType`, and Voyage) are **asymmetric**: documents and queries MUST be embedded with a distinct input role to achieve their stated retrieval quality. Therefore:
 
 * Every embedding call carries an **input role** ∈ {`document`, `query`}: corpus/index-time embeddings use `document`; search-time query embeddings use `query`. The role is determined by the call site, not by configuration.
 * Adapters for asymmetric providers MUST map the role to the provider's mechanism. Adapters for symmetric providers (OpenAI, Mistral) MUST accept the role and MAY ignore it; behavior MUST NOT differ for symmetric providers.
   * **Cohere**: `input_type=search_document` (role `document`) / `search_query` (role `query`).
-  * **Gemini** (native embed surface): `task_type` MUST be sent on every call. Role `document` → `RETRIEVAL_DOCUMENT`; role `query` → `RETRIEVAL_QUERY`. **Code-aware refinement:** when the call uses the configured **code** model (`embed.code_model`), role `query` maps to `CODE_RETRIEVAL_QUERY` (code documents still embed as `RETRIEVAL_DOCUMENT`, since Gemini has no code-specific document task). A `gemini` profile configured as `kind: openai` (OpenAI-compatible endpoint) cannot send `task_type` and is therefore treated as symmetric.
+  * **Gemini** (native embed surface): `taskType` MUST be sent on every call. Role `document` → `RETRIEVAL_DOCUMENT`; role `query` → `RETRIEVAL_QUERY`. **Code-aware refinement:** when the call uses the configured **code** model (`embed.code_model`), role `query` maps to `CODE_RETRIEVAL_QUERY` (code documents still embed as `RETRIEVAL_DOCUMENT`, since Gemini has no code-specific document task). A `gemini` profile configured as `kind: openai` (OpenAI-compatible endpoint) cannot send `taskType` and is therefore treated as symmetric.
 * The input role is **not** a configuration knob and does not affect the corpus-lifetime invariant (8.1.4): the recorded embed identity is provider + model + requested dimension (8.1.6), independent of role.
 * The reference `Embedder` interface gains the role parameter (a clean, internal, pre-1.0 break — no compatibility users); see [Design 0001 §5.6](design/0001-multi-provider.md).
 
@@ -836,7 +836,7 @@ Some embedding providers (notably **Cohere** via `input_type`, **Gemini** via `t
 Some embedding models (notably **Gemini** `gemini-embedding-001`) are trained with Matryoshka Representation Learning: a single model emits a high-dimensional vector (Gemini native **3072**) whose leading prefix MAY be truncated to a smaller dimension (e.g. **1536**, **768**) with graceful quality degradation. Therefore:
 
 * `model.embed.text_dim` / `model.embed.code_dim` are **optional** config knobs requesting a specific output dimensionality per axis. Omitted ⇒ the model's native dimension. The default for `gemini-embedding-001` is its native **3072**.
-* When a non-native dimension is requested, the adapter MUST (a) request it from the provider where supported (e.g. Gemini `output_dimensionality`) and (b) **re-normalize** the returned vector to unit L2 length — MRL-truncated vectors below the native dimension are not pre-normalized, and the index's cosine/IP scoring assumes unit vectors.
+* When a non-native dimension is requested, the adapter MUST (a) request it from the provider where supported (e.g. Gemini `outputDimensionality`) and (b) **re-normalize** the returned vector to unit L2 length — MRL-truncated vectors below the native dimension are not pre-normalized, and the index's cosine/IP scoring assumes unit vectors.
 * The requested dimension is part of the corpus-lifetime embed identity (8.1.4): it is recorded as `embed_text_dim`/`embed_code_dim` (§5.5), and changing it forces a reindex / `CONFIG_INVALID` on mismatched reload, exactly like a model change.
 * A provider/model that does not support a requested dimension (no MRL, or a value its model cannot serve) MUST fail with `CONFIG_INVALID` rather than silently ignoring the knob, so an operator never believes a dimension is in effect when it is not.
 
