@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.7.x` | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. MUST update to `0.9.x` before releasing the structured-docling-extraction pipeline (spec `0.9.0`). |
+| `dir2mcp` (Go) | `0.10.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Tracks spec `0.10.0`; the `docling-serve` HTTP extraction transport (this release) lands in a follow-up code PR, after which this row is no longer pending. |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -55,8 +55,8 @@ unchanged). `MINOR` bump per the pre-1.0 policy (new optional `ingest.extractor`
 value + one new optional config field, non-breaking). Output is byte-identical
 to the docling CLI path (same `extracted_markdown` + `region` spans from 0.9.0).
 
-- §7.4.B **representation**: `ingest.extractor` gains `docling-serve`; clarifies that extractor *transport* (CLI subprocess vs HTTP service) is implementation-determined, that both transports MUST produce identical output, and that extraction is independent of the §8 provider bindings. A configured-but-unreachable `docling-serve` endpoint is a disabled extractor for diagnostics (§7.7), like a missing docling binary.
-- §16.2 **config template**: add `ingest.docling.serve_url` (default empty => docling CLI). One new optional config field; no provider/matrix change.
+- §7.4.B **representation**: `ingest.extractor` gains `docling-serve`. The `ingest.extractor` value selects the transport explicitly (`docling` = CLI subprocess, `docling-serve` = HTTP service); both transports MUST produce identical output, and extraction is independent of the §8 provider bindings. Selecting `docling-serve` requires a non-empty, reachable `serve_url`; an empty or unreachable endpoint disables that extractor for diagnostics (§7.7), like a missing docling binary, and MUST NOT silently fall back to the CLI. (Under `extractor: auto` the transport is implementation-determined.)
+- §16.2 **config template**: add `ingest.docling.serve_url` (empty by default; required when `extractor=docling-serve`, otherwise the HTTP transport is simply not used). One new optional config field; no provider/matrix change.
 - No new tool, error code, span kind, provider kind, or wire-contract change. The MCP tool surface and persisted store shape are unchanged.
 - Implementation note: the dir2mcp docling-serve backend lands in a follow-up code PR once this spec change is merged (HTTP extractor reusing the existing DoclingDocument parser; doctor probes the endpoint's `/ready`). Container lifecycle is user-managed (dir2mcp probes and fails fast; it does not start/stop the container).
 

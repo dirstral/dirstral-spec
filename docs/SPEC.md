@@ -629,18 +629,23 @@ Use extension + MIME sniff + binary heuristics to classify:
 * Route to `index_kind=text`.
 * Cache extracted output if enabled.
 
-**Extractor transport is implementation-determined.** The `docling` family
-names *which engine* produces the structured document, not *how* it is invoked.
-An implementation MAY obtain docling's `DoclingDocument` from a local CLI
-subprocess (`docling`) or from a docling-serve HTTP service (`docling-serve`),
-a local endpoint addressed by `ingest.docling.serve_url` (§16.2). Extraction is
-selected via `ingest.extractor` and is independent of the model/provider
-bindings in §8 — it is not a provider capability. Both transports MUST produce
-identical output (the same `extracted_markdown` representation and `region`
-spans defined below); the choice is operational and carries no wire- or
-schema-level difference. A `docling-serve` endpoint that is configured but
-unreachable is a disabled extractor for diagnostic purposes (§7.7), exactly as
-a missing docling binary is.
+**Extractor transport.** The `docling` *engine* produces the same structured
+document regardless of how it is reached; the `ingest.extractor` value selects
+the transport explicitly: `docling` invokes a local CLI subprocess, while
+`docling-serve` calls a docling-serve HTTP service at the endpoint addressed by
+`ingest.docling.serve_url` (§16.2). Both transports MUST produce identical
+output (the same `extracted_markdown` representation and `region` spans defined
+below); the choice is operational and carries no wire- or schema-level
+difference. Extraction is selected via `ingest.extractor` and is independent of
+the model/provider bindings in §8 — it is not a provider capability.
+
+Selecting `docling-serve` REQUIRES a non-empty, reachable `serve_url`. An empty
+or unreachable endpoint makes the `docling-serve` extractor **unavailable** — a
+disabled extractor for diagnostic purposes (§7.7), exactly as a missing docling
+binary disables `docling` — and MUST NOT silently fall back to the CLI. (Under
+`extractor: auto` the transport is implementation-determined: an empty
+`serve_url` simply means the HTTP transport is not considered, and `auto` may
+use the CLI or another configured extractor as usual.)
 
 **Structured extraction (docling).** When the extractor emits a structured
 document model (docling's `DoclingDocument`, obtained via `--to json`), the
@@ -1836,8 +1841,10 @@ ingest:
   gitignore: true
   extractor: auto      # auto|docling|docling-serve|mistral|off
   docling:
-    # Used only when extractor selects docling-serve: the HTTP endpoint of a
-    # running docling-serve container. Empty => use the docling CLI subprocess.
+    # HTTP endpoint of a running docling-serve container. REQUIRED when
+    # extractor=docling-serve: an empty or unreachable URL disables that
+    # extractor (no silent fallback to the docling CLI). Under extractor=auto
+    # an empty value simply means the HTTP transport is not used.
     serve_url: ""      # e.g. http://127.0.0.1:5001
   pdf:
     mode: ocr          # off|ocr|auto
