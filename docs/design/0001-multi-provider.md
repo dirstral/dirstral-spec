@@ -123,10 +123,10 @@ Embed(ctx, model string, role EmbedRole, inputs []string) ([][]float32, error)
 
 Vectors from different embed models/providers are **not comparable**. Therefore:
 
-- The embed provider + model identity is bound to the index at first build.
+- The embed provider + model **+ requested output dimension** identity is bound to the index at first build (the dimension matters for Matryoshka/MRL models — see §5.6 and SPEC §8.1.4/§8.1.6).
 - The config snapshot records embed identity.
 - On load, if the configured embed identity differs from the index's, the server **MUST** either refuse to serve stale results (`CONFIG_INVALID` / `STORE_CORRUPT`-class) or trigger a full reindex — it MUST NOT silently mix vector spaces.
-- `embed.provider`/`embed.text_model`/`embed.code_model` are effectively **deploy-time, reindex-bound** choices, not runtime toggles. Chat/OCR/STT/rerank providers *are* runtime-swappable.
+- `embed.provider`/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` are effectively **deploy-time, reindex-bound** choices, not runtime toggles. Chat/OCR/STT/rerank providers *are* runtime-swappable.
 
 ## 7. Config schema (clean break)
 
