@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.10.0`
+**Current spec version:** `0.11.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.10.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Tracks spec `0.10.0`; the `docling-serve` HTTP extraction transport (this release) lands in a follow-up code PR, after which this row is no longer pending. |
+| `dir2mcp` (Go) | `0.11.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Tracks spec `0.11.0`; the native Gemini embedding parity (`task_type`, MRL `output_dimensionality`) and native Gemini STT/TTS land in follow-up code PRs, after which this row is no longer pending. |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -43,6 +43,37 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.11.0 — native Gemini embedding parity (task_type + Matryoshka)
+
+Promotes the `gemini` embed adapter from the OpenAI-compatible shim to Gemini's
+**native** embed surface so it reaches feature parity with `gemini-embedding-001`:
+asymmetric `task_type` (document/query, with a code-aware refinement) and
+configurable Matryoshka output dimensionality. `MINOR` bump per the pre-1.0
+policy (new optional config fields + provider-behavior change on an already-`✅`
+matrix cell; no new tool, error code, or wire-contract change). The §8.1.2
+matrix is unchanged (`gemini` embed was already `✅`).
+
+- §8.1.1 **provider profiles**: `gemini` embed clarified as native, **asymmetric**
+  via `task_type`, with Matryoshka output dimensionality; the OpenAI-compatible
+  alternative forgoes `task_type` and stays symmetric.
+- §8.1.4 **embed identity**: the requested output dimension joins provider+model
+  in the corpus-lifetime embed identity (recorded as `embed_text_dim`/
+  `embed_code_dim`, §5.5); changing it forces a reindex / `CONFIG_INVALID`.
+- §8.1.5 **asymmetric embeddings**: `gemini` added alongside Cohere/Voyage. Role
+  mapping: `document`→`RETRIEVAL_DOCUMENT`, `query`→`RETRIEVAL_QUERY`; for the
+  configured **code** model a `query` maps to `CODE_RETRIEVAL_QUERY`.
+- §8.1.6 **configurable embedding dimensionality (Matryoshka/MRL)** (new):
+  optional `model.embed.text_dim`/`code_dim`; adapters request `output_dimensionality`
+  where supported and **re-normalize** truncated vectors; unsupported dimensions
+  are `CONFIG_INVALID`, never silently ignored.
+- §16.2 **config template**: `model.embed` gains optional `text_dim`/`code_dim`
+  (commented; native dimension when omitted). No provider/matrix change.
+- No new tool, error code, span kind, or wire-contract change. STT/TTS remain
+  `✅` in the matrix; native Gemini STT/TTS implementation is a separate slice.
+- Implementation note: the native Gemini embedding backend (and, separately,
+  native Gemini STT/TTS) land in follow-up dir2mcp code PRs once this spec
+  change is merged.
 
 ## 0.10.0 — docling-serve HTTP extraction transport (docling-serve)
 
