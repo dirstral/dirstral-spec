@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.11.0`
+**Current spec version:** `0.12.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.11.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Tracks spec `0.11.0`; the native Gemini embedding parity (`taskType`, MRL `outputDimensionality`) and native Gemini STT/TTS land in follow-up code PRs, after which this row is no longer pending. |
+| `dir2mcp` (Go) | `0.12.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Tracks spec `0.12.0`; native Gemini embedding parity (`taskType`, MRL `outputDimensionality`) shipped in dir2mcp #222 — native Gemini STT/TTS (this release) lands in a follow-up code PR, after which this row is no longer pending. |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -43,6 +43,34 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.12.0 — native Gemini STT/TTS
+
+Pins the native wire mechanism for the already-`✅` Gemini STT and TTS
+capability cells (8.1.2). Gemini's OpenAI-compatible layer does not expose
+`/v1/audio/*`, so audio must use the native `models/{model}:generateContent`
+surface — this release makes that normative and defines the TTS audio
+container. `MINOR` bump per the pre-1.0 policy (provider-behavior change on
+already-`✅` matrix cells; no new tool, error code, config field, or
+wire-contract change — STT/TTS knobs `stt_model`/`stt_language`/`tts_model`/
+`tts_voice` already exist since 0.7.0).
+
+- §8.1.1 **provider profiles**: `gemini` STT/TTS clarified as native
+  (`generateContent`); the `kind: openai` Gemini path serves chat only.
+- §8.2 **STT**: Gemini transcribes via `generateContent` with the audio as
+  an inline-data part; output normalized to the `transcript` representation
+  like every other provider. `stt_model` default `gemini-2.5-flash`.
+- §8.3 **TTS**: Gemini synthesizes via `generateContent` with
+  `generationConfig.responseModalities: ["AUDIO"]` + a `speechConfig` voice (`tts_voice`,
+  default `Kore`; `tts_model` default `gemini-2.5-flash-preview-tts`). The
+  returned raw PCM (s16le, 24 kHz, mono) MUST be wrapped in a WAV container
+  so the bytes are directly playable, matching ElevenLabs/OpenAI. TTS stays
+  fail-open (8.3).
+- No new tool, error code, config field, span kind, or wire-contract
+  change; the §8.1.2 matrix is unchanged (`gemini` STT/TTS were already `✅`).
+- Implementation note: the native Gemini STT/TTS backend lands in a
+  follow-up dir2mcp code PR once this spec change is merged (replacing the
+  current OpenAI-compat `/audio/*` shim, which Gemini does not serve).
 
 ## 0.11.0 — native Gemini embedding parity (taskType + Matryoshka)
 

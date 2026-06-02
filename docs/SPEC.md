@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.11.0`  
+**Spec version:** `0.12.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -789,7 +789,7 @@ A profile declares a `kind` (the adapter / wire protocol), a `base_url` (default
 * `openai` — the OpenAI-compatible **backbone**: OpenAI, OpenRouter, Groq, Together, Azure-style, and local Ollama/vLLM/LM Studio — **and Mistral chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and `/v1/embeddings`). Endpoints that expose audio also serve STT (`/v1/audio/transcriptions`, Whisper / `gpt-4o-transcribe`) and TTS (`/v1/audio/speech`) — endpoint-dependent, see 8.1.2.
 * `mistral` — native `/v1/ocr` (and Voxtral STT); the only genuinely non-OpenAI Mistral surface.
 * `anthropic` — Messages API (chat only).
-* `gemini` — native embed (**asymmetric** via `taskType`, with Matryoshka output dimensionality — see 8.1.5/8.1.6), chat, STT (audio transcription), and TTS. The native embed surface (`models/{model}:batchEmbedContents`) is required for `taskType`/`outputDimensionality`; a `gemini` profile MAY alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint, which forgoes `taskType` (and thus the asymmetric/role behavior).
+* `gemini` — native embed (**asymmetric** via `taskType`, with Matryoshka output dimensionality — see 8.1.5/8.1.6), chat, STT (audio transcription), and TTS. The native embed surface (`models/{model}:batchEmbedContents`) is required for `taskType`/`outputDimensionality`; STT and TTS likewise use the native `models/{model}:generateContent` surface (see 8.2/8.3) — Gemini's OpenAI-compatible layer does **not** expose `/v1/audio/*`, so only chat may ride the `kind: openai` path. A `gemini` profile MAY alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint, which serves chat only and forgoes `taskType` (and thus the asymmetric/role behavior).
 * `cohere` — embed, chat, and rerank (8.4). Cohere embeddings are **asymmetric** (see 8.1.5).
 * `elevenlabs` — STT/TTS.
 
@@ -844,12 +844,14 @@ Some embedding models (notably **Gemini** `gemini-embedding-001`) are trained wi
 
 * STT provider is selected per 8.1.3 among STT-capable profiles (8.1.2): **Mistral** (Voxtral), **ElevenLabs** (Scribe), **OpenAI** (Whisper / `gpt-4o-transcribe`), **Gemini**. Default profile: **Mistral**.
 * Outputs MUST be normalized to the same `transcript` representation format regardless of provider.
+* **Gemini** transcribes via the native `models/{model}:generateContent` surface: the audio is sent as an inline-data part (base64, with its MIME type) alongside a transcription instruction, and the model's text output is the transcript. Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the native surface is required (a `kind: openai` Gemini profile is therefore not STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional `stt_language` apply as for other providers.
 
 ### 8.3 Note on TTS
 
 * TTS is optional and not required for core retrieval/inspection functionality.
 * When used, the TTS provider is selected per 8.1.3 among TTS-capable profiles (8.1.2): **ElevenLabs**, **OpenAI** (`/v1/audio/speech`), **Gemini**.
 * It must remain additive and must not break non-TTS workflows; a TTS provider error fails open (the workflow proceeds without audio).
+* **Gemini** synthesizes via the native `models/{model}:generateContent` surface with `generationConfig.responseModalities: ["AUDIO"]` and a `speechConfig` voice (`tts_voice`, default `Kore`); the TTS model is `tts_model` (default `gemini-2.5-flash-preview-tts`). Gemini returns raw single-channel PCM (signed 16-bit little-endian, 24 kHz) as inline data; the adapter MUST wrap it in a self-describing container (WAV) so the bytes are directly playable, matching the ready-to-play audio the ElevenLabs/OpenAI adapters return. Gemini's OpenAI-compatible layer exposes no `/v1/audio/speech`, so the native surface is required.
 
 ### 8.4 Rerank providers (optional)
 
