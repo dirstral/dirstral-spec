@@ -46,13 +46,23 @@ Public Preview as of 2026-03-10 (Gemini API + Vertex AI). Native endpoint
 `:batchEmbedContents`), `x-goog-api-key` auth — the same native surface the
 existing `internal/gemini` adapter already uses.
 
+> **GA promotion gate.** The limits, formats, endpoint, and auth below are
+> from the **Public Preview** docs and MAY change. They MUST be re-verified
+> against the then-current provider docs at SPEC-promotion time; if anything
+> differs, update §3 and §8 in the same promotion PR.
+
 | Modality | Per-request limit | Formats |
 |---|---|---|
 | Text | 8192 tokens | — |
-| Images | ≤ 6 | PNG, JPEG |
-| Video | ≤ 120 s | MP4, MOV |
-| Audio | ≤ 180 s | native (no transcription) |
-| PDF (documents) | ≤ 6 pages | PDF |
+| Images | ≤ 6 | PNG, JPEG, WebP, BMP, HEIC, HEIF, AVIF |
+| Video | ≤ 120 s (1 FPS) | MP4, MOV |
+| Audio | ≤ 180 s | MP3, WAV |
+| PDF (documents) | 1 file, ≤ 6 pages | PDF |
+
+All modalities share **one unified 8192-token context window** (≈ 258
+tokens/image, 258 tokens/PDF page, 66 tokens/video frame, 25 tokens/audio
+second), so a request mixing modalities must fit the *combined* budget —
+chunking (§5) MUST account for this window, not just the per-modality caps.
 
 Interleaved input is allowed (e.g. image + caption text in one request).
 Output is **3072 dimensions** with Matryoshka truncation (recommended
@@ -133,6 +143,16 @@ A text query is embedded by `gemini-embedding-2` (text) and retrieves any
 chunk in the shared space, including media chunks. `search`, `list_files`,
 and `stats` need no contract change beyond surfacing media hits.
 
+**Dual-representation dedup (v1, deterministic).** In `augment`, a PDF page
+yields *both* a docling text chunk and a page-image chunk, so the same
+`(file, page)` can match twice. To keep results and citations stable across
+implementations, retrieval MUST collapse candidates by `(rel_path, page)`
+**before** truncating to `k` (and before any rerank), keeping the
+highest-scoring representation for that page — i.e. **at most one hit per
+`(file, page)`**. Non-paged media (audio/video windows, standalone images)
+dedup by their own `(rel_path, span)` identity. This makes `augment` recall
+strictly ≥ text-only without inflating top-k with duplicate pages.
+
 ### 7.2 Citations and inspection
 Media hits cite the file + persisted span (§6): standalone image → `page`
 (page 1), PDF page → `page`/`region`, audio/video → `time` (window range).
@@ -144,11 +164,14 @@ OCR/transcript representation", §15.1.1). So:
 - In **`augment`**, a media hit still has its OCR/transcript representation,
   and `open_file` returns that text (unchanged behavior) alongside the span.
 - In **`replace`**, a media-only chunk has *no* text representation;
-  `open_file` therefore has nothing textual to return for it (it surfaces an
-  `OCR_NOT_READY`-class/empty result, never binary). Returning the media
-  itself for inspection would require a **new or extended tool** (e.g. a
-  media-fetch surface) — called out as an open question (§10), not assumed
-  here. This is the same root cause as the `ask` wrinkle (§7.3).
+  `open_file` therefore has nothing textual to return for it. This is a
+  **permanent, non-retryable** condition, so it MUST surface as a distinct
+  non-retryable outcome (proposed `MEDIA_NO_TEXT`) — **not** `OCR_NOT_READY`,
+  whose retryable semantics would drive clients into useless retry loops —
+  and never as raw binary. Returning the media itself for inspection would
+  require a **new or extended tool** (e.g. a media-fetch surface) — called
+  out as an open question (§10), not assumed here. Same root cause as the
+  `ask` wrinkle (§7.3).
 
 ### 7.3 `ask` (RAG) over media — design risk
 `ask` generates an answer from retrieved context. A **media-only** chunk
@@ -215,9 +238,11 @@ To be applied as spec `0.13.0` alongside the code:
   `replace` to corpora that don't need inspection.
 - **Cost / storage** — `augment` adds media embeddings on top of text;
   long media multiplies windows. Per-corpus opt-in mitigates.
-- **PDF double-representation** — docling structured text (0.9.0) vs direct
-  page-image embedding in `augment`; reconcile so `region` citations and
-  page-image hits don't double-count.
+- **PDF double-representation** — docling structured text (0.9.0) and direct
+  page-image embedding coexist in `augment`. v1 resolves double-counting
+  with the deterministic `(file, page)` collapse rule in §7.1; remaining
+  tuning (how `region` sub-page citations interact with a page-image hit) is
+  the residual question.
 - **Per-request modality caps** (≤ 6 images, ≤ 6 PDF pages, 120 s/180 s) →
   batching/windowing logic with precise span attribution.
 - **Provider lock-in** — `augment`/`replace` force the whole corpus onto
