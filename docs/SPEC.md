@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.12.0`  
+**Spec version:** `0.13.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -818,7 +818,7 @@ For each capability, with `<cap>.provider`:
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
-Vectors from different embed providers/models are not comparable. The embed **identity** — provider, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+Vectors from different embed providers/models are not comparable. The embed **identity** — provider, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
 
 #### 8.1.5 Asymmetric embeddings (input role)
 
@@ -839,6 +839,63 @@ Some embedding models (notably **Gemini** `gemini-embedding-001`) are trained wi
 * When a non-native dimension is requested, the adapter MUST (a) request it from the provider where supported (e.g. Gemini `outputDimensionality`) and (b) **re-normalize** the returned vector to unit L2 length — MRL-truncated vectors below the native dimension are not pre-normalized, and the index's cosine/IP scoring assumes unit vectors.
 * The requested dimension is part of the corpus-lifetime embed identity (8.1.4): it is recorded as `embed_text_dim`/`embed_code_dim` (§5.5), and changing it forces a reindex / `CONFIG_INVALID` on mismatched reload, exactly like a model change.
 * A provider/model that does not support a requested dimension (no MRL, or a value its model cannot serve) MUST fail with `CONFIG_INVALID` rather than silently ignoring the knob, so an operator never believes a dimension is in effect when it is not.
+
+#### 8.1.7 Multimodal embeddings (optional)
+
+Some embedding models are **natively multimodal** — they map text and media
+(images, audio, video, PDFs) into one **shared** vector space, so a text
+query can retrieve a media chunk and vice versa. The reference multimodal
+model is Google **`gemini-embedding-2`** (native surface
+`models/{model}:embedContent` / `:batchEmbedContents`). Design rationale and
+phasing: [Design 0003](design/0003-multimodal-embeddings.md).
+
+> **Preview caveat.** `gemini-embedding-2` is Public Preview; the limits and
+> formats below are from preview docs and MUST be re-verified against the
+> current provider docs before any implementation releases against them.
+
+Per-request limits (preview): text ≤ 8192 tokens; images ≤ 6 (PNG, JPEG,
+WebP, BMP, HEIC, HEIF, AVIF); video ≤ 120 s (MP4, MOV); audio ≤ 180 s (MP3,
+WAV); PDF 1 file ≤ 6 pages. All modalities share one **unified 8192-token
+window**, so chunking MUST budget the *combined* request, not just the
+per-modality caps. Output is 3072-dim with Matryoshka truncation (8.1.6);
+`taskType` (8.1.5) applies across all modalities.
+
+* **`model.embed.multimodal`** is a tri-state per-corpus knob:
+  * `off` (default) — text-only; current behavior; **any** embed provider.
+  * `augment` — keep text extraction + text embeddings **and** additionally
+    embed media files directly; both are indexed.
+  * `replace` — embed media files directly **instead of** OCR/STT→text; text
+    files are unchanged.
+* **Single shared space (per 8.1.4).** When `multimodal` is `augment` or
+  `replace`, the embed provider for **every** modality, including text, MUST
+  be `gemini` with a multimodal model (`gemini-embedding-2`); any other
+  binding is `CONFIG_INVALID` (incomparable vectors must not share one
+  index). `off` keeps full provider freedom.
+* **Reindex-bound.** The multimodal mode is part of the embed identity
+  (8.1.4); switching `off`↔`augment`↔`replace` requires a reindex.
+* **Provenance.** A media chunk is a representation (§7.4.B) whose persisted
+  span reuses the existing `span_kind ∈ {lines, page, time, region}` (§5.4)
+  — **no new persisted kind**: a standalone image → `page` 1, audio/video
+  windows → `time`, PDF pages → `page`/`region`. (`document`, §15.1.1,
+  remains a client-facing `open_file`-only variant, not persisted.)
+* **Retrieval.** A text query embeds via the model's text path and retrieves
+  any chunk in the shared space, including media. In `augment`, a PDF page
+  may carry several docling text/region chunks (§7.5) **and** one coarse
+  page-image chunk; to avoid double-counting, retrieval MUST drop a
+  page-image candidate for `(rel_path, page)` only when a text/region
+  candidate for that same page survives, **before** truncation/rerank —
+  distinct text/region chunks are never collapsed into each other.
+* **`ask` over media.** Generation grounds on available text: in `augment`
+  the media hit's OCR/transcript text grounds the answer; a `replace`-mode
+  media-only hit (no text) is cited without quoted context. (Multimodal
+  answer grounding is a later concern.)
+* **Inspection.** `open_file` returns text only (§15.4); a `replace`-mode
+  media-only chunk has no text representation, a **permanent** condition, so
+  `open_file` MUST return the non-retryable `MEDIA_NO_TEXT` (§14.4) — never
+  raw binary and never the retryable `OCR_NOT_READY`.
+
+The §8.1.2 capability matrix is unchanged: multimodality is a property of
+the chosen embed model, not a new capability cell.
 
 ### 8.2 STT providers
 
@@ -1192,6 +1249,7 @@ Example tool execution error:
 * `FILE_NOT_FOUND`
 * `DOC_TYPE_UNSUPPORTED`
 * `OCR_NOT_READY` (returned by `dir2mcp_open_file` for binary doc types — PDF, audio — when no OCR/transcript representation is cached yet; retryable once ingestion completes)
+* `MEDIA_NO_TEXT` (returned by `dir2mcp_open_file` for a `replace`-mode multimodal media chunk (8.1.7) that has **no** text representation; **non-retryable** — the gap is permanent, unlike `OCR_NOT_READY`; the hit can still be cited)
 
 ### 14.3 Index/state
 
@@ -1465,6 +1523,7 @@ filters is impossible.
   * for text/code/markdown/html: return first `max_chars` of the file with no `span` set,
   * for PDF: return the cached full-document OCR markdown with `span.kind="document"`; if the OCR cache hasn't been populated yet (e.g. ingest is still running) the tool MUST return error `OCR_NOT_READY` rather than the raw bytes,
   * for audio: return the cached full-document transcript with `span.kind="document"`; same `OCR_NOT_READY` semantics as PDF when no transcript exists yet.
+  * for a `replace`-mode multimodal media chunk with no text representation (8.1.7): return the **non-retryable** `MEDIA_NO_TEXT` (the absence is permanent — distinct from `OCR_NOT_READY`), never the raw media bytes.
 
 The handler MUST NOT emit raw binary bytes through `content[].text` — that
 field is documented as text. PDFs and audio without a span argument resolve
@@ -1840,6 +1899,10 @@ model:
     # vectors are re-normalized by the adapter. Reindex-bound (8.1.4).
     # text_dim: 3072
     # code_dim: 3072
+    # Optional multimodal embeddings (8.1.7): off (default) | augment |
+    # replace. augment/replace require provider: gemini with a multimodal
+    # model (gemini-embedding-2) for ALL modalities. Reindex-bound (8.1.4).
+    # multimodal: off
   chat:
     provider: mistral
     model: mistral-small-2506

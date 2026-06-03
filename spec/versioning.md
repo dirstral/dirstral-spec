@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.12.0`
+**Current spec version:** `0.13.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.12.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Tracks spec `0.12.0`; native Gemini embedding parity (`taskType`, MRL `outputDimensionality`) shipped in dir2mcp #222 — native Gemini STT/TTS (this release) lands in a follow-up code PR, after which this row is no longer pending. |
+| `dir2mcp` (Go) | `0.13.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. Tracks spec `0.13.0`; multimodal embeddings (`gemini-embedding-2`, this release) land in phased follow-up code PRs (per [Design 0003](../docs/design/0003-multimodal-embeddings.md)) — the model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -43,6 +43,36 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.13.0 — multimodal embeddings (gemini-embedding-2)
+
+Promotes [Design 0003](../docs/design/0003-multimodal-embeddings.md) to normative
+spec: optional native **multimodal embeddings** that map text + images + audio +
+video + PDFs into one shared vector space, via Google `gemini-embedding-2`,
+behind a per-corpus `model.embed.multimodal` toggle. `MINOR` bump per the pre-1.0
+policy (new optional config + one new tool-execution error code; no wire/tool
+shape change). The §8.1.2 capability matrix is unchanged — multimodality is a
+property of the chosen embed model, not a new capability cell. The model is
+**Public Preview**: §8.1.7 carries a re-verify caveat and the implementation is
+phased + GA-gated (compatibility row stays pending).
+
+- §8.1.7 **(new) Multimodal embeddings** — `gemini-embedding-2`, modalities +
+  per-request limits + the unified 8192-token window, the
+  `model.embed.multimodal` (`off|augment|replace`) toggle, the single-shared-
+  space constraint (`augment`/`replace` ⇒ `gemini-embedding-2` for all
+  modalities, else `CONFIG_INVALID`), reindex-bound mode, provenance reusing
+  existing span kinds, the page-image retrieval dedup rule, the `ask` grounding
+  rule, and inspection via `MEDIA_NO_TEXT`.
+- §8.1.4 **embed identity** — gains the multimodal mode.
+- §14.4 **error taxonomy** — new non-retryable `MEDIA_NO_TEXT` (`open_file` on a
+  `replace`-mode media chunk with no text representation); mirrored in
+  `spec/errors/taxonomy.md`.
+- §15.4 **`open_file`** — documents the `MEDIA_NO_TEXT` outcome.
+- §16.2 **config template** — `model.embed.multimodal` (default `off`).
+- No new tool, span kind, or wire-contract change.
+- Implementation note: lands in phased follow-up dir2mcp code PRs (adapter →
+  ingestion → store → retrieval → `ask` → `replace`), starting with the
+  default-off adapter slice; preview limits/endpoints re-verified at GA.
 
 ## 0.12.0 — native Gemini STT/TTS
 
