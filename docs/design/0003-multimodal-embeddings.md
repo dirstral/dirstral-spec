@@ -114,10 +114,14 @@ Multimodal introduces a second kind of embeddable unit.
   unchanged** (3072 or the configured truncation).
 - A chunk row gains (additive migration): `modality` (`text|image|audio|
   video|pdf`), `media_ref` (path within the corpus), and the provenance
-  `span` (reusing existing `page`/`time`/`region`/`document` kinds — **no
-  new span kind**, §5.4/§15.1.1).
+  `span`. Persisted spans reuse the existing **`span_kind ∈ {lines, page,
+  time, region}`** (§5.4) — **no new persisted kind**: audio/video windows
+  are `time`, PDF pages are `page`/`region`, and a standalone image maps to
+  a single `page` (page 1). (`document` is *not* a persisted span_kind — it
+  is a client-facing-only variant emitted by `open_file`, §15.1.1.)
 - **Embed identity** (§8.1.4) extends to
-  `provider | model | text_dim | code_dim | multimodal_mode`. A reload whose
+  `provider | text_model | code_model | text_dim | code_dim | multimodal_mode`
+  (the spec's per-axis model fields, not a single `model`). A reload whose
   identity differs from the index's errors/triggers reindex as today.
 - When `multimodal` is on, the resolver MUST reject any non-`gemini` /
   non-`gemini-embedding-2` embed binding (§4 constraint) at startup.
@@ -129,11 +133,22 @@ A text query is embedded by `gemini-embedding-2` (text) and retrieves any
 chunk in the shared space, including media chunks. `search`, `list_files`,
 and `stats` need no contract change beyond surfacing media hits.
 
-### 7.2 Citations
-Media hits cite the file + span using existing kinds: image → `document` (or
-`page` for a PDF page), audio/video → `time` (window range), PDF → `page`/
-`region`. `open_file` on a media doc returns the binary doc (existing
-binary-doc / `OCR_NOT_READY`-class semantics, spec 0.5.0) plus the span.
+### 7.2 Citations and inspection
+Media hits cite the file + persisted span (§6): standalone image → `page`
+(page 1), PDF page → `page`/`region`, audio/video → `time` (window range).
+
+Inspection has a real constraint: `open_file` returns **text** — file lines,
+OCR markdown, or a transcript — and MUST NOT emit raw binary through
+`content` (§15.4; the `document` variant signals "content is the full
+OCR/transcript representation", §15.1.1). So:
+- In **`augment`**, a media hit still has its OCR/transcript representation,
+  and `open_file` returns that text (unchanged behavior) alongside the span.
+- In **`replace`**, a media-only chunk has *no* text representation;
+  `open_file` therefore has nothing textual to return for it (it surfaces an
+  `OCR_NOT_READY`-class/empty result, never binary). Returning the media
+  itself for inspection would require a **new or extended tool** (e.g. a
+  media-fetch surface) — called out as an open question (§10), not assumed
+  here. This is the same root cause as the `ask` wrinkle (§7.3).
 
 ### 7.3 `ask` (RAG) over media — design risk
 `ask` generates an answer from retrieved context. A **media-only** chunk
@@ -163,12 +178,16 @@ To be applied as spec `0.13.0` alongside the code:
   modalities/limits, the `model.embed.multimodal` (`off|augment|replace`)
   config, the single-shared-space constraint (§4), reindex-bound mode, and
   `taskType` applying across modalities.
-- **§8.1.4** — embed identity gains `multimodal_mode`.
+- **§8.1.4** — embed identity gains `multimodal_mode` (alongside the
+  existing `embed.text_model`/`embed.code_model`/dims).
 - **§16.2 config template** — `model.embed.multimodal` (default `off`).
-- **§7.4.B / §5.4** — media chunks are a representation whose provenance
-  reuses existing `page`/`time`/`region`/`document` spans; no new span kind.
-- **§9/§15** — results may include media-backed hits; `ask` grounding rule
-  (§7.3) documented; no new tool.
+- **§7.4.B / §5.4** — media chunks are a representation whose persisted
+  provenance reuses the existing `span_kind ∈ {lines, page, time, region}`;
+  no new persisted span kind (image → `page` 1; audio/video → `time`).
+- **§9/§15** — results may include media-backed hits; the `ask` grounding
+  rule (§7.3) documented. Inspecting a media-only chunk needs a new/extended
+  tool because `open_file` returns text only (§7.2/§15.4) — flagged as the
+  one potentially new surface, resolved at GA.
 - `MINOR` bump (`0.13.0`) per the pre-1.0 policy — new optional config +
   provider behavior; the §8.1.2 matrix is unchanged (embed already `✅`;
   multimodality is a property of the model, not a new capability cell).
@@ -190,6 +209,10 @@ To be applied as spec `0.13.0` alongside the code:
 - **Public Preview churn** — the reason code is GA-gated; the §3 limits and
   field shapes may shift.
 - **`ask`-over-media grounding** (§7.3) — the main unresolved UX question.
+- **Inspecting media-only chunks** (§7.2) — `open_file` returns text only
+  (§15.4), so a `replace`-mode media chunk can be cited but not opened.
+  Decide at GA whether to add an extended media-fetch tool or restrict
+  `replace` to corpora that don't need inspection.
 - **Cost / storage** — `augment` adds media embeddings on top of text;
   long media multiplies windows. Per-corpus opt-in mitigates.
 - **PDF double-representation** — docling structured text (0.9.0) vs direct
