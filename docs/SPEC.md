@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.13.0`  
+**Spec version:** `0.14.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -415,7 +415,7 @@ The exact SQL types may vary; semantics must match.
 * `doc_id` (PK)
 * `rel_path` (unique, normalized `/`)
 * `source_type` (`file|archive_member`)
-* `doc_type` (`code|text|md|pdf|image|audio|data|html|archive|binary_ignored|...`)
+* `doc_type` (`code|text|md|pdf|image|audio|video|data|html|archive|binary_ignored|...`)
 * `size_bytes`
 * `mtime_unix`
 * `content_hash` (stable, e.g., blake3/sha256)
@@ -604,7 +604,7 @@ Use extension + MIME sniff + binary heuristics to classify:
 
 * `code`: go/rs/py/js/ts/java/c/cpp/…
 * `md/text/data/html`
-* `pdf`, `image`, `audio`
+* `pdf`, `image`, `audio`, `video`
 * `archive` (zip/tar/tar.gz) optionally deep extracts members
 * `binary_ignored`
 
@@ -859,6 +859,36 @@ WAV); PDF 1 file ≤ 6 pages. All modalities share one **unified 8192-token
 window**, so chunking MUST budget the *combined* request, not just the
 per-modality caps. Output is 3072-dim with Matryoshka truncation (8.1.6);
 `taskType` (8.1.5) applies across all modalities.
+
+**Media chunking (windowing).** A media file is chunked into one or more media
+chunks before embedding, each chunk sized to fit one embed request:
+
+* A standalone **image** is one chunk (`page` 1). A **PDF** is one chunk per
+  page (`page` span); one page per request stays within the per-modality page
+  cap (≤ 6 pages). Per-page token cost still counts against the unified
+  8192-token budget like any other modality.
+* **Audio** and **video** are chunked into **non-overlapping, contiguous time
+  windows** covering the whole file; each window is one media chunk with a
+  `time` span (`start_ms`/`end_ms`, §5.4). Each window MUST respect **both**
+  the per-modality duration cap (audio ≤ 180 s, video ≤ 120 s) **and** the
+  unified 8192-token budget; implementations SHOULD use conservative default
+  window lengths at or below the caps and MAY make them configurable. A file
+  of duration *D* with window length *W* yields ⌈*D*/*W*⌉ windows, the last
+  being the remainder.
+* **Video has no default text representation** (there is no video→text path
+  analogous to audio STT, §7.4.C). It is therefore searchable **only** via its
+  media windows: under `off` a video produces no chunks; under `augment` and
+  `replace` it is represented solely by its `time`-windowed media chunks. Audio
+  retains its transcript path (§7.4.C) in `off`/`augment` as before.
+* Windowing MUST be **deterministic** — the same file produces the same window
+  boundaries on every (re)index — so `time`-span citations are stable.
+* The ingester determines media duration. A file whose duration cannot be
+  determined is **not** directly embedded; the condition is treated as a
+  non-fatal per-document error (§7.7) and a warning SHOULD be emitted. For
+  modalities that have a text path (image/PDF OCR, audio transcript), that
+  text representation is retained **even under `replace`**, so the file stays
+  searchable; a video, which has no text path, is left unindexed. (This same
+  text-path-retained fallback applies when a PDF's page count cannot be read.)
 
 * **`model.embed.multimodal`** is a tri-state per-corpus knob:
   * `off` (default) — text-only; current behavior; **any** embed provider.
