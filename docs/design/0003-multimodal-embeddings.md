@@ -108,9 +108,11 @@ Multimodal introduces a second kind of embeddable unit.
 - **Per-modality chunking**, respecting the §3 limits and keeping citation
   spans precise:
   - **image** → one unit (whole file).
-  - **PDF** → page groups of ≤ 6 pages; **per-page preferred** for precise
-    `page`/`region` citations. In `augment`, docling structured text (spec
-    0.9.0) and the page-image embedding coexist for the same page.
+  - **PDF** → embedded **per page** (one page-image unit per page) for
+    precise `page`/`region` citations; a document longer than the 6-page
+    per-request cap (§3) is split across requests. In `augment`, the docling
+    structured text/region chunks (SPEC §7.4.B) and the page-image embedding
+    coexist for the same page.
   - **audio** → ≤ 180 s windows; **video** → ≤ 120 s windows. Window
     boundaries become `time` spans.
 - Discovery filters (size caps, type allow-list, `.gitignore`, symlink
@@ -143,15 +145,19 @@ A text query is embedded by `gemini-embedding-2` (text) and retrieves any
 chunk in the shared space, including media chunks. `search`, `list_files`,
 and `stats` need no contract change beyond surfacing media hits.
 
-**Dual-representation dedup (v1, deterministic).** In `augment`, a PDF page
-yields *both* a docling text chunk and a page-image chunk, so the same
-`(file, page)` can match twice. To keep results and citations stable across
-implementations, retrieval MUST collapse candidates by `(rel_path, page)`
-**before** truncating to `k` (and before any rerank), keeping the
-highest-scoring representation for that page — i.e. **at most one hit per
-`(file, page)`**. Non-paged media (audio/video windows, standalone images)
-dedup by their own `(rel_path, span)` identity. This makes `augment` recall
-strictly ≥ text-only without inflating top-k with duplicate pages.
+**Page-image dedup (v1, deterministic).** In `augment`, a PDF page carries
+docling structured text/region chunks (SPEC §7.4.B/§7.5 — commonly *several*
+per page) **plus** one coarse page-image chunk covering the whole page. The
+only real duplication is the page-image against the text it visually
+restates, so the dedup is narrow and one-directional: **before** truncating
+to `k` (and before any rerank), drop a page-image candidate for `(rel_path,
+page)` when that same `(rel_path, page)` already has any text/region
+candidate retained (the text hit is the more precise representation); if no
+text candidate survived for that page, keep the page-image hit. Distinct
+text/region chunks on the same page are **never** collapsed into each other,
+so structured-extraction recall (§7.5) is preserved. Non-paged media
+(audio/video windows, standalone images) are independent units and are not
+deduped against anything.
 
 ### 7.2 Citations and inspection
 Media hits cite the file + persisted span (§6): standalone image → `page`
@@ -238,11 +244,12 @@ To be applied as spec `0.13.0` alongside the code:
   `replace` to corpora that don't need inspection.
 - **Cost / storage** — `augment` adds media embeddings on top of text;
   long media multiplies windows. Per-corpus opt-in mitigates.
-- **PDF double-representation** — docling structured text (0.9.0) and direct
-  page-image embedding coexist in `augment`. v1 resolves double-counting
-  with the deterministic `(file, page)` collapse rule in §7.1; remaining
-  tuning (how `region` sub-page citations interact with a page-image hit) is
-  the residual question.
+- **PDF double-representation** — docling structured text/region chunks
+  (SPEC §7.4.B) and the direct page-image embedding coexist in `augment`. v1
+  resolves the duplication with the narrow page-image dedup rule in §7.1
+  (drop the page-image only when a text/region hit for the same page
+  survives; never collapse distinct region hits); remaining tuning (ranking
+  a page-image vs. its competing `region` hits) is the residual question.
 - **Per-request modality caps** (≤ 6 images, ≤ 6 PDF pages, 120 s/180 s) →
   batching/windowing logic with precise span attribution.
 - **Provider lock-in** — `augment`/`replace` force the whole corpus onto
