@@ -415,7 +415,7 @@ The exact SQL types may vary; semantics must match.
 * `doc_id` (PK)
 * `rel_path` (unique, normalized `/`)
 * `source_type` (`file|archive_member`)
-* `doc_type` (`code|text|md|pdf|image|audio|data|html|archive|binary_ignored|...`)
+* `doc_type` (`code|text|md|pdf|image|audio|video|data|html|archive|binary_ignored|...`)
 * `size_bytes`
 * `mtime_unix`
 * `content_hash` (stable, e.g., blake3/sha256)
@@ -864,8 +864,9 @@ per-modality caps. Output is 3072-dim with Matryoshka truncation (8.1.6);
 chunks before embedding, each chunk sized to fit one embed request:
 
 * A standalone **image** is one chunk (`page` 1). A **PDF** is one chunk per
-  page (`page` span; ≤ 6 pages per request means one page per request is
-  always safe).
+  page (`page` span); one page per request stays within the per-modality page
+  cap (≤ 6 pages). Per-page token cost still counts against the unified
+  8192-token budget like any other modality.
 * **Audio** and **video** are chunked into **non-overlapping, contiguous time
   windows** covering the whole file; each window is one media chunk with a
   `time` span (`start_ms`/`end_ms`, §5.4). Each window MUST respect **both**
@@ -882,10 +883,12 @@ chunks before embedding, each chunk sized to fit one embed request:
 * Windowing MUST be **deterministic** — the same file produces the same window
   boundaries on every (re)index — so `time`-span citations are stable.
 * The ingester determines media duration. A file whose duration cannot be
-  determined is **not** directly embedded; its text path is retained even
-  under `replace` (the OCR/transcript representation is kept), and a warning
-  SHOULD be emitted — mirroring the PDF page-count fallback (§7.7). This keeps
-  an undecodable media file searchable rather than silently dropping it.
+  determined is **not** directly embedded; the condition is treated as a
+  non-fatal per-document error (§7.7) and a warning SHOULD be emitted. For
+  modalities that have a text path (image/PDF OCR, audio transcript), that
+  text representation is retained **even under `replace`**, so the file stays
+  searchable; a video, which has no text path, is left unindexed. (This same
+  text-path-retained fallback applies when a PDF's page count cannot be read.)
 
 * **`model.embed.multimodal`** is a tri-state per-corpus knob:
   * `off` (default) — text-only; current behavior; **any** embed provider.
