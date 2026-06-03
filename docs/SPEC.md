@@ -42,7 +42,7 @@ When `x402` mode is enabled, implementations SHOULD align with these references:
 - Network and facilitator support (CAIP-2 identifiers): <https://docs.cdp.coinbase.com/x402/network-support>
 - Bazaar discovery extension model: <https://docs.cdp.coinbase.com/x402/bazaar>
 
-### 0.2 Implementation status notes (April 2026)
+### 0.2 Implementation status notes (June 2026)
 
 Status tags used in this spec:
 
@@ -55,6 +55,7 @@ Current high-level status:
 
 - CLI + MCP server lifecycle, indexing pipeline, and core tool surface: **Implemented**
 - Multimodal ingestion (OCR/transcription/annotation) and retrieval workflows: **Implemented** (with ongoing quality/perf hardening)
+- Native multimodal embeddings (`gemini-embedding-2`, §8.1.7 — images/PDF/audio/video into one shared space; retrieval dedup + `open_file` `MEDIA_NO_TEXT` + ask grounding): **Implemented**, default-off; **GA-gated** (model is Public Preview, so the compatibility row stays pending until release against the GA-verified model)
 - Retrieval `Stats()` service contract: **Implemented** (issue #71 closed)
 - Retrieval answer generation path (`Engine.Ask()` / `AskWithContext`): **Implemented** (issue #70 closed)
 - Native x402 tools/call gating path: **Implemented** (optional and facilitator-backed)
