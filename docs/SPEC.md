@@ -867,10 +867,12 @@ per-modality caps. Output is 3072-dim with Matryoshka truncation (8.1.6);
   * `replace` — embed media files directly **instead of** OCR/STT→text; text
     files are unchanged.
 * **Single shared space (per 8.1.4).** When `multimodal` is `augment` or
-  `replace`, the embed provider for **every** modality, including text, MUST
-  be `gemini` with a multimodal model (`gemini-embedding-2`); any other
-  binding is `CONFIG_INVALID` (incomparable vectors must not share one
-  index). `off` keeps full provider freedom.
+  `replace`, the **entire** embed binding MUST resolve to the multimodal
+  model on `gemini`: `embed.provider: gemini` **and both** `embed.text_model`
+  **and** `embed.code_model` set to `gemini-embedding-2` (the code axis is
+  not exempt — leaving it on a different model would mix incomparable vectors
+  in one index). Any other binding is `CONFIG_INVALID`. `off` keeps full
+  provider freedom.
 * **Reindex-bound.** The multimodal mode is part of the embed identity
   (8.1.4); switching `off`↔`augment`↔`replace` requires a reindex.
 * **Provenance.** A media chunk is a representation (§7.4.B) whose persisted
@@ -891,7 +893,7 @@ per-modality caps. Output is 3072-dim with Matryoshka truncation (8.1.6);
   answer grounding is a later concern.)
 * **Inspection.** `open_file` returns text only (§15.4); a `replace`-mode
   media-only chunk has no text representation, a **permanent** condition, so
-  `open_file` MUST return the non-retryable `MEDIA_NO_TEXT` (§14.4) — never
+  `open_file` MUST return the non-retryable `MEDIA_NO_TEXT` (§14.2) — never
   raw binary and never the retryable `OCR_NOT_READY`.
 
 The §8.1.2 capability matrix is unchanged: multimodality is a property of
@@ -1900,8 +1902,9 @@ model:
     # text_dim: 3072
     # code_dim: 3072
     # Optional multimodal embeddings (8.1.7): off (default) | augment |
-    # replace. augment/replace require provider: gemini with a multimodal
-    # model (gemini-embedding-2) for ALL modalities. Reindex-bound (8.1.4).
+    # replace. augment/replace require provider: gemini with BOTH
+    # text_model AND code_model set to gemini-embedding-2 (all axes — a
+    # mixed model is CONFIG_INVALID). Reindex-bound (8.1.4).
     # multimodal: off
   chat:
     provider: mistral

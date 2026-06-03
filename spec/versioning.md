@@ -64,7 +64,7 @@ phased + GA-gated (compatibility row stays pending).
   existing span kinds, the page-image retrieval dedup rule, the `ask` grounding
   rule, and inspection via `MEDIA_NO_TEXT`.
 - §8.1.4 **embed identity** — gains the multimodal mode.
-- §14.4 **error taxonomy** — new non-retryable `MEDIA_NO_TEXT` (`open_file` on a
+- §14.2 **error taxonomy** — new non-retryable `MEDIA_NO_TEXT` (`open_file` on a
   `replace`-mode media chunk with no text representation); mirrored in
   `spec/errors/taxonomy.md`.
 - §15.4 **`open_file`** — documents the `MEDIA_NO_TEXT` outcome.
