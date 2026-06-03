@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.13.0`
+**Current spec version:** `0.14.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.13.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. Tracks spec `0.13.0`; multimodal embeddings (`gemini-embedding-2`, this release) land in phased follow-up code PRs (per [Design 0003](../docs/design/0003-multimodal-embeddings.md)) — the model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. |
+| `dir2mcp` (Go) | `0.14.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/mcp/` as of 2026-04-05. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. Multimodal embeddings (`gemini-embedding-2`) are landing phased + default-off: adapter slice (#224), image ingestion (#225) and per-page PDF (#226) shipped; audio/video windowing (this release, `0.14.0`) is next. The model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -43,6 +43,35 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.14.0 — audio/video media windowing
+
+Extends the multimodal-embedding surface (0.13.0, §8.1.7) with normative
+**time-window chunking** for audio and video direct embedding under
+`model.embed.multimodal` `augment`/`replace`, completing the modality set
+after images and PDFs. `MINOR` bump per the pre-1.0 policy (refines optional
+multimodal behavior; no new tool, error code, config field, span kind, or
+wire-contract change — `time` spans already exist, §5.4). The §8.1.2
+capability matrix is unchanged.
+
+- §8.1.7 **(new) Media chunking (windowing)** — audio/video are split into
+  non-overlapping, contiguous **time windows** (one media chunk each, `time`
+  span) that MUST respect both the per-modality duration cap (audio ≤ 180 s,
+  video ≤ 120 s) and the unified 8192-token budget; window boundaries are
+  deterministic for stable citations. Image = one chunk; PDF = one chunk/page.
+- §8.1.7 **fallback** — a file whose duration cannot be determined is a
+  non-fatal per-document condition (§7.7): not directly embedded, warned;
+  modalities with a text path (image/PDF OCR, audio transcript) keep that text
+  representation even under `replace`, while video (no text path) is left
+  unindexed.
+- §8.1.7 **video** — has no default text representation (no video→text
+  analogue to audio STT, §7.4.C): searchable only via media windows.
+- §5.1 / §7.3 — `video` added to the `documents.doc_type` enumeration and the
+  type-classification list (`.mp4`, `.mov`).
+- No new tool, error code, config field, span kind, or wire-contract change.
+- Implementation note: lands in a follow-up dir2mcp code PR (Phase 2c); the
+  reference impl reads media duration via an `ffprobe` subprocess with a
+  graceful skip when absent.
 
 ## 0.13.0 — multimodal embeddings (gemini-embedding-2)
 
