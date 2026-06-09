@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.14.0`
+**Current spec version:** `0.15.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.14.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/` as of 2026-06-04. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. The multimodal-embedding arc (`gemini-embedding-2`, §8.1.7) shipped phased + default-off: adapter slice (#224), image ingestion (#225), per-page PDF (#226), audio/video time-window embedding (#227, `0.14.0`), retrieval dedup + result modality (#228), and `open_file` `MEDIA_NO_TEXT` + ask-over-media grounding (#229); docling adapter contract CI (#230). The model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. |
+| `dir2mcp` (Go) | `0.14.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/` as of 2026-06-04. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. The multimodal-embedding arc (`gemini-embedding-2`, §8.1.7) shipped phased + default-off: adapter slice (#224), image ingestion (#225), per-page PDF (#226), audio/video time-window embedding (#227, `0.14.0`), retrieval dedup + result modality (#228), and `open_file` `MEDIA_NO_TEXT` + ask-over-media grounding (#229); docling adapter contract CI (#230). The model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. For `0.15.0` (extractor availability): the docling venv is version-locked and the docling subprocess runs with a sanitized environment (#234) so a present-but-broken docling degrades gracefully; the functional-check + `auto` fallback land in a follow-up code PR. |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -43,6 +43,34 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.15.0 — extractor availability (functional check)
+
+Refines §7.4 so an extractor counts as *available* only when it can actually
+run, not merely when it is configured. The `docling` CLI must both resolve and
+pass a lightweight functional probe; a present-but-non-functional command (e.g.
+a bundled virtualenv with ABI-incompatible dependencies) is **unavailable**,
+exactly as an unreachable `serve_url` already makes `docling-serve` unavailable.
+`MINOR` bump per the pre-1.0 policy (changes `auto` selection behavior; no new
+tool, error code, config field, span kind, or wire-contract change). The §8.1.2
+capability matrix is unchanged.
+
+- §7.4 **(new) Extractor availability** — availability = resolves **and** passes
+  a functional check; implementations SHOULD probe and MUST treat a
+  present-but-broken extractor as unavailable, caching the result for the run.
+- §7.4 **graceful degradation** — under `extractor: auto` an unavailable docling
+  CLI is skipped and the cascade continues (docling-serve → Mistral OCR →
+  disabled) instead of failing every document; under explicit `extractor:
+  docling` an unavailable command disables extraction with no silent fallback,
+  mirroring explicit `docling-serve`.
+- §7.4 / §7.7 — the availability decision and its reason MUST be surfaced in
+  startup diagnostics and `dir2mcp doctor`, so a broken extractor is visible
+  rather than reported as healthy.
+- No new tool, error code, config field, span kind, or wire-contract change.
+- Implementation note: lands in a follow-up dir2mcp code PR (`doctor` functional
+  probe + `auto` fallback). The dependency lock (homebrew-tap) and docling
+  subprocess env isolation (#234) that make the bundled venv reproducible and
+  immune to host-Python shadowing ship alongside.
 
 ## 0.14.0 — audio/video media windowing
 
