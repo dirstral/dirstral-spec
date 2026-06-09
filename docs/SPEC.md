@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.14.0`  
+**Spec version:** `0.15.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -647,6 +647,27 @@ binary disables `docling` — and MUST NOT silently fall back to the CLI. (Under
 `extractor: auto` the transport is implementation-determined: an empty
 `serve_url` simply means the HTTP transport is not considered, and `auto` may
 use the CLI or another configured extractor as usual.)
+
+**Extractor availability.** An extractor is *available* only when it can
+actually run, not merely when it is configured. For the `docling` CLI this means
+the command both **resolves** (on `PATH`, or via `ingest.docling.command`) **and**
+passes a lightweight functional check — a successful probe invocation (for
+example `docling --version`). A command that resolves but fails the probe — for
+example a bundled virtualenv whose dependencies are ABI-incompatible — is
+**unavailable**, exactly as an unreachable `serve_url` makes `docling-serve`
+unavailable. Implementations SHOULD perform such a check and MUST treat a
+present-but-non-functional extractor as unavailable (never as available), and
+SHOULD cache the result for the run rather than probing per document.
+
+* Under `extractor: auto`, an unavailable `docling` CLI is skipped and the
+  cascade continues (docling-serve, then Mistral OCR, then disabled), so a
+  broken docling install degrades gracefully instead of failing every document.
+* Under `extractor: docling` (explicit), an unavailable command disables
+  extraction — PDF/image/document contribute no `extracted_markdown` — and MUST
+  NOT silently fall back to another engine, mirroring explicit `docling-serve`.
+* The availability decision, and the reason when unavailable, MUST be surfaced
+  in startup diagnostics and by `dir2mcp doctor` (§7.7), so a present-but-broken
+  extractor is visible rather than reported as healthy.
 
 **Structured extraction (docling).** When the extractor emits a structured
 document model (docling's `DoclingDocument`, obtained via `--to json`), the
