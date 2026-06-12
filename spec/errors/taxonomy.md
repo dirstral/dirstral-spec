@@ -1,6 +1,6 @@
 # Error Taxonomy
 
-**Spec version:** `0.15.0`
+**Spec version:** `0.16.0`
 
 Canonical error codes for all dir2mcp MCP tools and session operations.
 
@@ -39,6 +39,21 @@ These are returned with HTTP 200. The `isError: true` flag is set on the result.
 | `INVALID_RANGE` | No | Numeric argument outside allowed bounds |
 | `STORE_CORRUPT` | No | Store read failed with unexpected error |
 | `INTERNAL_ERROR` | Yes | Unexpected server-side error |
+
+## Ingestion / extraction errors
+
+Per-document, non-fatal (§7.7). Recorded against `documents.status='error'`; the
+degenerate-output quality gate (SPEC §8.6.6) also surfaces through these codes.
+
+| Code string | Retryable | Description |
+|-------------|-----------|-------------|
+| `EXTRACT_FAILED` | No | Document extraction (e.g. docling) failed |
+| `OCR_FAILED` | No | OCR failed, **or** OCR output rejected by the degenerate-output quality gate (SPEC §8.6.6) |
+| `TRANSCRIBE_FAILED` | No | Transcription failed, **or** transcript rejected by the degenerate-output quality gate (empty/repetition/low-density, SPEC §8.6.6) |
+| `TRANSLATE_FAILED` | No | Translation failed, **or** translated output rejected by the degenerate-output quality gate (SPEC §8.6.6) |
+| `ANNOTATE_FAILED` | No | Structured annotation/extraction failed |
+| `FILE_TOO_LARGE` | No | File exceeds the configured per-type size limit |
+| `BINARY_SKIPPED` | No | File classified as binary and skipped |
 
 ## x402 payment errors
 
