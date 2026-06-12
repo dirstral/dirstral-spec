@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.15.0`
+**Current spec version:** `0.16.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.14.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/` as of 2026-06-04. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. The multimodal-embedding arc (`gemini-embedding-2`, §8.1.7) shipped phased + default-off: adapter slice (#224), image ingestion (#225), per-page PDF (#226), audio/video time-window embedding (#227, `0.14.0`), retrieval dedup + result modality (#228), and `open_file` `MEDIA_NO_TEXT` + ask-over-media grounding (#229); docling adapter contract CI (#230). The model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. For `0.15.0` (extractor availability): the docling venv is version-locked and the docling subprocess runs with a sanitized environment (#234) so a present-but-broken docling degrades gracefully; the functional-check + `auto` fallback land in a follow-up code PR. |
+| `dir2mcp` (Go) | `0.14.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/` as of 2026-06-04. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. The multimodal-embedding arc (`gemini-embedding-2`, §8.1.7) shipped phased + default-off: adapter slice (#224), image ingestion (#225), per-page PDF (#226), audio/video time-window embedding (#227, `0.14.0`), retrieval dedup + result modality (#228), and `open_file` `MEDIA_NO_TEXT` + ask-over-media grounding (#229); docling adapter contract CI (#230). The model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. For `0.15.0` (extractor availability): the docling venv is version-locked and the docling subprocess runs with a sanitized environment (#234) so a present-but-broken docling degrades gracefully; the functional-check + `auto` fallback land in a follow-up code PR. For `0.16.0` (dual-machine + media, #239/#251): the remote-source/backend-tier and media transcription/translation/subtitle surfaces are spec-led and land in follow-up code PRs (gated submodule re-pin); the media surface is **Planned**. Row stays pending until those ship. |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -43,6 +43,101 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.16.0 — dual-machine corpus/index + media transcription surface
+
+Two coordinated governance gates land together: the **dual-machine contract**
+(remote corpus sources + pluggable vector-index backends, dir2mcp #239) and the
+**media transcription/translation/subtitle surface** (absorbing the retired
+`livevtt archive_transcriber`, dir2mcp #251). `MINOR` bump per the pre-1.0 policy.
+
+> **Partly breaking — invariant relaxation.** This release **relaxes the
+> long-standing "no external vector DB / no Qdrant" invariant** (§1.2, §19). The
+> embedded, zero-infra index stays the **default** (Tier A), but an external
+> vector store (Qdrant/pgvector, Tier C) MAY now be configured — it is
+> **optional and never required**. A conforming deployment still runs with zero
+> external infrastructure beyond model providers. Under the pre-1.0 policy a
+> breaking change is still a `MINOR` bump.
+
+**Dual-machine contract (#239):**
+
+- §1.2 **Invariants** — the two vector-DB lines are replaced: default index is
+  embedded/on-disk (no external service); an external store MAY be configured but
+  MUST NOT be required; the state dir is always local even when the corpus root is
+  remote.
+- §6 **Vector index backends and identity** (rewritten from "Embedded ANN
+  indices") — `index.backend` selector + tier table: `memory` (Tier A, in-memory
+  pure-Go HNSW, **default**), `disk` (Tier B, pure-Go on-disk/memmapped,
+  single-node), `qdrant`/`pgvector` (Tier C, external, optional-never-required).
+  Two logical axes (text/code) with `chunk_id` as label/payload key. Embed
+  identity (§8.1.4) binds **every** backend; Tier C is addressed by a
+  collection/namespace derived from `corpus_id`; an unreachable Tier C at
+  preflight fails `CONFIG_INVALID` (no silent fallback). New normative pure-Go /
+  `CGO_ENABLED=0` subsection that explicitly **rejects `sqlite-vec`**. Tier C MAY
+  delete natively while honoring the SQLite tombstone.
+- §7.8 **(new) Remote corpus sources** — `source.kind` ∈ `local|nfs|s3`;
+  filesystem walk for local/nfs, object enumeration for s3. `rel_path` is stable
+  across schemes (s3 = object key minus prefix) so a corpus relocates
+  local⇄nfs⇄s3 without changing identity; root-escape protections apply to every
+  scheme. Change detection: (size, mtime)+content_hash for local/nfs; ETag (not
+  MD5 for multipart/SSE-KMS) as the cheap signal for s3, with content_hash still
+  reading the body. Missing object → tombstone. State dir stays local.
+- §8.5 **(new) Self-hosted / OpenAI-compatible provider endpoints** — a
+  self-hosted model server is first-class via the existing `kind: openai` contract
+  (no new kind); MAY be credential-less and still auto-selectable. Capability
+  mapping (embed/chat/stt via `/v1/embeddings`,`/v1/chat/completions`,
+  `/v1/audio/transcriptions`; ocr has no OpenAI analog; STT validated at first
+  use). Self-hosted embed bound by embed identity; STT normalization deferred to
+  §8.6. No shipped self-hosted default.
+- §19 **Non-goals** — external stores reframed as optional-never-required;
+  `sqlite-vec` rejected (C extension); embedded no-in-place-delete retained, Tier
+  C native delete allowed while honoring the tombstone.
+
+**Media contract (#251, Status: Planned):**
+
+- §8.6 **(new) Media transcription, translation, and subtitle surface** —
+  domain-general, no language/broadcaster specifics. (8.6.1) transcript = TEXT
+  with `time` spans, per-segment timestamps MUST when returned, per-word MAY in
+  `spans.extra_json.words` ({t,d,w}) without extra chunks, no-timestamp fallback
+  flagged `timing:"estimated"`, deterministic windowing. (8.6.2) source
+  auto-detected (optional pin), translation opt-in/off by default, target langs
+  configurable with no default (enabling with none = `CONFIG_INVALID`),
+  per-language keying (`TranscriptLangSuffix`), translated transcripts record
+  source_language + translate provider/model. (8.6.3) VTT/SRT always available
+  (no re-transcription), TTML/SMIL optional/off (fail-open), missing language =
+  `INVALID_FIELD`. (8.6.4) sidecar `.vtt/.srt/.ttml` ingested as transcript
+  instead of STT, mtime-gated, `--force` overrides, multiple → per-language.
+  (8.6.5) variant grouping, transcribe canonical/best once, no duplicate
+  chunks/embeddings. (8.6.6) degenerate-output quality gates (empty/repetition/
+  low-density; flag detected≠pinned) → non-fatal `TRANSCRIBE_FAILED`/`OCR_FAILED`/
+  `TRANSLATE_FAILED`, deterministic. (8.6.7) representation provenance +
+  derivation identity {capability,provider,model,version,language}; mismatch →
+  re-derive+re-chunk+re-embed (per-representation analogue of embed-identity →
+  reindex); sidecar transcripts are not model-derived.
+
+**Supporting edits (both):**
+
+- §5.2 **transcript meta_json** — provider enum no longer closed to
+  `mistral|elevenlabs`; adds `model_version`, `timing`, `words`, `source`;
+  translated transcripts add `source_language`/`translate_provider`/
+  `translate_model`.
+- §14.4 **error taxonomy** — new `TRANSLATE_FAILED`; `TRANSCRIBE_FAILED`/
+  `OCR_FAILED` noted to also cover degenerate-output rejection. Mirrored in
+  `spec/errors/taxonomy.md` (new Ingestion/extraction section).
+- §16.2 **config template** — new `source:` block (`kind` local|nfs|s3 + s3
+  bucket/prefix/region/endpoint, credentials per §16.1.1, never persisted), new
+  `index:` block (`backend` memory|disk|qdrant|pgvector, default memory; Tier C
+  connection optional), and new `media:` block (translate off + empty targets;
+  subtitles vtt/srt + ttml off; sidecars on; variants group/best; quality_gate
+  thresholds).
+- §15.6 / §15.7 / `spec/tools/schemas/{stats,transcribe,transcribe_and_ask}.json`
+  — `stt_provider` relaxed from the closed `["mistral","elevenlabs"]` enum to an
+  open string (any STT-capable provider per §8.2/§8.5), matching the §5.2 change.
+- Section-number map: §8.5 = self-hosted endpoints, §8.6 = media surface (both
+  after §8.4 Rerank; resolves the dual-draft "§8.5" collision).
+- Implementation note: both contracts land in follow-up dir2mcp code PRs once
+  this spec change is merged (gated submodule re-pin). The media surface is
+  **Planned** and ships phased.
 
 ## 0.15.0 — extractor availability (functional check)
 

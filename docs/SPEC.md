@@ -1,9 +1,9 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.15.0`  
+**Spec version:** `0.16.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
-**Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index (**no external DB; no Qdrant**) and a single config file.  
+**Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
 **Scope note:** x402 support is optional and additive; retrieval and MCP interoperability remain first-class regardless of payment mode.
 
@@ -83,7 +83,9 @@ Current high-level status:
 - The MCP server accepts lifecycle requests immediately after `dir2mcp up` prints the endpoint URL.
 - Indexing continues in the background; tools operate on partial index if needed.
 - No content outside root is accessible via tools (no path traversal; no symlink escape).
-- No external vector database is required or supported.
+- The default vector index is **embedded/on-disk** and requires **no external service**.
+- An external vector store MAY be configured (§6, Tier C) but MUST NOT be required: a conforming deployment MUST be able to run with **zero external infrastructure beyond the model providers** (the embedded default).
+- The state directory is always **local**, even when the corpus root is remote (§7.8): SQLite metadata, the embedded index, and caches never live on the remote source.
 
 ---
 
@@ -436,11 +438,29 @@ The exact SQL types may vary; semantics must match.
 
 **Transcript meta_json requirements**
 
-* `provider`: `mistral|elevenlabs`
+* `provider`: string — the STT/transcription provider. The enumeration is **not
+  closed** to `mistral|elevenlabs`: any STT-capable provider (§8.2 — e.g.
+  `openai`, `gemini`, a self-hosted `kind: openai` endpoint, §8.5) is valid.
 * `model`: string
-* `timestamps`: boolean
-* `language`: optional
+* `model_version`: optional — provider model version, part of the derivation
+  identity (§8.6.7).
+* `timestamps`: boolean — whether provider-authoritative timestamps are present.
+* `timing`: optional — `provider` (default, provider-authoritative) or
+  `estimated` (no-timestamp fallback, §8.6.1).
+* `words`: optional — present when per-word timing was captured (a `words` array
+  lives on the segment span's `extra_json`, §8.6.1; this flag records that the
+  transcript carries word timing).
+* `language`: optional — source language (auto-detected or pinned, §8.6.2).
+* `source`: optional — `stt` (machine-transcribed) or `sidecar` (authored
+  subtitle ingested per §8.6.4). Sidecar transcripts are not model-derived
+  (§8.6.7).
 * `duration_ms`: optional
+
+A **translated** transcript additionally records:
+
+* `source_language`: the language it was translated *from*.
+* `translate_provider`: the translation provider.
+* `translate_model`: the translation model.
 
 ### 5.3 `chunks`
 
@@ -510,30 +530,97 @@ breadcrumb:
 
 ---
 
-## 6) Embedded ANN indices
+## 6) Vector index backends and identity
 
-### 6.1 Indices
+The vector index is selected by `index.backend` (§16.2). The **default** backend
+is embedded and requires no external service (§1.2); an external store MAY be
+selected but is **optional, never required**. Whatever backend is chosen, the two
+logical axes and the embed-identity binding below are invariant.
 
-* `vectors_text.hnsw`: embeddings for `index_kind=text` chunks (raw text, OCR markdown, transcripts, annotation_text).
-* `vectors_code.hnsw`: embeddings for `index_kind=code` chunks (source code and code-like configs).
+### 6.1 Logical axes (text/code)
 
-Dimensions may differ between indices; each index must be internally consistent.
+Independent of backend, vectors are partitioned into two logical axes:
 
-### 6.2 Label mapping
+* **text** axis: embeddings for `index_kind=text` chunks (raw text, OCR/extracted markdown, transcripts, annotation_text, and — under §8.1.7 — media chunks).
+* **code** axis: embeddings for `index_kind=code` chunks (source code and code-like configs).
 
-* ANN label MUST equal `chunk_id` (integer), so a query result maps directly to chunk metadata.
+Dimensions MAY differ between axes; each axis MUST be internally consistent. The
+**label / payload key** for every vector MUST be its `chunk_id` (integer), so a
+query result maps directly to chunk metadata. In the embedded backends the two
+axes are the two on-disk files (`vectors_text.*`, `vectors_code.*`); in an
+external store they are two collections/namespaces (§6.3).
 
-### 6.3 Deletions (append-only index approach)
+### 6.2 Backend tiers (`index.backend`)
 
-Indices are treated as append-only:
+| `index.backend` | Tier | Description | External infra | Default |
+|---|:--:|---|:--:|:--:|
+| `memory` | **A** | In-memory HNSW, **pure-Go**, persisted/snapshotted to the local state dir | none | **✅ default** |
+| `disk`   | **B** | Pure-Go on-disk / memmapped single-node index in the local state dir | none | |
+| `qdrant` | **C** | External Qdrant collection | required | |
+| `pgvector` | **C** | External PostgreSQL + pgvector | required | |
 
-* Deleting documents/representations/chunks sets `deleted=1` in SQLite.
-* Retrieval uses oversampling:
+* **Tier A (`memory`, default)** — an in-memory HNSW graph built in pure Go,
+  snapshotted to the local state dir (`vectors_text.*` / `vectors_code.*`) so it
+  survives restarts. Requires no external service. This is the zero-infra default
+  (§1.2).
+* **Tier B (`disk`)** — a pure-Go on-disk / memory-mapped index for single-node
+  corpora too large to hold fully in RAM. It is single-node (no clustering) and,
+  like Tier A, MUST remain buildable with `CGO_ENABLED=0` (§6.5).
+* **Tier C (`qdrant` / `pgvector`)** — an external vector store. It is
+  **optional and MUST NOT be required**: a conforming deployment runs on Tier A
+  with no external infrastructure (§1.2, §19). Tier C is for operators who
+  already run such a store or who need horizontal scale.
 
-  * ask ANN for `k * oversample_factor` results
-  * filter out `deleted=1`
-  * return first `k` remaining
-* Default `oversample_factor`: 5 (configurable).
+### 6.3 External store addressing (Tier C)
+
+* A Tier C backend is addressed by a **collection / namespace derived from
+  `corpus_id`** (§5.5), so multiple corpora can share one external store without
+  collision. The two axes map to two collections/namespaces (one for text, one
+  for code).
+* Connection parameters for Tier C live under `index:` (§16.2); credentials
+  follow §16.1.1 and MUST NOT be persisted to the snapshot.
+* **No silent fallback.** If a configured Tier C backend is **unreachable at
+  preflight** (§2.5), startup MUST fail with `CONFIG_INVALID` and remediation.
+  An unreachable external store MUST NOT silently downgrade to an embedded tier
+  — that would change the corpus's vector home invisibly.
+
+### 6.4 Embed identity binds every backend
+
+The corpus-lifetime **embed identity** — `provider | text_model | code_model |
+text_dim | code_dim | multimodal` (§8.1.4) — binds the index **regardless of
+backend**. On load, if the configured embed identity differs from the one
+recorded for the index (embedded snapshot or external collection metadata), the
+server MUST refuse to mix vector spaces: it either errors (`CONFIG_INVALID`) or
+triggers a full reindex (§8.1.4). A backend MUST NOT silently serve a collection
+built under a different embed identity.
+
+### 6.5 Pure-Go / `CGO_ENABLED=0` (normative)
+
+The embedded backends (Tier A and Tier B) MUST be implementable in **pure Go**
+and buildable with **`CGO_ENABLED=0`** — the reference store uses
+`modernc.org/sqlite` (a pure-Go SQLite) and a pure-Go ANN implementation
+specifically to keep the single-binary, cross-compiled, CGO-free build.
+
+* **`sqlite-vec` is rejected** for the embedded path: it is a C extension and is
+  incompatible with the pure-Go `modernc.org/sqlite` driver under
+  `CGO_ENABLED=0`. Implementations MUST NOT make `sqlite-vec` (or any other C
+  SQLite extension) a requirement of an embedded backend.
+* Tier C backends are out-of-process (network clients), so they impose no CGO
+  requirement on the dir2mcp binary.
+
+### 6.6 Deletions
+
+* **Embedded backends (Tier A/B)** are treated as **append-only**: deleting
+  documents/representations/chunks sets `deleted=1` in SQLite (the tombstone),
+  and retrieval uses **oversampling** — ask the index for `k * oversample_factor`
+  results, filter out `deleted=1`, return the first `k` remaining. Default
+  `oversample_factor`: 5 (configurable).
+* **External backends (Tier C)** MAY delete vectors **natively** (e.g. delete by
+  `chunk_id` payload) instead of relying solely on oversampling. A Tier C backend
+  MUST still **honor the SQLite `deleted=1` tombstone** as the source of truth —
+  a vector whose `chunk_id` is tombstoned MUST NOT appear in results even if its
+  native deletion has not yet propagated — so retrieval semantics are identical
+  across backends.
 
 ---
 
@@ -796,6 +883,52 @@ Fatal errors:
 * cannot write state (disk full, permissions)
 * irrecoverable state corruption
 
+### 7.8 Remote corpus sources
+
+The corpus root MAY live on a remote source. `source.kind` (§16.2) selects the
+scheme:
+
+* `local` (default) — a local filesystem path.
+* `nfs` — a mounted network filesystem path.
+* `s3` — objects under an S3 bucket + prefix (`source.s3.bucket`,
+  `source.s3.prefix`, plus region/endpoint; credentials per §16.1.1, never
+  persisted).
+
+**Enumeration.** `local` and `nfs` are walked as filesystems and obey the same
+discovery, symlink, and ignore rules as §7.1 (they are ordinary directory trees).
+`s3` enumerates objects under `bucket`/`prefix` (a flat object listing, not a
+filesystem walk).
+
+**Stable `rel_path` across schemes.** `rel_path` (§5.1) is defined relative to
+the corpus root for every scheme: for `local`/`nfs` it is the path under the root
+directory; for `s3` it is the **object key minus the configured prefix**. The
+normalization MUST be chosen so that the *same logical corpus* yields the *same*
+`rel_path` set under any scheme — a corpus may be relocated `local ⇄ nfs ⇄ s3`
+**without changing its document identity** (and therefore without a forced
+reindex on relocation alone). Traversal / root-escape protections (§17) apply to
+**every** scheme: an object key or path that resolves outside the configured
+root/prefix MUST be rejected (`PATH_OUTSIDE_ROOT`).
+
+**Change-detection identity.** Incremental indexing (§7.6) keys off a cheap
+signal first, then confirms with `content_hash`:
+
+* `local` / `nfs`: the cheap pre-check is `(size, mtime)`; on a change,
+  `content_hash` over the file body **confirms** before re-ingest.
+* `s3`: the cheap signal is the object **ETag** (alongside `size` and
+  `last_modified`). The ETag MUST NOT be treated as a content hash: multipart and
+  SSE-KMS ETags are **not** MD5 of the body. `content_hash` therefore still
+  requires **reading the object body**; the ETag only decides *whether* a re-read
+  is warranted.
+
+**Deletions.** A source object/file that is no longer present at enumeration is a
+deletion → it is **tombstoned** (`deleted=1`, §5.1), exactly as for a removed
+local file.
+
+**State stays local.** Regardless of `source.kind`, the **state directory**
+(SQLite metadata, the embedded index, and caches) is always **local** (§1.2):
+dir2mcp never writes its index/state back to the remote source. Only the corpus
+*content* is remote.
+
 ---
 
 ## 8) Model/provider utilization requirements
@@ -975,6 +1108,151 @@ the chosen embed model, not a new capability cell.
 * When active, the reranker re-scores the fused candidate pool before truncation to `k` (see 9.1.1).
 * Reranking MUST be **fail-open**: any provider error (missing key, network failure, non-2xx) falls back to the pre-rerank fused order and MUST NOT fail the query.
 * The rerank API key follows the same secret-source rules as other provider credentials (16.1.1) and MUST NOT be persisted to the config snapshot.
+
+### 8.5 Self-hosted / OpenAI-compatible provider endpoints
+
+A **self-hosted model server** is a **first-class provider** when it conforms to
+the OpenAI-compatible contract: it is declared as a `kind: openai` profile
+(§8.1.1) whose `base_url` points at the self-hosted endpoint. **No new `kind` is
+introduced** — a self-hosted server is just an `openai`-kind profile on a
+non-OpenAI `base_url`, exactly like Ollama/vLLM/LM Studio already are (§8.1.1).
+
+* **Credential-less by default.** A self-hosted endpoint on a trusted network MAY
+  have **no `api_key`** and is therefore credential-less (§8.1.1). Credential-less
+  self-hosted profiles are still **eligible** for selection and auto-selection
+  (§8.1.3) and pass preflight (§2.5) — they are not second-class.
+* **Capability mapping** (which OpenAI-compatible route serves each capability):
+  * **embed** → `POST /v1/embeddings` (e.g. Hugging Face TEI, vLLM, Infinity).
+  * **chat** → `POST /v1/chat/completions`.
+  * **stt** → `POST /v1/audio/transcriptions` (e.g. a faster-whisper or
+    whisper.cpp server). As with any `kind: openai` audio route, STT here is
+    **endpoint-dependent** and **validated at first use** (§8.1.2 footnote ³), not
+    statically rejected — an arbitrary self-hosted `base_url` may or may not
+    expose `/v1/audio/transcriptions`, and that can only be known when it is
+    called.
+  * **ocr** has **no OpenAI analog** — OCR is a bespoke surface (§8.1.2 shows
+    `ocr` as `❌` for `kind: openai`); a self-hosted OCR server is not reachable
+    through this contract.
+* **Embed identity.** A self-hosted **embed** endpoint is bound by the
+  corpus-lifetime embed identity (§8.1.4) like any other embed provider: changing
+  the self-hosted embed model (or its endpoint such that the model changes) forces
+  a reindex / `CONFIG_INVALID` on mismatch.
+* **STT normalization.** A self-hosted STT response is normalized to the
+  `transcript` representation as defined in **§8.6** (transcript representation,
+  timestamps, language) — this section does not re-define it; see §8.6.1.
+* **No shipped defaults.** dir2mcp ships **no per-deployment default and no
+  built-in self-hosted profile** — there is no canonical self-hosted `base_url` to
+  guess. The operator MUST declare the self-hosted profile explicitly in config
+  (§16.2).
+
+### 8.6 Media transcription, translation, and subtitle surface
+
+> **Status: Planned.** This section defines the normative contract for the media
+> surface that absorbs the retired `livevtt archive_transcriber` (dir2mcp #251).
+> The contract is **domain-general**: it carries **no** language- or
+> broadcaster-specific behavior (no built-in language list, no default target
+> language, no station-specific rules). Implementation lands in follow-up dir2mcp
+> code PRs once this spec change is merged.
+
+This section refines the audio/STT path (§7.4.C) and adds translation and
+subtitle surfaces. All behavior is deterministic so citations and exports are
+stable across re-indexing.
+
+#### 8.6.1 Transcript representation and timing
+
+* A transcript is a `transcript` representation (§5.2), `index_kind=text`,
+  organized into **time-spanned segments** (`time` spans, `start_ms`/`end_ms`,
+  §5.4).
+* **Per-segment timestamps MUST** be stored when the provider returns them.
+* **Per-word timestamps MAY** be stored when available, in the segment span's
+  `extra_json` as a `words` array of `{t, d, w}` (`t` = start ms, `d` = duration
+  ms, `w` = word). Word timing is **metadata only**: it MUST NOT create extra
+  chunks and MUST NOT change the chunk `text`.
+* **No-timestamp fallback.** When a provider returns no timing, the transcript
+  falls back to text-size chunking (§7.4.C) and the segments MUST be flagged
+  `timing: "estimated"` (in `meta_json` and/or span `extra_json`), so consumers
+  know the spans are not provider-authoritative.
+* **Deterministic windowing.** Segment/window boundaries MUST be deterministic so
+  `time`-span citations are stable across re-indexing (consistent with §8.1.7
+  windowing).
+
+#### 8.6.2 Language: detection and optional translation
+
+* **Source language is AUTO-DETECTED by default**; an operator MAY pin it
+  (`media.language` / per-provider `stt_language`, §16.2).
+* **Translation is OPT-IN and off by default** (`media.translate.enabled: false`).
+* **Target language(s)** are configurable (`media.translate.target_langs`) with
+  **NO default**. Enabling translation with an **empty** target list is
+  `CONFIG_INVALID`.
+* **Transcripts are keyed per language.** A transcript representation is
+  identified per language using a **`TranscriptLangSuffix`** convention (the
+  source-language transcript and each translated transcript are distinct
+  representations of the same document). A translated transcript MUST record its
+  `source_language` plus the **translation provider/model** that produced it
+  (§5.2, §8.6.7).
+
+#### 8.6.3 Subtitle export
+
+* **VTT and SRT MUST always be available** for any transcribed media: they are
+  **derived from the transcript segment spans** (no re-transcription required).
+* **TTML and SMIL are OPTIONAL and off by default**
+  (`media.subtitles.ttml.enabled: false`). Producing them MAY require additional
+  codec/track metadata (e.g. via `ffprobe`); when that metadata is absent the
+  export MUST **fail open** (omit TTML/SMIL, do not fail the request).
+* The **exported language is selectable** (any language for which a transcript
+  exists, §8.6.2). Requesting an export for a language with no transcript is
+  `INVALID_FIELD`.
+
+#### 8.6.4 Sidecar ingestion
+
+* A subtitle **sidecar** (`.vtt`, `.srt`, `.ttml`) sitting next to a media file
+  MUST be ingested **as the transcript** for that media **instead of** running STT
+  — an authored transcript is authoritative over a machine transcription.
+* Sidecar ingestion is **mtime-gated** (§7.6): a sidecar newer than the cached
+  transcript triggers re-ingest; `--force` overrides the gate.
+* **Multiple sidecars** for one media file (e.g. `clip.en.vtt`, `clip.fr.vtt`)
+  produce **per-language transcripts** (§8.6.2 keying).
+
+#### 8.6.5 Variant / multi-rendition selection
+
+* When a corpus contains multiple **renditions of the same media** (e.g. several
+  bitrates/resolutions of one recording), they MUST be **grouped by normalized
+  name** (`media.variants.group: true`).
+* The pipeline transcribes the **canonical/best** rendition **once**
+  (`media.variants.select: best`), **deterministically**, and MUST NOT duplicate
+  chunks or embeddings across renditions of the same logical media.
+
+#### 8.6.6 Output quality gates
+
+* STT, OCR, and translation output MUST pass **degenerate-output checks** before
+  being indexed. Minimum checks:
+  * **empty** output;
+  * **repetition / looping** (the classic STT failure mode);
+  * **low density vs. duration** (far too little text for the media length).
+  * Implementations **SHOULD** additionally flag a **detected language ≠ pinned
+    language** mismatch.
+* A failed gate is a **non-fatal per-document error** (§7.7): the document is
+  marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
+  `OCR_FAILED`, or the new `TRANSLATE_FAILED` (§14.4) — and indexing continues.
+* The checks MUST be **deterministic** (the same output is judged the same way
+  every run).
+
+#### 8.6.7 Representation provenance and re-derivation
+
+* Every **derived** representation (extracted markdown, transcript, translated
+  transcript, annotation) MUST record the **provider + model (+ model version)**
+  that produced it (§5.2).
+* A representation's **derivation identity** is
+  `{capability, provider, model, version, language}`. On load, if the configured
+  derivation identity for a capability differs from the one recorded on a
+  representation, that representation is **stale** and MUST be **re-derived,
+  re-chunked, and re-embedded**. This is the runtime analogue of the
+  embed-identity → reindex rule (§8.1.4), but **scoped to a single
+  representation** rather than the whole index.
+* **Sidecar-sourced transcripts are NOT model-derived** (§8.6.4): they have no
+  STT provider/model derivation identity and MUST NOT be invalidated by an STT
+  model change. (A change to the sidecar file itself still re-ingests via the
+  mtime gate, §8.6.4.)
 
 ---
 
@@ -1315,8 +1593,13 @@ Example tool execution error:
 ### 14.4 Ingestion/extraction
 
 * `EXTRACT_FAILED`
-* `OCR_FAILED`
-* `TRANSCRIBE_FAILED`
+* `OCR_FAILED` — also covers an OCR output **rejected by the degenerate-output
+  quality gate** (§8.6.6), not only a provider/transport failure.
+* `TRANSCRIBE_FAILED` — also covers a transcript output **rejected by the
+  degenerate-output quality gate** (§8.6.6) (empty / repetition / low density),
+  not only a provider/transport failure.
+* `TRANSLATE_FAILED` — translation failed, including a translation output
+  rejected by the degenerate-output quality gate (§8.6.6).
 * `ANNOTATE_FAILED`
 * `FILE_TOO_LARGE`
 * `BINARY_SKIPPED`
@@ -1714,7 +1997,7 @@ through the OCR / transcript cache, never through a direct file read.
         "embed_text": { "type": "string" },
         "embed_code": { "type": "string" },
         "ocr": { "type": "string" },
-        "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+        "stt_provider": { "type": "string", "description": "STT provider name; not a closed enum (any STT-capable provider per §8.2, e.g. mistral|elevenlabs|openai|gemini|self-hosted)." },
         "stt_model": { "type": "string" },
         "chat": { "type": "string" }
       },
@@ -1773,7 +2056,7 @@ through the OCR / transcript cache, never through a direct file read.
   "additionalProperties": false,
   "properties": {
     "rel_path": { "type": "string" },
-    "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+    "stt_provider": { "type": "string", "description": "STT provider name; not a closed enum (any STT-capable provider per §8.2)." },
     "model": { "type": "string" },
     "indexed": { "type": "boolean" },
     "segments": {
@@ -1965,6 +2248,31 @@ model:
     provider: mistral-ocr
     model: mistral-ocr-latest
 
+# Corpus source (§7.8). Default is a local filesystem path (the --dir root).
+# rel_path is stable across schemes so a corpus may relocate local<->nfs<->s3
+# without changing identity. The state dir always stays LOCAL.
+source:
+  kind: local            # local|nfs
+  # kind: s3             # objects under a bucket+prefix
+  # s3:
+  #   bucket: my-corpus-bucket
+  #   prefix: docs/
+  #   region: us-east-1
+  #   endpoint: ""       # optional, for S3-compatible stores
+  #   # credentials resolve per §16.1.1 (env/keychain/file); never persisted.
+
+# Vector index backend (§6). Default is the embedded, zero-infra Tier A.
+# An external store (qdrant|pgvector, Tier C) is OPTIONAL and never required.
+index:
+  backend: memory        # memory (Tier A, default) | disk (Tier B) | qdrant | pgvector (Tier C)
+  # qdrant:              # required only when backend=qdrant
+  #   url: http://127.0.0.1:6333
+  #   api_key: ${QDRANT_API_KEY}   # §16.1.1; never persisted
+  # pgvector:            # required only when backend=pgvector
+  #   dsn: ${PGVECTOR_DSN}         # §16.1.1; never persisted
+  # An unreachable Tier C backend fails preflight with CONFIG_INVALID
+  # (no silent fallback to an embedded tier, §6.3).
+
 rag:
   generate_answer: true
   k_default: 15
@@ -2016,6 +2324,26 @@ stt:
     api_key: ${ELEVENLABS_API_KEY}
     model: scribe_v1
     timestamps: true
+
+# Media transcription/translation/subtitle surface (§8.6; Status: Planned).
+# Domain-general: no built-in language list, no default target language.
+media:
+  # language: ""              # optional pin; omit => auto-detect source language
+  translate:
+    enabled: false            # opt-in; off by default (§8.6.2)
+    target_langs: []          # NO default; enabling with [] is CONFIG_INVALID
+  subtitles:
+    formats: [vtt, srt]       # always available, derived from segment spans (§8.6.3)
+    ttml:
+      enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
+  sidecars:
+    enabled: true             # ingest .vtt/.srt/.ttml next to media as the transcript (§8.6.4)
+  variants:
+    group: true               # group multi-rendition by normalized name (§8.6.5)
+    select: best              # transcribe canonical/best rendition once, deterministically
+  quality_gate:               # degenerate-output checks before indexing (§8.6.6)
+    min_chars_per_minute: 1   # low-density threshold (tune per corpus)
+    max_repetition_ratio: 0.5 # repetition/looping threshold
 
 rerank:
   # Reranking auto-activates when a provider credential is present
@@ -2159,8 +2487,16 @@ security:
 
 ## 19) Non-goals (scope control)
 
-* No external vector DB backends (no Qdrant).
-* No in-place deletions in ANN index (use tombstones + oversampling).
+* External vector stores (Qdrant, pgvector) are **OPTIONAL, never required**: the
+  default is the embedded zero-infra Tier A and a conforming deployment MUST run
+  with no external vector store (§1.2, §6). Requiring an external store is the
+  non-goal — supporting one as an opt-in (Tier C, §6.2) is not.
+* `sqlite-vec` is **rejected**: it is a C extension, incompatible with the pure-Go
+  `modernc.org/sqlite` driver under `CGO_ENABLED=0` (§6.5). No embedded backend
+  may require it.
+* No in-place deletions in the **embedded** ANN index (use tombstones +
+  oversampling, §6.6). A Tier C external store MAY delete natively, but MUST still
+  honor the SQLite tombstone as the source of truth (§6.6).
 * No marketplace inside dir2mcp.
 * No requirement that audio output (TTS) be enabled for core retrieval/inspection workflows.
 * No “agent that executes shell commands” (dir2mcp is retrieval/inspection only).

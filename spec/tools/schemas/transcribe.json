@@ -19,7 +19,7 @@
     "additionalProperties": false,
     "properties": {
       "rel_path": { "type": "string" },
-      "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+      "stt_provider": { "type": "string", "description": "STT provider name; not a closed enum (any STT-capable provider per SPEC §8.2)." },
       "model": { "type": "string" },
       "indexed": { "type": "boolean" },
       "transcribed": { "type": "boolean" },

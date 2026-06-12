@@ -30,7 +30,7 @@
       },
       "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
       "indexing_complete": { "type": "boolean" },
-      "stt_provider": { "type": "string", "enum": ["mistral", "elevenlabs"] },
+      "stt_provider": { "type": "string", "description": "STT provider name; not a closed enum (any STT-capable provider per SPEC §8.2)." },
       "transcript_model": { "type": "string" },
       "transcribed": { "type": "boolean" },
       "transcribed_now": { "type": "boolean" }
