@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.16.0`
+**Current spec version:** `0.17.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -23,7 +23,7 @@ Each implementation declares the spec version(s) it supports. `dirstral-cli` val
 
 | Impl | Supported spec versions | Notes |
 |------|------------------------|-------|
-| `dir2mcp` (Go) | `0.14.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/` as of 2026-06-04. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. The multimodal-embedding arc (`gemini-embedding-2`, §8.1.7) shipped phased + default-off: adapter slice (#224), image ingestion (#225), per-page PDF (#226), audio/video time-window embedding (#227, `0.14.0`), retrieval dedup + result modality (#228), and `open_file` `MEDIA_NO_TEXT` + ask-over-media grounding (#229); docling adapter contract CI (#230). The model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. For `0.15.0` (extractor availability): the docling venv is version-locked and the docling subprocess runs with a sanitized environment (#234) so a present-but-broken docling degrades gracefully; the functional-check + `auto` fallback land in a follow-up code PR. For `0.16.0` (dual-machine + media, #239/#251): the remote-source/backend-tier and media transcription/translation/subtitle surfaces are spec-led and land in follow-up code PRs (gated submodule re-pin); the media surface is **Planned**. Row stays pending until those ship. |
+| `dir2mcp` (Go) | `0.14.x` (pending) | Reference implementation used for spec validation; reviewed against `internal/` as of 2026-06-04. The spec is authoritative — when discrepancies arise, maintainers file a spec-gap issue and decide whether to correct the spec or the implementation. Native Gemini embedding parity (`taskType`, MRL `outputDimensionality`, #222) and native Gemini STT/TTS (#223) shipped. The multimodal-embedding arc (`gemini-embedding-2`, §8.1.7) shipped phased + default-off: adapter slice (#224), image ingestion (#225), per-page PDF (#226), audio/video time-window embedding (#227, `0.14.0`), retrieval dedup + result modality (#228), and `open_file` `MEDIA_NO_TEXT` + ask-over-media grounding (#229); docling adapter contract CI (#230). The model is Public Preview, so this row stays pending until the implementation releases against the GA-verified model. For `0.15.0` (extractor availability): the docling venv is version-locked and the docling subprocess runs with a sanitized environment (#234) so a present-but-broken docling degrades gracefully; the functional-check + `auto` fallback land in a follow-up code PR. For `0.16.0` (dual-machine + media, #239/#251): the remote-source/backend-tier and media transcription/translation/subtitle surfaces are spec-led and land in follow-up code PRs (gated submodule re-pin); the media surface is **Planned**. For `0.17.0` (media clip citations #264 + speaker diarization #266): both are additive media-retrieval contracts (`dir2mcp_open_media_clip` over the existing `avutil.ExtractSegment` seam; optional, off-by-default, provider-dependent diarization carried on transcript spans/meta) and are spec-led, **Planned**, landing in follow-up code PRs. Row stays pending until those ship. |
 | `dirstral-cli` | `0.4.x` | MUST update to `0.7.x` before releasing against spec `0.7.0`. No client code change for `0.6.0`/`0.7.0` (reranking and multi-provider selection are server-side; the wire/result contract is unchanged); the `0.5.0` tool-name rename remains the only wire-visible delta in this range. |
 | `landfall` | TBD | |
 
@@ -43,6 +43,62 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.17.0 — media clip citations + speaker diarization
+
+Two coordinated media-retrieval feature contracts land together to avoid a
+SPEC.md collision: **media clip citations** (dir2mcp #264) and **speaker
+diarization** (dir2mcp #266). Both build on the `0.16.0` media surface (§8.6) and
+are **additive** — `MINOR` bump per the pre-1.0 policy (new optional tool, new
+optional fields, new error codes; no breaking wire/schema change). Both ship
+**Status: Planned**; implementation lands in follow-up dir2mcp code PRs (gated
+submodule re-pin).
+
+**(A) Media clip citations (#264):**
+
+- §13.2 **Recommended extended tools** — adds `dir2mcp_open_media_clip`, the
+  time-media analogue of `dir2mcp_open_file`: given a `chunk_id` (or
+  `rel_path` + `start_ms`/`end_ms`), it extracts the **actual audio/video snippet**
+  for the hit's `time` span (via the existing `avutil.ExtractSegment` seam) and
+  returns it `inline` (base64) or by `reference` (short-lived `uri`).
+- §15.11 **(new) `dir2mcp_open_media_clip`** — full input/output schema; selection
+  rules (chunk-id resolution vs. explicit range); **normative bounds**
+  (`media.clip.max_duration_ms` default 120000, `media.clip.max_bytes` default
+  25 MiB); relationship to `open_file` (text vs. bytes for the same span);
+  optional word-level deep-link refinement (§8.6.1 word spans); exclusion-engine
+  and x402 gating inherited from `open_file`.
+- §14.2 / §14.4 — new error codes `CLIP_TOO_LARGE` (bounds rejection,
+  non-retryable) and `MEDIA_CLIP_FAILED` (extraction failure), distinct from the
+  existing `MEDIA_NO_TEXT` on `open_file`.
+- §16.2 — new `media.clip.{max_duration_ms,max_bytes}` config keys.
+- New machine-readable contract `spec/tools/schemas/open_media_clip.json`;
+  `spec/tools/schemas.md` index updated.
+
+**(B) Speaker diarization (#266, Status: Planned):**
+
+- §8.6.8 **(new) Speaker diarization** — **optional, off by default,
+  provider-dependent** (requires a diarization-capable STT backend, §8.5). Speaker
+  attribution is **metadata only** (does not change chunk `text` or segment
+  boundaries). `media.diarize.enabled` is tri-state (omit ⇒ auto-enable when the
+  backend advertises the capability; `false` ⇒ force off; `true` ⇒ require it,
+  `CONFIG_INVALID` if absent). Speaker ids MUST be stable/deterministic across
+  re-indexing; the diarization provider/model joins the transcript derivation
+  identity (§8.6.7). Sidecar voice markup (WebVTT `<v>`) MAY populate speakers
+  without a model derivation.
+- §5.4 **spans** — `time`-span `extra_json` MAY carry `speaker` (stable id) and
+  optional `speaker_label`; additive (consumers degrade to a flat citation).
+- §5.2 **transcript meta_json** — adds `diarized`, `diarize_provider`,
+  `diarize_model`, and a `speakers` set.
+- §9.2 / §9.3 — a `time` hit `span` MAY surface `speaker`/`speaker_label`; human
+  citations MAY append the speaker (e.g. `[interview.mp4@t=02:13-02:41 › S2]`).
+- §15.2 **`dir2mcp_search`** — adds an optional `speaker` filter (restricts
+  time-spanned transcript hits); `spec/tools/schemas/search.json` updated.
+- §15.1.1 **`Span`** / `spec/tools/schemas/common.json` — the `time` variant gains
+  optional `speaker`/`speaker_label` properties.
+- §16.2 — new `media.diarize` config block.
+
+No breaking wire/schema change; clients that ignore the new optional tool, fields,
+and error codes interoperate unchanged.
 
 ## 0.16.0 — dual-machine corpus/index + media transcription surface
 

@@ -16,7 +16,8 @@
       "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
       "path_prefix": { "type": "string" },
       "file_glob": { "type": "string" },
-      "doc_types": { "type": "array", "items": { "type": "string" } }
+      "doc_types": { "type": "array", "items": { "type": "string" } },
+      "speaker": { "type": "string", "description": "Optional (SPEC §8.6.8): restrict time-spanned transcript hits to this speaker id." }
     },
     "required": ["query"]
   },

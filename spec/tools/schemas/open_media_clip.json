@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.dirstral.com/tools/schemas/open_media_clip.json",
+  "title": "dir2mcp_open_media_clip",
+  "description": "Extract and return the audio/video snippet for a media hit (SPEC §15.11). Time-media analogue of dir2mcp_open_file: returns media bytes for a time span rather than transcript text.",
+  "definitions": {
+    "Span": { "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Span" }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "chunk_id": { "type": "integer", "description": "Hit chunk id; resolved to its source media and time span." },
+      "rel_path": { "type": "string", "minLength": 1 },
+      "start_ms": { "type": "integer", "minimum": 0 },
+      "end_ms": { "type": "integer", "minimum": 0 },
+      "return": { "type": "string", "enum": ["inline", "reference"], "default": "inline" }
+    },
+    "anyOf": [
+      { "required": ["chunk_id"] },
+      { "required": ["rel_path", "start_ms", "end_ms"] }
+    ]
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rel_path": { "type": "string" },
+      "doc_type": { "type": "string" },
+      "span": { "$ref": "#/definitions/Span" },
+      "mime_type": { "type": "string" },
+      "duration_ms": { "type": "integer" },
+      "size_bytes": { "type": "integer" },
+      "return": { "type": "string", "enum": ["inline", "reference"] },
+      "data": { "type": "string", "contentEncoding": "base64", "description": "Present when return=inline: base64 clip bytes." },
+      "uri": { "type": "string", "description": "Present when return=reference: short-lived fetch URI." },
+      "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." }
+    },
+    "required": ["rel_path", "doc_type", "span", "mime_type", "return"]
+  }
+}
