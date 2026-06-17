@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.20.0`  
+**Spec version:** `0.21.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1010,6 +1010,61 @@ later, MUST remain opt-in and additive on top of the alias machinery defined her
 **Retrieval-time de-duplication.** See §9.2: a query MUST NOT return multiple hits
 whose source documents belong to the same duplicate group.
 
+### 7.10 CorpusFS — corpus filesystem abstraction
+
+> **Status: Planned.** This subsection formalizes the **logical contract** that
+> the §7.8 corpus schemes (`local`, `nfs`, `s3`) implement, so discovery and media
+> byte-reads work against any backing store without callers caring which one is in
+> use. It is **domain-general** and **implementation-agnostic**: it names
+> *capabilities*, not Go types or wire calls. Implementation lands in a follow-up
+> dir2mcp code PR (dir2mcp #242) once this spec change is merged.
+
+§7.8 defines *which* corpus locations exist; **CorpusFS** defines the small,
+backend-neutral surface every such location MUST present. A conforming corpus
+source is anything that can satisfy the three capabilities below; the §7.8 schemes
+are the reference bindings (`local`/`nfs` ⇒ filesystem, `s3` ⇒ object store), and
+adding a new backing store is adding a new CorpusFS binding, **not** a change to
+any caller.
+
+**Capabilities (normative).** A CorpusFS MUST provide exactly these three:
+
+* **list** — enumerate the documents under the corpus root. Each entry MUST carry
+  enough metadata to drive incremental indexing (§7.6, §7.8) without opening the
+  body: a `rel_path` (§7.8 stable-`rel_path` rule), a `size`, a modification
+  signal, and the backend's **cheap change signal** — `(size, mtime)` for
+  `local`/`nfs`, the object **ETag** (plus `size`/`last_modified`) for `s3` (§7.8).
+  Enumeration obeys the discovery, symlink, and ignore rules of §7.1 for
+  filesystem schemes and the flat object-listing model for `s3` (§7.8).
+* **stat** — return the same metadata as a `list` entry for a single `rel_path`,
+  so a caller can refresh one document's change signal without a full
+  re-enumeration. `stat` of a missing `rel_path` MUST be distinguishable from an
+  error (it drives the deletion → tombstone path, §7.8).
+* **open / range-read** — open a document's bytes for reading and support
+  **random-access range reads** (read *N* bytes at offset *O*) — not only a
+  whole-file stream. Range reads are required so media windowing (§8.1.7), PDF
+  per-page extraction, and `dir2mcp_open_media_clip` (§15.11) can fetch only the
+  byte ranges they need; on `s3` a range read maps to a ranged `GET`, on
+  `local`/`nfs` to a positioned file read. `content_hash` (§7.6) is computed over
+  the **bytes returned by open**, identically across backends, so document
+  identity is backend-independent (§7.8 relocation invariant).
+
+**Invariants.**
+
+* **Identity is backend-independent.** The `rel_path` set, `content_hash`, and
+  therefore document/representation/chunk identity MUST be identical for the same
+  logical corpus regardless of which CorpusFS backs it (§7.8). Relocating a corpus
+  `local ⇄ nfs ⇄ s3` MUST NOT, by itself, force a reindex.
+* **Root/prefix isolation applies to every capability.** A `list`, `stat`, or
+  `open` for a `rel_path` (or object key) that resolves outside the configured
+  root/prefix MUST be rejected (`PATH_OUTSIDE_ROOT`, §17), on every backend.
+* **State stays local.** A CorpusFS exposes the corpus **content** only; it is
+  never the home of the state directory (SQLite metadata, the embedded index,
+  caches), which is always local (§1.2, §7.8). A CorpusFS is **read-only** with
+  respect to dir2mcp — the pipeline never writes corpus content back through it.
+* **Selection.** The active CorpusFS is chosen by `source.kind` (§7.8, §16.2);
+  `local` is the default. No new config surface is introduced by this
+  subsection — `source:` (§16.2) already declares the backing store.
+
 ---
 
 ## 8) Model/provider utilization requirements
@@ -1552,6 +1607,125 @@ languages in one document**.
   manifest can only avoid redundant work, never suppress required re-derivation).
 * **Determinism.** Asset processing order within a pass MUST be deterministic so
   manifests and progress are reproducible across runs of an unchanged corpus.
+
+### 8.7 Distributed embedding (coordinator + workers)
+
+> **Status: Planned.** This subsection defines the **optional** contract for
+> embedding a corpus with **multiple workers on separate machines** (e.g. a pool
+> of GPU hosts) instead of the single in-process embedding loop. It is
+> **off by default** and **additive**: a conforming deployment still runs the
+> whole pipeline in **one binary on one machine** with no broker (§1.2,
+> local-first single-binary default). It is **implementation-agnostic** — it names
+> a job-queue *contract*, not a specific broker. Implementation lands in follow-up
+> dir2mcp code PRs (dir2mcp #248 distributed workers, dir2mcp #249 standalone
+> embed-worker mode) once this spec change is merged.
+
+By default, embedding runs **in-process**: the same binary that discovers,
+chunks, stores, and serves also embeds pending chunks (the chunk-level
+`embedding_status` machinery of §5.3/§7.6). The distributed mode **separates the
+control plane from the embedding compute** so embedding can scale across hosts; it
+changes **where embedding happens**, not **what is persisted** — the store shape
+(§5), embed identity (§8.1.4), and retrieval contract (§9) are unchanged.
+
+#### 8.7.1 Roles
+
+* **Coordinator (control plane).** Exactly one logical coordinator per corpus does
+  discovery (§7.1, §7.8), representation generation (§7.4), chunking (§7.5), store
+  ownership (§5), MCP serving (§10), and retrieval (§9). It **enqueues** embedding
+  jobs for chunks whose `embedding_status` is `pending` (§5.3) and records results
+  written back to the store. The coordinator owns the **local** state directory
+  (§1.2) — SQLite metadata and, for the embedded tiers, the vector index.
+* **Embed-worker (compute plane).** Zero or more stateless workers (e.g. on GPU
+  hosts) **pull** jobs, read the referenced corpus bytes, call the configured
+  **embed** provider (§8.1, typically a co-located self-hosted endpoint, §8.5),
+  and **write the resulting vectors and chunk status back to the shared store**. A
+  worker does **no** discovery, chunking, MCP serving, or retrieval. A standalone
+  worker run mode (dir2mcp #249) is exactly this role with no serving
+  responsibilities.
+
+The single-binary default is the **degenerate case** of this contract: one process
+plays both roles with an in-process queue and no external broker. Enabling the
+distributed mode MUST NOT change results versus the in-process default for the
+same corpus and embed identity.
+
+#### 8.7.2 Job description
+
+An embedding job MUST identify its work precisely enough that any worker can
+execute it without coordinator-relayed payload bytes:
+
+* a **corpus reference** — which corpus/`corpus_id` (§5.5) and the `source`
+  binding (§7.8) needed to read bytes via CorpusFS (§7.10);
+* a **chunk identity** — the `chunk_id` (§5.3, the ANN label) and the
+  `index_kind` (`text|code`, §6.1) so the worker writes to the correct axis;
+* a **payload identity** — the chunk's `text_hash` (§5.3) for text chunks, or, for
+  a media chunk (§8.1.7), the `rel_path`/media ref plus the chunk's span
+  (§5.4 `page`/`time`/`region`) so the worker can fetch and window the exact media
+  bytes via CorpusFS range reads (§7.10);
+* the **embed identity** (§8.1.4) the job was enqueued under
+  (`provider | text_model | code_model | text_dim | code_dim | multimodal`), so a
+  worker can **reject** a job whose embed identity does not match its configured
+  provider rather than silently writing vectors from the wrong space.
+
+A worker reads corpus bytes **directly from the source** via CorpusFS (§7.10) —
+never relayed through the coordinator — so a remote (`s3`/`nfs`) corpus and a
+worker pool can share the same bytes without the coordinator becoming a data-plane
+bottleneck.
+
+#### 8.7.3 Idempotency, ordering, and identity
+
+* **Idempotent writes.** A job MUST be safe to execute **more than once** (at-least-
+  once delivery is assumed). Writing a vector is keyed by `chunk_id` (§6.1), so a
+  re-delivered or duplicated job overwrites the same vector and sets the same
+  terminal `embedding_status` — re-running a completed job is a no-op, never a
+  duplicate vector. A worker MUST NOT assume exactly-once delivery.
+* **No global ordering requirement.** Embedding jobs are **independent**; workers
+  MAY drain them in any order and in parallel. Retrieval already operates on a
+  partial index (§1.2), so chunks becoming searchable in arbitrary order is
+  acceptable. The only ordering constraint is causal: a chunk MUST exist in the
+  store (enqueued by the coordinator) before a job for it can be claimed.
+* **Embed identity is enforced per job.** The embed identity (§8.1.4) is part of
+  the job (§8.7.2). A worker whose configured embed provider/model/dim/multimodal
+  does not match the job's embed identity MUST fail the job (returning it for
+  redelivery or dead-lettering) rather than write a vector — this preserves the
+  corpus-lifetime single-space invariant (§6.4, §8.1.4) across a heterogeneous
+  worker pool.
+* **Failure handling.** A job failure is **non-fatal** to the corpus: the chunk's
+  `embedding_status` records `error` (§5.3) and the job MAY be retried (broker
+  redelivery) up to an implementation-defined limit, after which it is dead-
+  lettered and surfaced as a per-document/per-chunk error (§7.7), exactly as an
+  in-process embedding failure is today. A stuck/abandoned in-flight job MUST
+  become re-claimable (visibility timeout / lease expiry) so a crashed worker does
+  not strand a chunk in `pending` forever.
+* **Tombstone safety.** A job for a `chunk_id` that has since been tombstoned
+  (`deleted=1`, §6.6) MUST NOT resurrect it: the write either is skipped or is
+  harmless because retrieval honors the tombstone (§6.6) regardless of vector
+  presence.
+
+#### 8.7.4 Shared store and broker
+
+* **Shared vector store.** Workers and coordinator MUST write to a **shared**
+  vector home. The embedded tiers (Tier A/B, §6.2) are **single-node** and are
+  therefore **not** a shared store across machines; a distributed worker pool
+  REQUIRES an external store reachable by all participants — a **Tier C** backend
+  (`qdrant`/`pgvector`, §6.2/§6.3) addressed by the `corpus_id`-derived
+  collection/namespace. This is the one configuration where Tier C stops being
+  merely optional and becomes a **prerequisite of the distributed mode** — the
+  embedded default remains correct for the single-machine case (§1.2). Chunk
+  metadata/status (§5.3) likewise lives in a store reachable by all workers.
+* **Broker is implementation-defined.** The transport that carries jobs
+  (coordinator → workers) is **not** specified here — any queue/broker providing
+  at-least-once delivery, a redelivery/visibility mechanism, and a dead-letter
+  path satisfies §8.7.3 (e.g. NATS, Redis, SQS). The in-process default needs no
+  broker. Broker connection parameters and credentials follow §16.1.1 (resolved
+  from a secret source, **never persisted** to the config snapshot), consistent
+  with every other provider/store credential.
+* **Capability-driven, off by default.** The distributed mode activates only when
+  a broker/worker topology is configured; with no such config, the pipeline runs
+  the in-process embedding loop unchanged (§1.2). The standalone embed-worker run
+  mode (dir2mcp #249) is the worker role packaged without serving — it joins the
+  pool, pulls jobs, reads corpus bytes via CorpusFS (§7.10), embeds via its
+  configured provider (§8.5), and writes back; it never serves MCP or runs
+  discovery.
 
 ---
 
