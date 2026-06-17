@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.19.0`
+**Current spec version:** `0.20.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -43,6 +43,68 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.20.0 — transcription word-level timing + bilingual subtitle export + batch ergonomics
+
+> **Provisional version.** A second spec PR (dir2mcp #239) may also be open
+> targeting `0.21.0`; the exact version numbers will be reconciled at merge time if
+> the merge ordering differs from the drafting order. The section numbers (§8.6.9–
+> §8.6.11) are stable regardless.
+
+Completes the §8.6 media surface for the `livevtt archive_transcriber` absorption
+(dir2mcp #251) by adding the three downstream contracts that §8.6.1–§8.6.8 left
+open: word-level timestamp normalization/surfacing (#252), bilingual TTML + SMIL
+packaging (#255), and two-phase batch + progress/manifest ergonomics (#260).
+`MINOR` bump per the pre-1.0 policy; **fully additive** and consistent with the
+existing transcript-span (§8.6.1), diarization (§8.6.8), and media-chunk-window
+behavior — every new surface is **optional and off/segment-level by default**, so a
+conforming deployment behaves unchanged.
+
+**New media subsections (all Status: Planned, domain-general — no language/
+broadcaster specifics):**
+
+- §8.6.9 **(new) Word-level timing: capture, normalization, and surfacing**
+  (#252) — refines §8.6.1's per-word rule. Granularity is **recorded** via the
+  `meta_json.words` flag, not assumed; absent ⇒ segment-only, graceful-degrade.
+  Defines normalization of an OpenAI-compatible / faster-whisper `verbose_json`
+  `words` array (`{word,start,end}` seconds) into the §8.6.1 `{t,d,w}` ms shape
+  (deterministic round-half-up) as a **sibling** parser to the existing Mistral
+  `[mm:ss]` segment path. Reaffirms `words` is metadata-only (no extra chunks, no
+  text/boundary change ⇒ citation-stable). A `time` span MAY OPTIONALLY narrow to
+  word boundaries **within** its segment without adding/dropping hits; citation
+  syntax `[path@t=<start>-<end>]` is **unchanged** (bounds MAY be word-snapped).
+- §8.6.10 **(new) Bilingual subtitle export (TTML + SMIL)** (#255) — refines
+  §8.6.3's optional/off-by-default TTML/SMIL. Per-cue primary + secondary language
+  text aligned to the **same** segment time region, each run `xml:lang`-tagged,
+  both tracing back to the same transcript span. Deterministic cross-language cue
+  alignment within `media.subtitles.ttml.align_tolerance_ms` (default `2500`);
+  unmatched secondary cues are emitted, not dropped. SMIL packaging carries probed
+  track metadata (codec/bitrate/width/height via `ffprobe`/`avutil`) and references
+  the subtitle docs. **Fail-open** on missing metadata (omit SMIL, keep text
+  subtitles). Missing-language export = `INVALID_FIELD`; bilingual requires
+  translation (§8.6.2) or degrades to monolingual. Speaker voice markup per §8.6.8.
+- §8.6.11 **(new) Two-phase batch transcription, progress, and run manifest**
+  (#260) — opt-in two-pass ingest (transcribe-all, then translate/export) that is
+  **observably output-equivalent** to single-pass (ordering/reporting only),
+  independently resumable via existing identity/cache state (§7.6/§8.6.7). Optional
+  **side-channel** progress that never affects output, monotonic against a
+  pass-start total (cache hits count as completed). A **JSONL run manifest** (one
+  record/asset) recording at least `rel_path` + `content_hash`, terminal `status`
+  (+ canonical §14.4 error code), `duration_ms`, processing time, and outputs
+  produced; **advisory for resume** only — live identity/cache/mtime gates win.
+  Deterministic asset ordering. Worker-pool / multi-GPU distribution is out of scope.
+
+**Supporting edits:**
+
+- §8.6.1 — cross-references §8.6.9 for word normalization/surfacing.
+- §8.6.3 — cross-references §8.6.10 for the bilingual TTML/SMIL contract.
+- §9.3 **citation formatting** — transcript bounds MAY be word-snapped (§8.6.9);
+  syntax unchanged.
+- §16.2 **config template** — `media.subtitles.ttml.align_tolerance_ms` (default
+  2500) and a new `media.batch:` block (`two_phase`/`progress`/`manifest`, all
+  off/empty by default).
+- Implementation note: lands in follow-up dir2mcp code PRs (#252/#255/#260) once
+  this spec change is merged (gated submodule re-pin); the surfaces are **Planned**.
 
 ## 0.19.0 — diarization speaker-aligned chunk boundary
 
