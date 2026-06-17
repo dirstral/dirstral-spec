@@ -36,6 +36,16 @@
       "uri": { "type": "string", "description": "Present when return=reference: short-lived fetch URI." },
       "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." }
     },
-    "required": ["rel_path", "doc_type", "span", "mime_type", "return"]
+    "required": ["rel_path", "doc_type", "span", "mime_type", "return"],
+    "allOf": [
+      {
+        "if": { "properties": { "return": { "const": "inline" } }, "required": ["return"] },
+        "then": { "required": ["data"] }
+      },
+      {
+        "if": { "properties": { "return": { "const": "reference" } }, "required": ["return"] },
+        "then": { "required": ["uri", "expires_unix"] }
+      }
+    ]
   }
 }
