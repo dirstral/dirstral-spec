@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.18.0`
+**Current spec version:** `0.19.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -43,6 +43,22 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.19.0 — diarization speaker-aligned chunk boundary
+
+Refines the §8.6.8 speaker-diarization contract (dir2mcp #266) so it is
+internally consistent and implementable. The original wording said diarization
+changes neither chunk `text` nor segment boundaries, but the one-`speaker`-per-
+span model (§5.4/§9.3) cannot hold when the char-budget chunker merges cues
+across speaker turns. `MINOR` bump per the pre-1.0 policy (normative behavior
+refinement on an opt-in, default-off path).
+
+- §8.6.8 — clarifies that diarization is metadata-only for transcript **content**
+  (never edits/reorders/re-times text) but MAY introduce a **chunk boundary at a
+  speaker change** so every emitted chunk carries a single `speaker`. This
+  speaker-aligned split is the **only** boundary effect permitted, applies **only
+  when diarization is active**, and a transcript with no speaker attribution MUST
+  chunk **identically** to the non-diarized path (default-off ⇒ unchanged).
 
 ## 0.18.0 — cross-file dedup & canonicalization
 
