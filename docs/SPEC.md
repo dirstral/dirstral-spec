@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.17.0`  
+**Spec version:** `0.18.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -425,6 +425,11 @@ The exact SQL types may vary; semantics must match.
 * `status` (`ok|skipped|error`)
 * `error` (nullable)
 * `deleted` (boolean; tombstone)
+* `canonical_doc_id` (optional; `0`/self when the document is canonical, otherwise
+  the `doc_id` of the canonical document this row is an **alias** of — §7.9)
+* `is_alias` (optional boolean; `true` for a non-canonical member of a duplicate
+  group — §7.9). Alias rows share the canonical `content_hash` and hold **no**
+  representations, chunks, or embeddings.
 
 ### 5.2 `representations`
 
@@ -949,6 +954,62 @@ local file.
 dir2mcp never writes its index/state back to the remote source. Only the corpus
 *content* is remote.
 
+### 7.9 Cross-file canonicalization (optional)
+
+Real corpora contain **duplicates**: the same logical content present at multiple
+paths (mirrored directories, the same file copied across folders) or in
+byte-identical copies. Indexing every copy bloats the index and returns the same
+content multiple times for one query, degrading answer quality. Cross-file
+canonicalization collapses duplicates to a single **canonical** document while
+keeping the others discoverable as **aliases**. It is **optional and off by
+default**; when disabled, behavior is exactly as before (every file is indexed
+independently).
+
+**Duplicate grouping (exact).** When `dedup.exact: true`, documents that share an
+identical `content_hash` (§7.6) form a **duplicate group**. Grouping is by content
+identity, not by name — it therefore also collapses the same bytes stored under
+different paths.
+
+**Canonical selection.** The pipeline selects exactly one canonical document per
+group **deterministically**, using the same policy vocabulary as media variant
+selection (§8.6.5):
+
+* `dedup.select: best` (default) — prefer the **richest/largest** rendition:
+  highest detected resolution (when applicable), then largest `size_bytes`, then
+  the lexically-lowest `rel_path`.
+* `dedup.select: first` — the lexically-lowest `rel_path`.
+
+The choice MUST NOT depend on enumeration order beyond the stated tiebreaks, so
+re-runs over an unchanged corpus are stable.
+
+**Canonical vs alias behavior.** The pipeline generates representations, chunks,
+and embeddings **only for the canonical** document. Non-canonical members are
+recorded as **aliases** (§5.1 `is_alias`/`canonical_doc_id`): they remain
+discoverable (`list_files`) and resolvable (`open_file` returns their own
+byte-identical content), are **tombstoned** on removal exactly like any document,
+but contribute **no** chunks or embeddings and therefore **no** retrieval hits.
+
+**Canonical removal.** When the canonical document of a group is removed
+(tombstoned, §5.1), an alias of that group MUST be **promoted** to canonical and
+(re-)indexed deterministically by the same selection policy, so the group's
+content does not silently disappear from retrieval.
+
+**Relationship to media variants (§8.6.5).** Variant/multi-rendition selection is
+the **media-specific special case** of this rule: it groups by *normalized name*
+and selects the best rendition. `media.variants` and `dedup` share the
+`best|first` canonical-selection vocabulary. When both are configured, variant
+selection applies first (within a logical media's renditions) and cross-file
+dedup then applies across the remaining distinct-content documents.
+
+**Near-duplicates (non-normative, future).** Re-encodes and same-document-in-
+another-format (e.g. PDF + DOCX) have **different bytes** and are therefore *not*
+collapsed by exact grouping. Similarity-based near-duplicate detection (e.g.
+embedding-centroid or MinHash) is **out of scope** for this version and, if added
+later, MUST remain opt-in and additive on top of the alias machinery defined here.
+
+**Retrieval-time de-duplication.** See §9.2: a query MUST NOT return multiple hits
+whose source documents belong to the same duplicate group.
+
 ---
 
 ## 8) Model/provider utilization requirements
@@ -1241,6 +1302,8 @@ stable across re-indexing.
 * The pipeline transcribes the **canonical/best** rendition **once**
   (`media.variants.select: best`), **deterministically**, and MUST NOT duplicate
   chunks or embeddings across renditions of the same logical media.
+* This is the media-specific special case of **cross-file canonicalization**
+  (§7.9); `media.variants` and `dedup` share the `best|first` selection vocabulary.
 
 #### 8.6.6 Output quality gates
 
@@ -1381,6 +1444,27 @@ Each hit includes:
   * `page` (page)
   * `time` (start_ms/end_ms; on a diarized transcript MAY also carry
     `speaker`/`speaker_label`, §8.6.8)
+
+**Cross-file de-duplication.** When `dedup.retrieval: true`, search MUST collapse
+candidate hits whose source documents belong to the same duplicate group (§7.9)
+to a **single** hit — the best-ranked survivor — keeping the canonical document's
+`rel_path` in the surviving hit. This applies whether or not ingest-time
+canonicalization (§7.9) is enabled, so a corpus indexed before dedup was turned on
+still de-duplicates at query time.
+
+* **Ordering.** De-duplication runs after candidate generation/fusion and
+  **before** reranking (§9.1.1) and truncation to `k`, so the *candidate pool*
+  shrinks, not the rerank output. This preserves the §9.1.1 **no-result-loss**
+  guarantee, which is defined relative to the (now de-duplicated) candidate pool:
+  reranking still only reorders and never drops results. Because dedup reduces the
+  pool, a query MAY legitimately return fewer than `k` hits when the corpus does
+  not contain `k` distinct (non-duplicate) results.
+* **Determinism & order preservation.** Collapsing MUST keep the first (best
+  pre-rerank) survivor per group and preserve the relative order of survivors.
+* **Citations.** Citations (§9.3) reference the surviving (canonical) `rel_path`,
+  so an answer never cites two byte-identical sources for the same fact.
+* **Default off.** When `dedup.retrieval` is false (default), search returns the
+  pre-dedup candidate set exactly as before.
 
 ### 9.3 Citation formatting (human-readable)
 

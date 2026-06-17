@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.17.0`
+**Current spec version:** `0.18.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -43,6 +43,40 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.18.0 — cross-file dedup & canonicalization
+
+General corpus hygiene (dir2mcp #265): real corpora contain duplicates — the same
+content at multiple paths, mirrored directories, byte-identical copies — and
+indexing every copy bloats the index and returns the same content multiple times
+per query. This release adds an **optional, off-by-default** cross-file
+canonicalization surface. `MINOR` bump per the pre-1.0 policy; fully additive
+(default-off ⇒ behavior unchanged).
+
+**New surface:**
+
+- §7.9 **Cross-file canonicalization (optional)** (new) — `dedup.exact: true`
+  groups documents by identical `content_hash` (§7.6) into a **duplicate group**,
+  selects one **canonical** document deterministically (`dedup.select: best|first`,
+  sharing the media-variant selection vocabulary, §8.6.5), and generates
+  representations/chunks/embeddings **only for the canonical**. Non-canonical
+  members become **aliases** (discoverable + resolvable, but zero chunks/hits).
+  Canonical removal **promotes** an alias. Near-duplicate (similarity) detection is
+  explicitly **out of scope / future** and, if added, MUST stay opt-in.
+- §9.2 **Cross-file de-duplication at retrieval** (addendum) — `dedup.retrieval:
+  true` collapses candidate hits whose documents share a duplicate group to a
+  single best-ranked survivor, **before** reranking and truncation to `k`. The
+  candidate *pool* shrinks, not the rerank output, so the §9.1.1 **no-result-loss**
+  guarantee is preserved (defined relative to the de-duplicated pool); a query MAY
+  therefore return fewer than `k` hits when the corpus lacks `k` distinct results.
+  Works whether or not ingest-time canonicalization is enabled.
+- §5.1 `documents` (addendum) — optional `canonical_doc_id` / `is_alias` columns;
+  alias rows share the canonical `content_hash` and hold no representations.
+- §8.6.5 (addendum) — media variant selection is documented as the media-specific
+  special case of §7.9, sharing the `best|first` selection vocabulary.
+
+**Config (additive, default-off):** `dedup.exact` (bool), `dedup.select`
+(`best|first`), `dedup.retrieval` (bool).
 
 ## 0.17.0 — media clip citations + speaker diarization
 
