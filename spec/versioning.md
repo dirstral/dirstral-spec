@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.20.0`
+**Current spec version:** `0.21.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -44,12 +44,77 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
 
-## 0.20.0 — transcription word-level timing + bilingual subtitle export + batch ergonomics
+## 0.21.0 — CorpusFS abstraction + distributed embedding (coordinator + workers)
 
-> **Provisional version.** A second spec PR (dir2mcp #239) may also be open
-> targeting `0.21.0`; the exact version numbers will be reconciled at merge time if
-> the merge ordering differs from the drafting order. The section numbers (§8.6.9–
-> §8.6.11) are stable regardless.
+Completes the distributed-ingest governance gate (dir2mcp #239) by adding the two
+contracts the `0.16.0` dual-machine surface (§6, §7.8, §8.5) did not yet pin: the
+**CorpusFS** corpus-filesystem abstraction (dir2mcp #242) and the **distributed
+embedding** coordinator/worker job-queue contract (dir2mcp #248 distributed
+workers, dir2mcp #249 standalone embed-worker mode). `MINOR` bump per the pre-1.0
+policy; fully **additive** and **off by default** — the local-first single-binary
+deployment (§1.2) runs the in-process embedding loop with no broker and no
+external store, exactly as before.
+
+**New surface:**
+
+- §7.10 **(new) CorpusFS — corpus filesystem abstraction** — formalizes the
+  backend-neutral **logical contract** that the §7.8 schemes (`local`/`nfs`/`s3`)
+  implement, so discovery and media byte-reads work against any backing store
+  without callers caring. Three capabilities: **list** (enumerate with `rel_path`
+  + size + the backend's cheap change signal — `(size,mtime)` for fs, **ETag** for
+  s3, §7.8), **stat** (single-`rel_path` metadata; a missing path is
+  distinguishable from an error → drives the deletion/tombstone path), and
+  **open / range-read** (random-access ranged reads, required for media windowing
+  §8.1.7, per-page PDF, and `open_media_clip` §15.11). Invariants:
+  backend-independent identity (`rel_path`/`content_hash` identical across schemes
+  ⇒ `local⇄nfs⇄s3` relocation forces no reindex, §7.8), `PATH_OUTSIDE_ROOT`
+  isolation on every capability (§17), state-stays-local + read-only-corpus
+  (§1.2). No new config (the §16.2 `source:` block already selects the backing
+  store). **Status: Planned.**
+- §8.7 **(new) Distributed embedding (coordinator + workers)** — **optional,
+  off-by-default** contract for embedding a corpus with multiple workers on
+  separate machines (GPU pool) instead of the in-process loop; the single-binary
+  default is the degenerate one-process case (§1.2). (8.7.1) **roles** —
+  coordinator owns discovery/chunking/store/serve/retrieval + enqueues `pending`
+  chunks (§5.3); stateless **embed-workers** pull jobs, read corpus bytes directly
+  via CorpusFS (§7.10), embed via the configured provider (typically a co-located
+  self-hosted endpoint §8.5), and write vectors + status back to the **shared**
+  store. (8.7.2) **job description** — corpus ref (`corpus_id` + `source`), chunk
+  identity (`chunk_id` + `index_kind`), payload identity (`text_hash`, or
+  media `rel_path`+span for §8.1.7 media chunks), and the **embed identity**
+  (§8.1.4) the job was enqueued under; workers read bytes directly from source
+  (not relayed). (8.7.3) **idempotency/ordering** — at-least-once delivery,
+  idempotent `chunk_id`-keyed writes (re-run = no-op, no duplicate vectors), no
+  global ordering (partial-index retrieval, §1.2), per-job embed-identity
+  enforcement (mismatch ⇒ fail, never mix spaces, §6.4), non-fatal failures with
+  redelivery/dead-letter + lease expiry for crashed workers, tombstone safety
+  (§6.6). (8.7.4) **shared store + broker** — a distributed pool REQUIRES a
+  **Tier C** external store (§6.2/§6.3) reachable by all participants (the
+  embedded Tier A/B are single-node); the broker is implementation-defined
+  (NATS/Redis/SQS — any at-least-once + redelivery + dead-letter), credentials per
+  §16.1.1 (never persisted); capability-driven + off by default; the standalone
+  embed-worker run mode (dir2mcp #249) is the worker role without serving.
+  **Status: Planned.**
+
+**No change to:** the persisted store shape (§5), embed identity (§8.1.4),
+retrieval/answer contract (§9), the MCP tool surface (§12–§15), the error taxonomy
+(§14), or the §8.1.2 capability matrix. No new tool, error code, span kind, or
+wire-contract change; the distributed mode changes **where** embedding runs, not
+**what** is persisted. The existing `0.16.0` remote-source (§7.8), backend-tier
+(§6), and self-hosted-endpoint (§8.5) contracts are referenced, not modified.
+
+**Config:** no new keys. CorpusFS is selected by the existing §16.2 `source:`
+block; the distributed mode reuses the existing Tier C `index:` connection (§16.2)
+and adds only implementation-defined broker connection parameters (resolved per
+§16.1.1, never persisted), out of scope for the normative template.
+
+**Implementation note:** lands in follow-up dir2mcp code PRs once this spec change
+is merged (gated submodule re-pin): CorpusFS local+S3 (#242), distributed workers
+via job queue (#248), and the standalone embed-worker CLI mode (#249). These build
+on the already-merged corpus-source config (#244) and self-hosted endpoints (#240)
+under the same epic (#250).
+
+## 0.20.0 — transcription word-level timing + bilingual subtitle export + batch ergonomics
 
 Completes the §8.6 media surface for the `livevtt archive_transcriber` absorption
 (dir2mcp #251) by adding the three downstream contracts that §8.6.1–§8.6.8 left
