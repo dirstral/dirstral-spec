@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.18.0`  
+**Spec version:** `0.19.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1348,8 +1348,14 @@ stable across re-indexing.
 > dir2mcp code PR once this spec change is merged.
 
 Diarization attributes each transcript segment to a **speaker**. It refines the
-transcript representation (§8.6.1) without changing chunk `text` or segment
-boundaries — speaker attribution is **metadata only**.
+transcript representation (§8.6.1) **without changing chunk `text`** — speaker
+attribution is **metadata only**: it never edits, reorders, or re-times
+transcript content. An implementation MAY, however, introduce a **chunk boundary
+at a speaker change** so that every emitted chunk carries a single `speaker` (the
+one-`speaker`-per-span model of §5.4/§9.3); this speaker-aligned split is the
+only boundary effect diarization may have, and it applies **only when diarization
+is active**. A transcript with no speaker attribution MUST chunk **identically**
+to the non-diarized path.
 
 * **Off by default; opt-in.** Diarization is enabled via
   `media.diarize.enabled: true` (§16.2). When disabled (the default), transcripts
