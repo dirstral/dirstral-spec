@@ -1,6 +1,6 @@
 # Tool Schemas
 
-**Spec version:** `0.16.0`
+**Spec version:** `0.17.0`
 **MCP protocol target:** `2025-11-25`
 
 This document defines the canonical input/output schemas for all dir2mcp MCP tools.
@@ -18,6 +18,7 @@ JSON Schema contract documents live in `spec/tools/schemas/*.json`.
 | `dir2mcp_transcribe` | stable |
 | `dir2mcp_annotate` | stable |
 | `dir2mcp_transcribe_and_ask` | stable |
+| `dir2mcp_open_media_clip` | planned |
 | `dir2mcp_ask_audio` | stable |
 
 > **Note:** JSON Schema files for each tool are tracked in `spec/tools/schemas/` and are the authoritative machine-readable contracts. This markdown is an index only.
@@ -34,6 +35,7 @@ JSON Schema contract documents live in `spec/tools/schemas/*.json`.
 | `dir2mcp_transcribe` | [`schemas/transcribe.json`](schemas/transcribe.json) |
 | `dir2mcp_annotate` | [`schemas/annotate.json`](schemas/annotate.json) |
 | `dir2mcp_transcribe_and_ask` | [`schemas/transcribe_and_ask.json`](schemas/transcribe_and_ask.json) |
+| `dir2mcp_open_media_clip` | [`schemas/open_media_clip.json`](schemas/open_media_clip.json) |
 | `dir2mcp_ask_audio` | [`schemas/ask_audio.json`](schemas/ask_audio.json) |
 
 ## Schema authoring rules

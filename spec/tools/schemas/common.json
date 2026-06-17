@@ -19,7 +19,13 @@
         },
         {
           "additionalProperties": false,
-          "properties": { "kind": { "const": "time" }, "start_ms": { "type": "integer" }, "end_ms": { "type": "integer" } },
+          "properties": {
+            "kind": { "const": "time" },
+            "start_ms": { "type": "integer" },
+            "end_ms": { "type": "integer" },
+            "speaker": { "type": "string", "description": "Optional (SPEC §8.6.8): stable per-transcript speaker id on a diarized transcript." },
+            "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (SPEC §8.6.8)." }
+          },
           "required": ["kind", "start_ms", "end_ms"]
         },
         {

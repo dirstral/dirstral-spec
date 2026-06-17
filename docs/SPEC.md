@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.16.0`  
+**Spec version:** `0.17.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -462,6 +462,18 @@ A **translated** transcript additionally records:
 * `translate_provider`: the translation provider.
 * `translate_model`: the translation model.
 
+A **diarized** transcript (§8.6.8) additionally records:
+
+* `diarized`: boolean — whether speaker attribution is present on the transcript.
+* `diarize_provider`: optional — the diarization-capable provider/backend that
+  produced the speaker attribution (e.g. a WhisperX / pyannote-backed STT
+  endpoint, §8.6.8). Part of the derivation identity (§8.6.7).
+* `diarize_model`: optional — the diarization model/pipeline version.
+* `speakers`: optional — an array of the distinct speaker identifiers present in
+  the transcript (e.g. `["S1", "S2"]`), each optionally paired with a
+  human-readable `label`. The per-segment attribution lives on the segment span's
+  `extra_json.speaker` (§5.4).
+
 ### 5.3 `chunks`
 
 * `chunk_id` (PK; integer; used as ANN label)
@@ -482,6 +494,14 @@ A **translated** transcript additionally records:
 * `start` (integer)  # start_line / page / start_ms / page (region)
 * `end` (integer)    # end_line / page / end_ms / page (region)
 * `extra_json` (nullable)  # speaker, confidence, section breadcrumb, bbox, etc.
+
+For `time` spans on a **diarized** transcript (§8.6.8), `extra_json` MAY carry a
+`speaker` field — a stable per-transcript speaker identifier (e.g. `"S1"`,
+`"S2"`) — and MAY carry a human-readable `speaker_label` when one is known. The
+`speaker` field is **optional and additive**: consumers that do not recognize it
+MUST treat the span as un-attributed (degrade to a flat transcript citation).
+Diarization is **off by default** and **provider-dependent** (§8.6.8); a
+non-diarized transcript carries no `speaker` field.
 
 The `region` span kind localizes a chunk to a rectangular area on a page.
 For `region` spans, `start` and `end` carry the first and last page the
@@ -1254,6 +1274,67 @@ stable across re-indexing.
   model change. (A change to the sidecar file itself still re-ingests via the
   mtime gate, §8.6.4.)
 
+#### 8.6.8 Speaker diarization (optional)
+
+> **Status: Planned.** This subsection defines an **optional** contract for
+> **speaker-attributed transcripts** (dir2mcp #266). It is **OFF by default** and
+> **provider-dependent**: speaker attribution requires a **diarization-capable
+> STT backend** (e.g. a self-hosted WhisperX / pyannote-backed endpoint, §8.5).
+> The contract is **domain-general** — no built-in speaker roster, no
+> language- or broadcaster-specific behavior. Implementation lands in a follow-up
+> dir2mcp code PR once this spec change is merged.
+
+Diarization attributes each transcript segment to a **speaker**. It refines the
+transcript representation (§8.6.1) without changing chunk `text` or segment
+boundaries — speaker attribution is **metadata only**.
+
+* **Off by default; opt-in.** Diarization is enabled via
+  `media.diarize.enabled: true` (§16.2). When disabled (the default), transcripts
+  carry no speaker attribution and behave exactly as today.
+* **Provider-dependent (capability-gated).** Diarization requires a
+  diarization-capable STT backend. If `media.diarize.enabled: true` but no
+  configured STT provider advertises the diarization capability, startup MUST fail
+  `CONFIG_INVALID` with remediation (no silent partial behavior). Consistent with
+  capability-driven activation, an implementation MAY additionally **auto-enable**
+  diarization when the active STT backend advertises the capability *and* the
+  operator has not set `media.diarize.enabled: false`; the tri-state opt-out
+  (`false`) always forces it off.
+* **Storage.** Per-segment speaker attribution is stored on the segment `time`
+  span's `extra_json.speaker` (a stable per-transcript identifier, e.g. `"S1"`),
+  with an optional human-readable `extra_json.speaker_label` (§5.4). The
+  transcript representation records `diarized: true`, the
+  `diarize_provider`/`diarize_model`, and the distinct `speakers` set in its
+  `meta_json` (§5.2).
+* **Stable, deterministic identifiers.** Speaker identifiers MUST be **stable and
+  deterministic across re-indexing** of the same media with the same diarization
+  identity, so `speaker`-scoped citations and filters are reproducible. Mapping a
+  raw diarization label to a friendly name (`speaker_label`) is optional and MUST
+  NOT change the underlying `speaker` identifier.
+* **Sidecar speakers.** A subtitle sidecar (§8.6.4) that carries voice/speaker
+  markup (e.g. WebVTT `<v Speaker>` cues) MAY populate `speaker`/`speaker_label`
+  directly; such a transcript is **not** model-derived for diarization (no
+  `diarize_provider`/`diarize_model`), mirroring §8.6.7.
+* **Derivation identity.** When diarization is active, the diarization
+  provider/model is part of the transcript's derivation identity (§8.6.7): a
+  change to the diarization backend invalidates and re-derives the transcript like
+  any other capability change.
+* **Retrieval and citation surface.** Speaker is **additive** at retrieval time:
+  * `dir2mcp_search` MAY accept an optional `speaker` filter (§15.2) that
+    restricts time-spanned transcript hits to segments attributed to that speaker;
+    a corpus without diarized transcripts simply returns no speaker-filtered hits.
+  * A hit `span` of kind `time` MAY surface `speaker`/`speaker_label` (§9.2), and
+    human-readable transcript citations MAY append the speaker, e.g.
+    `[interview.mp4@t=02:13-02:41 › S2]` (§9.3). The base citation form is
+    unchanged when no speaker is present.
+* **Export.** Subtitle export (§8.6.3) MAY carry speaker as voice markup when the
+  target format supports it (WebVTT `<v>`, TTML voice); formats that cannot
+  represent it omit it (fail open, never fail the export).
+* **Degenerate output.** Diarization that yields a single speaker for clearly
+  multi-speaker audio, or an implausible speaker count, MAY be flagged by the
+  output quality gate (§8.6.6) but MUST NOT fail the transcript: a
+  diarization-quality concern degrades to a flat (un-attributed) transcript rather
+  than `TRANSCRIBE_FAILED`.
+
 ---
 
 ## 9) Retrieval and answer generation
@@ -1298,7 +1379,8 @@ Each hit includes:
 
   * `lines` (start_line/end_line)
   * `page` (page)
-  * `time` (start_ms/end_ms)
+  * `time` (start_ms/end_ms; on a diarized transcript MAY also carry
+    `speaker`/`speaker_label`, §8.6.8)
 
 ### 9.3 Citation formatting (human-readable)
 
@@ -1311,7 +1393,10 @@ Within answers, citations must be rendered as:
   (`start_page != end_page`) render the range `[path#p=<start_page>-<end_page>]`.
   Optionally suffix with the section breadcrumb when present, e.g.
   `[report.pdf#p=3 › Results › 3.1 Revenue]`
-* transcript: `[path@t=<start>-<end>]` where `<start>/<end>` are `mm:ss` or `ms`
+* transcript: `[path@t=<start>-<end>]` where `<start>/<end>` are `mm:ss` or `ms`.
+  On a diarized transcript (§8.6.8) the speaker MAY be appended, e.g.
+  `[interview.mp4@t=02:13-02:41 › S2]`; the base form is used when no speaker is
+  present.
 
 ### 9.4 RAG generation
 
@@ -1554,6 +1639,7 @@ Example tool execution error:
 * `dir2mcp_transcribe` (audio → transcript, uses configured provider)
 * `dir2mcp_annotate` (document → structured JSON + flattened text)
 * `dir2mcp_transcribe_and_ask` (audio → transcript → ask)
+* `dir2mcp_open_media_clip` (media hit → extracted audio/video snippet for a time span; §15.11)
 
 ### 13.3 Optional extension
 
@@ -1576,6 +1662,9 @@ Example tool execution error:
 * `MISSING_FIELD`
 * `INVALID_FIELD`
 * `INVALID_RANGE`
+* `CLIP_TOO_LARGE` (returned by `dir2mcp_open_media_clip` when the requested time
+  span exceeds the configured maximum clip duration/size bound (§15.11);
+  **non-retryable** — the caller must request a shorter span)
 * `FORBIDDEN` (path/content blocked by policy)
 * `PATH_OUTSIDE_ROOT`
 * `FILE_NOT_FOUND`
@@ -1600,6 +1689,11 @@ Example tool execution error:
   not only a provider/transport failure.
 * `TRANSLATE_FAILED` — translation failed, including a translation output
   rejected by the degenerate-output quality gate (§8.6.6).
+* `MEDIA_CLIP_FAILED` — clip extraction failed (returned by
+  `dir2mcp_open_media_clip`, §15.11): the underlying media is unreadable, the
+  extraction tool (e.g. `ffmpeg`) is unavailable, or the segment extraction
+  errored. Distinct from `CLIP_TOO_LARGE` (a bounds rejection) and
+  `MEDIA_NO_TEXT` (a missing-text condition on `open_file`).
 * `ANNOTATE_FAILED`
 * `FILE_TOO_LARGE`
 * `BINARY_SKIPPED`
@@ -1643,7 +1737,13 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
     },
     {
       "additionalProperties": false,
-      "properties": { "kind": { "const": "time" }, "start_ms": { "type": "integer" }, "end_ms": { "type": "integer" } },
+      "properties": {
+        "kind": { "const": "time" },
+        "start_ms": { "type": "integer" },
+        "end_ms": { "type": "integer" },
+        "speaker": { "type": "string", "description": "Optional (§8.6.8): stable per-transcript speaker id on a diarized transcript." },
+        "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (§8.6.8)." }
+      },
       "required": ["kind", "start_ms", "end_ms"]
     },
     {
@@ -1730,7 +1830,8 @@ timed slice.
     "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
     "path_prefix": { "type": "string" },
     "file_glob": { "type": "string" },
-    "doc_types": { "type": "array", "items": { "type": "string" } }
+    "doc_types": { "type": "array", "items": { "type": "string" } },
+    "speaker": { "type": "string", "description": "Optional (§8.6.8): restrict time-spanned transcript hits to this speaker id. A corpus without diarized transcripts returns no speaker-filtered hits." }
   },
   "required": ["query"]
 }
@@ -2173,6 +2274,115 @@ Tool result `content[]` must include:
 
 ---
 
+### 15.11 `dir2mcp_open_media_clip` (recommended)
+
+> **Status: Planned.** Returns the **actual audio/video snippet** for a media
+> search/ask hit (dir2mcp #264), rather than only a `path@t=...` citation. It is
+> the time-media analogue of `dir2mcp_open_file`: where `open_file` returns the
+> **transcript text** for a `time` span, `open_media_clip` returns the **extracted
+> media bytes** for that span. It is **additive** and lands in a follow-up dir2mcp
+> code PR.
+
+**Description:** extract and return the media snippet for a transcript/media hit,
+identified either by `chunk_id` (resolved to its source media + `time` span) or
+by an explicit `rel_path` + `start_ms`/`end_ms` range.
+
+**Relationship to `dir2mcp_open_file`.** `open_file` with `start_ms/end_ms` on an
+audio document returns the **transcript excerpt** (text). `open_media_clip`
+returns the **media bytes** for the same span. Callers verifying *what was said*
+use `open_file`; callers that need a *playable snippet* use `open_media_clip`. The
+two share span semantics (`time`, §5.4) so a single hit can be cited, read as
+text, and played.
+
+**Selection rules:**
+
+* If `chunk_id` is provided, the server resolves it to its source media
+  (`rel_path` / media ref) and the chunk's `time` span. An explicit
+  `start_ms`/`end_ms` provided alongside `chunk_id` overrides the chunk's span
+  (still bounded to the same source media).
+* Else `rel_path` plus `start_ms`/`end_ms` MUST be provided.
+* The target document MUST be audio/video; a non-media `rel_path` returns
+  `DOC_TYPE_UNSUPPORTED`. A missing source returns `FILE_NOT_FOUND`. A
+  `start_ms >= end_ms` (or out-of-bounds) range returns `INVALID_RANGE`.
+
+**Bounds (normative).** Implementations MUST enforce a **maximum clip duration**
+(`media.clip.max_duration_ms`, default 120000 = 2 min) and a **maximum clip byte
+size** (`media.clip.max_bytes`, default 25 MiB), §16.2. A request whose span
+exceeds the duration bound, or whose extraction would exceed the byte bound,
+returns the **non-retryable** `CLIP_TOO_LARGE`; the caller must request a shorter
+span. Extraction failures (unreadable media, missing `ffmpeg`) return
+`MEDIA_CLIP_FAILED` (§14.4).
+
+**Return shape.** The server returns the clip in **one** of two modes selected by
+`return` (default `inline`):
+
+* `inline` — the clip is returned **base64-encoded** in the structured output
+  (`data` + `mime_type`) and as an `audio`/`video`-typed `content[]` item. Inline
+  return is subject to the byte bound above.
+* `reference` — the clip is materialized to a short-lived, server-managed location
+  and a `uri` (plus `expires_unix`) is returned instead of bytes, for clients that
+  fetch out-of-band. Implementations that do not support `reference` MUST fall
+  back to `inline` (and SHOULD note it), never error solely because `reference`
+  was requested.
+
+The handler MUST NOT emit raw binary bytes through a `text` content item (media
+bytes travel only via `data`/`uri`). Exclusion-engine and x402 gating that apply
+to `open_file` (§15.4, §17) apply equally to `open_media_clip`.
+
+**Word-level deep-linking (optional refinement).** When the source transcript
+carries per-word timing (§8.6.1 `words`), an implementation MAY accept the same
+`start_ms`/`end_ms` snapped to word boundaries for tighter clips; this is an
+optional refinement and MUST NOT change the bounds or error semantics above.
+
+**Input schema:**
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "chunk_id": { "type": "integer" },
+    "rel_path": { "type": "string", "minLength": 1 },
+    "start_ms": { "type": "integer", "minimum": 0 },
+    "end_ms": { "type": "integer", "minimum": 0 },
+    "return": { "type": "string", "enum": ["inline", "reference"], "default": "inline" }
+  },
+  "anyOf": [
+    { "required": ["chunk_id"] },
+    { "required": ["rel_path", "start_ms", "end_ms"] }
+  ]
+}
+```
+
+**Output schema (structuredContent):**
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rel_path": { "type": "string" },
+    "doc_type": { "type": "string" },
+    "span": { "$ref": "#/definitions/Span" },
+    "mime_type": { "type": "string" },
+    "duration_ms": { "type": "integer" },
+    "size_bytes": { "type": "integer" },
+    "return": { "type": "string", "enum": ["inline", "reference"] },
+    "data": { "type": "string", "contentEncoding": "base64", "description": "Present when return=inline: base64 clip bytes." },
+    "uri": { "type": "string", "description": "Present when return=reference: short-lived fetch URI." },
+    "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." }
+  },
+  "required": ["rel_path", "doc_type", "span", "mime_type", "return"]
+}
+```
+
+Tool result `content[]` MUST include an `audio`- or `video`-typed item carrying
+the clip (base64 `data` + `mimeType`) when `return=inline`; for
+`return=reference` the `content[]` carries a text item with the `uri` and a
+`resource_link` where supported.
+
+---
+
 ## 16) Configuration (single file)
 
 ### 16.1 Precedence
@@ -2344,6 +2554,13 @@ media:
   quality_gate:               # degenerate-output checks before indexing (§8.6.6)
     min_chars_per_minute: 1   # low-density threshold (tune per corpus)
     max_repetition_ratio: 0.5 # repetition/looping threshold
+  diarize:                    # speaker diarization (§8.6.8; Status: Planned)
+    enabled: false            # off by default; requires a diarization-capable STT backend (§8.5)
+    # tri-state: omit => auto-enable when the STT backend advertises the
+    # capability; false => force off; true => require it (CONFIG_INVALID if absent)
+  clip:                       # media clip citations (§15.11; dir2mcp_open_media_clip)
+    max_duration_ms: 120000   # max clip span; longer requests => CLIP_TOO_LARGE
+    max_bytes: 26214400       # 25 MiB inline byte cap; over => CLIP_TOO_LARGE
 
 rerank:
   # Reranking auto-activates when a provider credential is present
