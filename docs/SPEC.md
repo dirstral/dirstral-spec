@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.19.0`  
+**Spec version:** `0.20.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1248,7 +1248,10 @@ stable across re-indexing.
 * **Per-word timestamps MAY** be stored when available, in the segment span's
   `extra_json` as a `words` array of `{t, d, w}` (`t` = start ms, `d` = duration
   ms, `w` = word). Word timing is **metadata only**: it MUST NOT create extra
-  chunks and MUST NOT change the chunk `text`.
+  chunks and MUST NOT change the chunk `text`. Provider-response normalization
+  into this shape and the optional surfacing of word granularity in spans and
+  citations are defined in §8.6.9; word-level timing is always optional and
+  graceful-degrade.
 * **No-timestamp fallback.** When a provider returns no timing, the transcript
   falls back to text-size chunking (§7.4.C) and the segments MUST be flagged
   `timing: "estimated"` (in `meta_json` and/or span `extra_json`), so consumers
@@ -1279,7 +1282,9 @@ stable across re-indexing.
 * **TTML and SMIL are OPTIONAL and off by default**
   (`media.subtitles.ttml.enabled: false`). Producing them MAY require additional
   codec/track metadata (e.g. via `ffprobe`); when that metadata is absent the
-  export MUST **fail open** (omit TTML/SMIL, do not fail the request).
+  export MUST **fail open** (omit TTML/SMIL, do not fail the request). The
+  **bilingual** TTML/SMIL packaging contract (cross-language cue alignment, SMIL
+  track metadata) is defined in §8.6.10.
 * The **exported language is selectable** (any language for which a transcript
   exists, §8.6.2). Requesting an export for a language with no transcript is
   `INVALID_FIELD`.
@@ -1404,6 +1409,150 @@ to the non-diarized path.
   diarization-quality concern degrades to a flat (un-attributed) transcript rather
   than `TRANSCRIBE_FAILED`.
 
+#### 8.6.9 Word-level timing: capture, normalization, and surfacing
+
+> **Status: Planned.** This subsection refines §8.6.1's per-word timing rule
+> (dir2mcp #252) by defining (a) how a provider's word-level response is
+> normalized into the `words` array and (b) how word granularity is **optionally
+> surfaced** in spans and citations. Word-level timing is **always optional and
+> graceful-degrade**: a transcript with only segment timing remains fully
+> conformant. Implementation lands in a follow-up dir2mcp code PR.
+
+Per-segment timing is the conformance baseline (§8.6.1); per-word timing is a
+finer, **optional** refinement layered on top of it.
+
+* **Granularity is recorded, not assumed.** A transcript declares its finest
+  available granularity in `meta_json` via the `words` flag (§5.2): `words: true`
+  iff at least one segment carries a populated `extra_json.words` array. Consumers
+  MUST treat absent/`false` as "segment granularity only" and degrade gracefully
+  — never error because word timing is missing.
+* **Provider normalization (OpenAI-compatible / verbose-JSON).** When an STT
+  backend returns word-level timing — e.g. a self-hosted faster-whisper /
+  whisper.cpp `/v1/audio/transcriptions` endpoint (§8.5) responding in the
+  OpenAI `verbose_json` shape with a `words` array of `{word, start, end}`
+  (seconds) — the implementation MUST normalize it into the §8.6.1 `words` shape
+  `{t, d, w}` (`t` = start **ms**, `d` = duration **ms**, `w` = word) on the
+  owning segment span's `extra_json`. Seconds-to-ms conversion MUST be
+  deterministic (round half-up). A response that carries only segment timing
+  normalizes to segment spans with no `words` arrays (the existing path,
+  unchanged). This parser is a **sibling** to the existing provider segment
+  parser, not a replacement: the Mistral `[mm:ss]` segment path is unaffected.
+* **Word arrays do not change chunking.** Reaffirming §8.6.1: `words` is metadata
+  on the segment span only. It MUST NOT create extra chunks, MUST NOT alter chunk
+  `text`, and MUST NOT change segment boundaries. The chunker behaves identically
+  whether or not word timing is present, so a transcript chunks the **same** with
+  word timing added or removed (deterministic, citation-stable).
+* **Optional word-level span surfacing.** A `time` span (§5.4, §9.2) MAY OPTIONALLY
+  narrow its `start_ms`/`end_ms` to **word boundaries** drawn from the segment's
+  `words` array (for tighter highlighting/deep-linking), provided the narrowed
+  span stays **within** the owning segment's bounds. When word timing is absent,
+  the span uses segment bounds (the default). This narrowing is a presentation
+  refinement: it MUST NOT add or drop hits and MUST NOT change which chunk a span
+  belongs to. It is consistent with the word-level deep-linking already permitted
+  for `dir2mcp_open_media_clip` (§15.11).
+* **Citation form is unchanged.** Word-level surfacing reuses the transcript
+  citation form `[path@t=<start>-<end>]` (§9.3); the only difference is that
+  `<start>`/`<end>` MAY be word-snapped. No new citation syntax is introduced, and
+  a consumer that ignores word timing renders the segment-level citation
+  identically.
+
+#### 8.6.10 Bilingual subtitle export (TTML + SMIL)
+
+> **Status: Planned.** This subsection refines §8.6.3's optional TTML/SMIL surface
+> (dir2mcp #255) to define **bilingual** packaging precisely. It is **OPTIONAL and
+> OFF by default** (`media.subtitles.ttml.enabled: false`), broadcaster-neutral
+> (no station-specific rules), and requires the translation surface (§8.6.2) only
+> for the bilingual case. Implementation lands in a follow-up dir2mcp code PR.
+
+VTT and SRT are always available and monolingual per export (§8.6.3). TTML and
+SMIL are the **optional broadcast-packaging** surface and MAY carry **two
+languages in one document**.
+
+* **Off by default.** With `media.subtitles.ttml.enabled: false` (the default),
+  no TTML/SMIL is produced and behavior is exactly as in §8.6.3. Enabling the
+  surface is purely additive — VTT/SRT remain unaffected.
+* **Bilingual TTML.** When enabled with a primary and a secondary language (each
+  identified per §8.6.2 keying), TTML export MUST emit, per cue, the primary- and
+  secondary-language text aligned to the **same** time region, with each text run
+  language-tagged (`xml:lang`). Both languages MUST map back to the **same
+  transcript segment span** (§8.6.1) so a TTML cue is traceable to its
+  `start_ms`/`end_ms` and chunk. Monolingual TTML (one configured language) is
+  also valid.
+* **Cross-language cue alignment.** Source and translated transcripts (§8.6.2) are
+  distinct representations whose segment boundaries MAY differ slightly. The
+  exporter MUST align the secondary language to the primary segment's time region
+  within a **configurable tolerance** (`media.subtitles.ttml.align_tolerance_ms`,
+  default `2500`); a secondary segment whose start is within tolerance of a
+  primary cue is merged into that cue. Alignment MUST be **deterministic** (same
+  inputs → identical cues). A secondary segment with no primary cue within
+  tolerance is emitted as its own secondary-only cue rather than dropped.
+* **SMIL packaging.** When SMIL is produced it describes the media presentation:
+  the media reference plus probed track metadata — container/codec, bitrate, and
+  video **width/height** when applicable — and references the companion subtitle
+  document(s). Track metadata is obtained via `ffprobe` (reusing `internal/avutil`,
+  §1) and MAY be cached. SMIL is emitted alongside TTML under the same enable flag.
+* **Fail-open on missing metadata.** Consistent with §8.6.3, when required codec/
+  track metadata is absent or `ffprobe` is unavailable, the export MUST **fail
+  open**: omit SMIL (and any metadata-dependent TTML attributes) and still emit the
+  text-bearing subtitle output, never failing the request.
+* **Language selection.** The exported primary/secondary languages are selectable
+  among languages for which a transcript exists (§8.6.2). Requesting an export for
+  a language with no transcript is `INVALID_FIELD` (§8.6.3). The bilingual case
+  requires translation (§8.6.2) to be enabled for the secondary language; if it is
+  not, the export degrades to monolingual rather than failing.
+* **Speaker markup.** Per §8.6.8, TTML export MAY carry speaker as voice markup
+  when present; formats/cues that cannot represent it omit it (fail open).
+
+#### 8.6.11 Two-phase batch transcription, progress, and run manifest
+
+> **Status: Planned.** This subsection defines the **batch ergonomics** contract
+> for large-archive ingests (dir2mcp #260): an optional two-phase pass split,
+> progress reporting, and a resumable run manifest. It is **implementation-agnostic
+> but precise**, additive, and changes no per-document representation, chunk, or
+> citation. Worker-pool / multi-GPU distribution is explicitly **out of scope**
+> (covered separately). Implementation lands in a follow-up dir2mcp code PR.
+
+* **Optional two-phase ingest.** An implementation MAY run media ingest as **two
+  ordered passes** over the corpus — a **transcription pass** (STT/sidecar →
+  transcript, §8.6.1/§8.6.4) followed by a **derivation pass** (translation §8.6.2
+  and subtitle export §8.6.3/§8.6.10). Two-phase mode is **opt-in**; the default
+  single-pass per-document pipeline is unchanged. The two-phase split MUST be
+  **observably equivalent** to single-pass for the resulting representations,
+  chunks, embeddings, and citations — it changes **ordering and reporting only**,
+  never output. Either pass MUST be independently **resumable** (a pass picks up
+  where it left off using existing identity/cache state, §7.6/§8.6.7), so an
+  interrupted transcription pass does not force re-transcription of completed
+  assets.
+* **Progress semantics.** Progress reporting is **optional and side-channel**: it
+  MUST NOT alter representations, chunks, embeddings, citations, ordering of
+  results, or error semantics. Progress is reported against a **total unit count**
+  established at pass start (e.g. assets, or asset-seconds of media) and is
+  **monotonic** within a pass — completed/failed/skipped units only increase. A
+  unit resolved from cache (no work performed) counts as **completed** so a resumed
+  run reports faithful totals. Progress output is for human/operator consumption
+  and is not part of the MCP wire contract.
+* **Run manifest (JSONL).** When enabled, a batch run MUST write a **manifest** as
+  newline-delimited JSON (one record per asset) for auditability and resume. Each
+  record MUST be **self-describing and deterministic** in field set, and MUST
+  record at least:
+  * **asset identity** — the corpus-relative path (`rel_path`, stable across source
+    schemes per §7.8) and the resolved `content_hash` (§7.6);
+  * **outcome** — a terminal `status` (`completed` | `skipped` | `error`), and for
+    `error` the canonical code (§14.4, e.g. `TRANSCRIBE_FAILED` / `TRANSLATE_FAILED`
+    / `OCR_FAILED`) so a manifest is a faithful record of §7.7 per-document outcomes;
+  * **media duration** (`duration_ms`, when known) and **processing time** for the
+    asset;
+  * **outputs produced** — the derived representations and any export artifacts
+    (e.g. transcript language(s), translated language(s), subtitle formats emitted).
+* **Manifest as resume index.** A manifest MAY be consumed by a subsequent run to
+  **skip** assets already terminal in a compatible derivation identity (§8.6.7) and
+  to re-attempt `error` assets. The manifest is **advisory for resume** — it MUST
+  NOT override the authoritative identity/cache and mtime gates (§7.6, §8.6.4,
+  §8.6.7); when the manifest and the live state disagree, the live state wins (the
+  manifest can only avoid redundant work, never suppress required re-derivation).
+* **Determinism.** Asset processing order within a pass MUST be deterministic so
+  manifests and progress are reproducible across runs of an unchanged corpus.
+
 ---
 
 ## 9) Retrieval and answer generation
@@ -1484,7 +1633,10 @@ Within answers, citations must be rendered as:
   Optionally suffix with the section breadcrumb when present, e.g.
   `[report.pdf#p=3 › Results › 3.1 Revenue]`
 * transcript: `[path@t=<start>-<end>]` where `<start>/<end>` are `mm:ss` or `ms`.
-  On a diarized transcript (§8.6.8) the speaker MAY be appended, e.g.
+  `<start>`/`<end>` MAY be word-snapped when the transcript carries per-word timing
+  (§8.6.9); the citation **syntax is unchanged** and a consumer that ignores word
+  timing renders the segment-level bounds identically. On a diarized transcript
+  (§8.6.8) the speaker MAY be appended, e.g.
   `[interview.mp4@t=02:13-02:41 › S2]`; the base form is used when no speaker is
   present.
 
@@ -2636,6 +2788,7 @@ media:
     formats: [vtt, srt]       # always available, derived from segment spans (§8.6.3)
     ttml:
       enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
+      align_tolerance_ms: 2500 # bilingual cue cross-language alignment tolerance (§8.6.10)
   sidecars:
     enabled: true             # ingest .vtt/.srt/.ttml next to media as the transcript (§8.6.4)
   variants:
@@ -2651,6 +2804,10 @@ media:
   clip:                       # media clip citations (§15.11; dir2mcp_open_media_clip)
     max_duration_ms: 120000   # max clip span; longer requests => CLIP_TOO_LARGE
     max_bytes: 26214400       # 25 MiB inline byte cap; over => CLIP_TOO_LARGE
+  batch:                      # large-archive ergonomics (§8.6.11; Status: Planned)
+    two_phase: false          # opt-in: transcribe-all pass, then translate/export pass; output-equivalent to single-pass
+    progress: false           # opt-in side-channel progress reporting (never affects output)
+    manifest: ""              # path to a JSONL run manifest (per-asset status/duration/outputs); empty => disabled
 
 rerank:
   # Reranking auto-activates when a provider credential is present
