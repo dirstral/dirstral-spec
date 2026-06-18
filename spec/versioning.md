@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.21.0`
+**Current spec version:** `0.22.0`
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -43,6 +43,66 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.22.0 — detected-language metadata + per-language retrieval filter
+
+Pins the contract for dir2mcp #267 item 4: **store detected language per
+representation** to enable multilingual-corpus filtering and **per-language
+retrieval**. `MINOR` bump per the pre-1.0 policy; fully **additive**, general-
+purpose (auto-detect, no fixed language), and **off by default** — search/ask
+return identical results when the new filter is omitted, and a corpus indexed
+before any language was recorded simply carries unknown-language representations
+that no specific filter matches (no migration, no breaking change).
+
+**New / extended surface:**
+
+- §5.2 **(extended) representation `meta_json` — detected-language metadata** —
+  any representation (transcript, OCR `extracted_markdown`, plain `raw_text`) MAY
+  record `language` (BCP-47, the effective indexed language), `language_source`
+  (`detected` | `configured` | `declared`), and `language_confidence` (`[0,1]`,
+  informational). All optional and additive; absent ⇒ unknown (never an error).
+  Distinguishes the operator-pinned/expected language from the auto-detected one
+  via `language_source`, consistent with the existing transcript/translation
+  `language` / `source_language` fields (§8.6.2). A translated transcript's
+  `language` is its **target** language; `source_language` is what it was
+  translated from — both matchable.
+- §8.8 **(new) Detected-language resolution (representation language)** —
+  best-effort, on-by-default auto-detection with an optional operator pin; a
+  deterministic resolution precedence (`configured` > `declared` > `detected`)
+  recorded in `language_source`; graceful degradation (no signal ⇒ unknown, a
+  first-class non-error state); an optional confidence floor at detection time;
+  and detection stability/re-derivation rules (a pure detector change MAY refresh
+  `language` without re-embedding, since language metadata never changes chunk
+  `text`).
+- §9.5 **(new) Per-language retrieval filter (optional)** — an OPTIONAL
+  `languages` array (BCP-47 tags) on `dir2mcp_search` (§15.2) and `dir2mcp_ask`
+  (§15.3). Matching is **case-insensitive on the BCP-47 primary subtag**, logical
+  OR across the array. Absent/empty ⇒ no filtering (today's behavior, unchanged).
+  An unknown/absent-language representation never matches a specific filter but is
+  unaffected when no filter is given; an optional `und` sentinel MAY include
+  unknown hits. Applied at candidate selection (with `path_prefix`/`file_glob`/
+  `doc_types`), before dedup (§9.2), rerank (§9.1.1), and truncation; it only
+  removes non-matching candidates and never reorders or changes result structure
+  (§9.2) or citation format (§9.3). No match is an empty result, never an error;
+  a syntactically invalid tag is `INVALID_FIELD` (§14).
+- §15.2 / §15.3 + `spec/tools/schemas/search.json` & `ask.json` **(extended)** —
+  add the optional `languages: string[]` input property to the `dir2mcp_search`
+  and `dir2mcp_ask` schemas. Additive only; not `required`; existing callers that
+  never send it observe no behavior change.
+
+**No change to:** the persisted store shape beyond the optional §5.2 meta fields,
+the result structure (§9.2), citation format (§9.3), the RAG contract (§9.4), any
+output schema, span kinds, the error taxonomy (§14) beyond reusing the existing
+`INVALID_FIELD`, or any other tool. No new tool or error code.
+
+**Config:** the existing language pins (`media.language` / per-provider
+`stt_language`, §16.2) are reused; an analogous pin for non-media text and an
+optional detection confidence floor are implementation-defined and out of scope
+for the normative template. No required new keys.
+
+**Implementation note:** lands in a follow-up dir2mcp code PR once this spec
+change is merged (gated submodule re-pin), unblocking dir2mcp #267 item 4
+(detected-language metadata + per-language retrieval). **Status: Planned.**
 
 ## 0.21.0 — CorpusFS abstraction + distributed embedding (coordinator + workers)
 

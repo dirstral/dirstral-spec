@@ -1,7 +1,7 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
-**Spec version:** `0.21.0`  
+**Spec version:** `0.22.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -478,6 +478,41 @@ A **diarized** transcript (§8.6.8) additionally records:
   the transcript (e.g. `["S1", "S2"]`), each optionally paired with a
   human-readable `label`. The per-segment attribution lives on the segment span's
   `extra_json.speaker` (§5.4).
+
+**Detected-language metadata (any representation)**
+
+Any representation MAY record the natural language of its content in `meta_json`,
+independent of representation type — a `transcript` (§8.6.2), an
+`extracted_markdown` from OCR, or a plain `raw_text` document — to enable
+multilingual-corpus filtering and per-language retrieval (§9.5). The fields are
+**optional and additive**; a representation that records none is treated as
+**unknown language** (never an error). Detection is **best-effort** and MUST
+degrade gracefully (§8.8).
+
+* `language`: optional — the **effective** language of the representation as a
+  BCP-47 language tag (e.g. `en`, `pt-BR`). This is the value matched by the
+  retrieval language filter (§9.5). For a `transcript` this is the existing
+  source-language field (§8.6.2); for other representation types it carries the
+  same meaning (the language of the indexed text). Absent ⇒ unknown.
+* `language_source`: optional — how `language` was obtained: `detected`
+  (auto-detected, best-effort, §8.8), `configured` (pinned by an operator, e.g.
+  `media.language` / per-provider `stt_language`, §16.2), or `declared`
+  (asserted by the source itself, e.g. a sidecar's language suffix §8.6.4, a
+  document language tag, or an OCR provider's reported language). Absent ⇒
+  unspecified provenance.
+* `language_confidence`: optional — a detector-reported confidence in `[0,1]`
+  for an auto-`detected` language. Informational only; it MUST NOT by itself
+  cause a representation to be treated as unknown (an implementation MAY apply a
+  configured floor at detection time per §8.8, but the recorded `language`, once
+  written, is authoritative for retrieval matching).
+
+The **configured/expected** language (an operator pin) and the **detected**
+language are distinct concepts: when both are known and they disagree, the
+recorded `language` is the **effective** value the implementation chose to index
+under (§8.8 defines the resolution), and `language_source` records which won. A
+translated transcript's `language` is its **target** language, while its
+`source_language` (above) records what it was translated *from* — both are
+matchable per-language values (§9.5).
 
 ### 5.3 `chunks`
 
@@ -1727,6 +1762,47 @@ bottleneck.
   configured provider (§8.5), and writes back; it never serves MCP or runs
   discovery.
 
+### 8.8 Detected-language resolution (representation language)
+
+A representation's recorded language (§5.2 `language`, `language_source`,
+`language_confidence`) enables multilingual-corpus filtering and per-language
+retrieval (§9.5). Recording it is **optional, additive, and best-effort**; it
+MUST NOT make ingestion fail.
+
+* **Auto-detect by default; pin optional.** Language detection is **on by default
+  and best-effort**: an implementation SHOULD record a representation's language
+  when it can determine one (a `transcript` already does, §8.6.2; OCR and plain
+  text MAY add it). An operator MAY pin the language (`media.language` /
+  per-provider `stt_language`, §16.2; an analogous pin for non-media text is
+  implementation-defined and optional). No fixed or default language is assumed —
+  the surface is general-purpose and language-agnostic.
+* **Resolution precedence.** When more than one signal is available, the recorded
+  effective `language` MUST be resolved deterministically with this precedence,
+  and `language_source` MUST record which signal won:
+  1. **`configured`** — an explicit operator pin always wins (§16.2).
+  2. **`declared`** — a language asserted by the source itself (sidecar suffix
+     §8.6.4, document/track language tag, OCR-provider-reported language).
+  3. **`detected`** — an auto-detector's best-effort result.
+  A translated transcript's effective `language` is its **target** language
+  (§8.6.2), recorded independently of the above.
+* **Graceful degradation (absent ⇒ unknown, never an error).** When no signal is
+  available — no pin, no declaration, and detection is unavailable, fails, or
+  returns below a configured confidence floor — the representation records **no**
+  `language` and is treated as **unknown language**. Unknown is a first-class,
+  non-error state: ingestion, indexing, retrieval, and citation all proceed
+  exactly as today; only per-language filtering (§9.5) is affected.
+* **Confidence floor (optional).** An implementation MAY apply a configured
+  minimum confidence at detection time and decline to record a low-confidence
+  `detected` language (leaving it unknown). Once a `language` value is written it
+  is authoritative for retrieval matching (§9.5); `language_confidence` is
+  informational and MUST NOT be re-applied as a filter at query time.
+* **Stability & re-derivation.** Detection MUST be deterministic for identical
+  input + detector so the recorded language is stable across re-indexing. The
+  detector/pin is **not** part of a representation's derivation identity (§8.6.7)
+  unless an implementation chooses to make a *pin change* trigger re-derivation;
+  a pure detector change MAY refresh `language` opportunistically without forcing
+  re-embedding (language metadata does not change chunk `text`).
+
 ---
 
 ## 9) Retrieval and answer generation
@@ -1828,6 +1904,56 @@ If enabled:
 If disabled or `mode=search_only`:
 
 * return hits only.
+
+### 9.5 Per-language retrieval filter (optional)
+
+`dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept an **optional**
+`languages` filter that restricts results to representations recorded in one or
+more languages (§5.2, §8.8). The filter is **additive and off by default**:
+absent or empty ⇒ **no language filtering** and search/ask behave exactly as
+today (unchanged results).
+
+* **Argument shape.** `languages` is an array of BCP-47 language tags (e.g.
+  `["en"]`, `["pt-BR", "es"]`). An empty array is equivalent to omitting it (no
+  filter). The argument is OPTIONAL; existing callers that never send it observe
+  no behavior change.
+* **Matching semantics.** A hit matches when its source representation's recorded
+  `language` (§5.2) matches **any** requested tag (logical OR across the array).
+  Matching is performed on the **BCP-47 primary subtag**, **case-insensitively**:
+  a request for `en` matches a representation recorded as `en`, `EN`, or
+  `en-US`, and a request for `pt-BR` matches `pt` (primary-subtag match). Region,
+  script, and other subtags MUST NOT cause a match to be missed when the primary
+  subtags agree. Implementations MAY additionally honor an exact full-tag match
+  but MUST AT LEAST honor primary-subtag matching.
+* **Unknown / absent language.** A representation with **no** recorded language
+  (unknown, §8.8) **never** matches a specific language filter — it is excluded
+  whenever `languages` is non-empty. When `languages` is absent/empty, unknown
+  representations are **unaffected** (returned exactly as today). Implementations
+  MAY offer an explicit opt-in sentinel for unknown (e.g. `"und"`, the BCP-47
+  "undetermined" tag) to *include* unknown-language hits alongside a filter; this
+  is OPTIONAL and, when unsupported, an unrecognized tag simply matches nothing.
+* **Translated representations.** A translated transcript (§8.6.2) is recorded
+  under its **target** language (§5.2, §8.8) and matches that target; its
+  `source_language` is not the matched value. Filtering for a language thus
+  returns both source-language representations in that language and translations
+  *into* that language, which is the intended multilingual-corpus behavior.
+* **Pipeline placement & guarantees.** The language filter is applied at
+  **candidate selection** (alongside `path_prefix` / `file_glob` / `doc_types`),
+  **before** cross-file de-duplication (§9.2), reranking (§9.1.1), and truncation
+  to `k`. It only **removes** non-matching candidates; it MUST NOT reorder, add
+  fields, or change the result structure (§9.2) or citation format (§9.3). As
+  with any selective filter, a filtered query MAY return fewer than `k` hits.
+* **No match is not an error.** A `languages` filter that excludes every
+  candidate returns an empty `hits` list (and, for `ask`, an answer grounded in
+  no contexts per §9.4) — never an error. An unrecognized or malformed tag value
+  (not a syntactically valid BCP-47 tag) is `INVALID_FIELD` (§14); a
+  syntactically valid tag that simply matches nothing in the corpus is **not** an
+  error.
+
+The filter matches the same recorded representation `language` that ingestion
+writes (§8.8), so a corpus indexed before any language was recorded simply has
+unknown-language representations that no specific filter matches — there is no
+migration and no breaking change.
 
 ---
 
@@ -2247,7 +2373,8 @@ timed slice.
     "path_prefix": { "type": "string" },
     "file_glob": { "type": "string" },
     "doc_types": { "type": "array", "items": { "type": "string" } },
-    "speaker": { "type": "string", "description": "Optional (§8.6.8): restrict time-spanned transcript hits to this speaker id. A corpus without diarized transcripts returns no speaker-filtered hits." }
+    "speaker": { "type": "string", "description": "Optional (§8.6.8): restrict time-spanned transcript hits to this speaker id. A corpus without diarized transcripts returns no speaker-filtered hits." },
+    "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (§9.5): restrict hits to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering. Unknown-language representations never match a specific filter." }
   },
   "required": ["query"]
 }
@@ -2296,7 +2423,8 @@ timed slice.
     "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
     "path_prefix": { "type": "string" },
     "file_glob": { "type": "string" },
-    "doc_types": { "type": "array", "items": { "type": "string" } }
+    "doc_types": { "type": "array", "items": { "type": "string" } },
+    "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (§9.5): restrict retrieved contexts to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering. Unknown-language representations never match a specific filter." }
   },
   "required": ["question"]
 }
