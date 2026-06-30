@@ -14,10 +14,10 @@ migration aid only and are not citable.
 | §0 Executive summary | 12–66 | `specs/README.md` + `df-000` | Folded |
 | §1 Definitions & invariants | 67–91 | `df-000` (terms) | Exemplar (partial) |
 | §2 CLI interface | 92–164 | `bs-001` | To do |
-| §3 CLI output contract | 165–279 | `df-009` | To do |
+| §3 CLI output contract | 165–279 | **`df-009`** | **Done** |
 | §4.3 connection.json | 321–339 | **`df-001`** | **Done** |
-| §4 On-disk outputs (rest) | 280–411 | `df-002` (`secret.token`/`corpus.json`/`daemon.json`/pid) | To do |
-| §5 SQLite metadata schema | 412–592 | `df-003`, `df-004` (model) | To do |
+| §4 On-disk outputs (rest) | 280–411 | **`df-002`** (layout/`secret.token`/`corpus.json`) | **Done** |
+| §5 SQLite metadata schema | 412–592 | **`df-003`** (df-004 folded into df-000+df-003) | **Done** |
 | §6 Vector index backends & identity | 593–686 | `bs-008` | To do |
 | §7 Ingestion pipeline | 687–1104 | `bs-002`; §7.4 → `td-004` | To do |
 | §8 Model/provider utilization | 1105–1807 | `td-001`; §8.1.7 → `td-002`; §8.6 → `td-003` | To do |
