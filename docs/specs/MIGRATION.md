@@ -13,26 +13,28 @@ migration aid only and are not citable.
 |-----------|-------|--------------|-------|
 | §0 Executive summary | 12–66 | `specs/README.md` + `df-000` | Folded |
 | §1 Definitions & invariants | 67–91 | `df-000` (terms) | Exemplar (partial) |
-| §2 CLI interface | 92–164 | `bs-001` | To do |
+| §2 CLI interface | 92–164 | **`bs-001`** | **Done** |
 | §3 CLI output contract | 165–279 | **`df-009`** | **Done** |
 | §4.3 connection.json | 321–339 | **`df-001`** | **Done** |
 | §4 On-disk outputs (rest) | 280–411 | **`df-002`** (layout/`secret.token`/`corpus.json`) | **Done** |
 | §5 SQLite metadata schema | 412–592 | **`df-003`** (df-004 folded into df-000+df-003) | **Done** |
-| §6 Vector index backends & identity | 593–686 | `bs-008` | To do |
-| §7 Ingestion pipeline | 687–1104 | `bs-002`; §7.4 → `td-004` | To do |
-| §8 Model/provider utilization | 1105–1807 | `td-001`; §8.1.7 → `td-002`; §8.6 → `td-003` | To do |
-| §9 Retrieval & answer generation | 1808–1959 | `bs-003` | To do |
-| §10 MCP Streamable HTTP | 1960–2023 | `bs-004` | To do |
-| §11 MCP lifecycle (wire) | 2024–2095 | `bs-005` | To do |
-| §12 MCP tools list/call | 2096–2168 | `bs-006` | To do |
-| §13 Tool set | 2169–2191 | `bs-006` | To do |
+| §6 Vector index backends & identity | 593–686 | **`bs-008`** | **Done** |
+| §7 Ingestion pipeline | 687–1104 | **`bs-002`** (§7.1–7.3, 7.5–7.10); §7.4 → **`td-004`** | **Done** |
+| §8.1–§8.5, §8.8 Provider model | 1105–1330, 1777–1807 | **`td-001`** (§8.1.7 → **`td-002`**) | **Done** |
+| §8.6 Transcription/translation/subtitle | 1331–1657 | **`td-003`** | **Done** |
+| §8.7 Distributed embedding | 1658–1776 | **`td-005`** | **Done** |
+| §9 Retrieval & answer generation | 1808–1959 | **`bs-003`** | **Done** |
+| §10 MCP Streamable HTTP | 1960–2023 | **`bs-004`** | **Done** |
+| §11 MCP lifecycle (wire) | 2024–2095 | **`bs-005`** | **Done** |
+| §12 MCP tools list/call | 2096–2168 | **`bs-006`** | **Done** |
+| §13 Tool set | 2169–2191 | **`bs-006`** | **Done** |
 | §14 Error taxonomy | 2192–2260 | **`df-008`** | **Done** |
-| §15.1.1 Span | 2264–2320 | **`df-005`** | **Done (exemplar)** |
-| §15.1.2 Hit | 2336–2360 | **`df-006`** | **Done (exemplar)** |
-| §15.2–§15.11 Tool schemas | 2371–2929 | **`df-007`** (schema catalog; `common.json` reconciled) + `bs-007` (behavior) | **Done** (df-007) |
-| §16 Configuration | 2930–3206 | `bs-011` | To do |
-| §17 Security & safety | 3207–3236 | `bs-009` | To do |
-| §18 Native x402 | 3237–3253 | `bs-010` | To do |
+| §15.1.1 Span | 2264–2320 | **`df-005`** | **Done** |
+| §15.1.2 Hit | 2336–2360 | **`df-006`** | **Done** |
+| §15.2–§15.11 Tool schemas + behavior | 2371–2929 | **`df-007`** (schemas; `common.json` reconciled) + **`bs-007`** (behavior) | **Done** |
+| §16 Configuration | 2930–3206 | **`bs-011`** | **Done** |
+| §17 Security & safety | 3207–3236 | **`bs-009`** | **Done** |
+| §18 Native x402 | 3237–3253 | **`bs-010`** | **Done** |
 | §19 Non-goals | 3254–3271 | `docs/scope.md` (non-normative) | To do |
 | §20 Implementation guidance | 3272–end | `docs/guidance.md` (non-normative) | To do |
 

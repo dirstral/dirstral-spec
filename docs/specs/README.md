@@ -3,16 +3,15 @@
 > **Status: PROPOSAL (dirstral-spec#24).** This restructures the monolithic
 > `docs/SPEC.md` (~3300 lines) into small, **numbered, independently-versioned**
 > documents grouped by concern, modeled on
-> [ooni/spec](https://github.com/ooni/spec). This PR establishes the directory
-> layout, the per-document convention, the full old→new mapping
-> ([MIGRATION.md](MIGRATION.md)), and the **complete `df-*` data-format class**
-> (`df-000`–`df-003`, `df-005`–`df-009`; `df-004` folded into df-000+df-003). The
+> [ooni/spec](https://github.com/ooni/spec). **All three classes are now drafted**
+> — 9 `df-*` (data formats), 11 `bs-*` (behavior), 5 `td-*` (techniques) — each
+> migrating one SPEC.md section per the [migration map](MIGRATION.md), with the
+> per-document convention and the full old→new mapping established here. The
 > df-007 migration also **reconciled `spec/tools/schemas/common.json`** to the
-> implementation, fixing the published-schema drift (dir2mcp #423). The
-> `behavior/` and `techniques/` documents are listed below with their source
-> sections and are migrated in follow-up PRs so each is reviewable on its own.
-> `docs/SPEC.md` stays authoritative until a document is migrated and marked
-> **Stable** here.
+> implementation, fixing the published-schema drift (dir2mcp #423). Every
+> inter-document link is validated to resolve. `docs/SPEC.md` retains a pointer
+> banner and **stays authoritative** until each document is reviewed and marked
+> **Stable** here (the docs are currently **Draft**).
 
 ## Why
 
@@ -79,25 +78,26 @@ Every spec document begins with:
 ### `behavior/` — semantics & contracts
 | ID | Title | Source | Status |
 |----|-------|--------|--------|
-| bs-001 | CLI interface | §2 | To migrate |
-| bs-002 | Ingestion pipeline | §7 | To migrate |
-| bs-003 | Retrieval & answer generation | §9 | To migrate |
-| bs-004 | MCP Streamable-HTTP transport | §10 | To migrate |
-| bs-005 | MCP lifecycle (wire-level) | §11 | To migrate |
-| bs-006 | MCP tools: list & call; tool set | §12, §13 | To migrate |
-| bs-007 | Tool specifications (behavioral) | §15 | To migrate |
-| bs-008 | Vector index backends & embed identity | §6 | To migrate |
-| bs-009 | Security & safety requirements | §17 | To migrate |
-| bs-010 | Native x402 integration | §18 (+ [x402-payment-adapter-spec.md](../x402-payment-adapter-spec.md)) | To migrate |
-| bs-011 | Configuration (single file) | §16 | To migrate |
+| [bs-001](behavior/bs-001-cli-interface.md) | CLI interface | §2 | **Draft** |
+| [bs-002](behavior/bs-002-ingestion-pipeline.md) | Ingestion pipeline | §7 (excl. §7.4) | **Draft** |
+| [bs-003](behavior/bs-003-retrieval-and-answer.md) | Retrieval & answer generation | §9 | **Draft** |
+| [bs-004](behavior/bs-004-mcp-transport.md) | MCP Streamable-HTTP transport | §10 | **Draft** |
+| [bs-005](behavior/bs-005-mcp-lifecycle.md) | MCP lifecycle (wire-level) | §11 | **Draft** |
+| [bs-006](behavior/bs-006-mcp-tools-list-call.md) | MCP tools: list, call & tool set | §12, §13 | **Draft** |
+| [bs-007](behavior/bs-007-tool-specifications.md) | Tool specifications (behavior) | §15.2–§15.11 | **Draft** |
+| [bs-008](behavior/bs-008-vector-index.md) | Vector index backends & embed identity | §6 | **Draft** |
+| [bs-009](behavior/bs-009-security-safety.md) | Security & safety requirements | §17 | **Draft** |
+| [bs-010](behavior/bs-010-x402-integration.md) | Native x402 integration | §18 (+ [adapter spec](../x402-payment-adapter-spec.md)) | **Draft** |
+| [bs-011](behavior/bs-011-configuration.md) | Configuration (single file) | §16 | **Draft** |
 
 ### `techniques/` — implementation strategies
 | ID | Title | Source | Status |
 |----|-------|--------|--------|
-| td-001 | Model/provider utilization & capability activation | §8.1–§8.5 | To migrate |
-| td-002 | Multimodal media chunks (PDF page / A-V window) | §8.1.7 | To migrate |
-| td-003 | STT / transcription / translation / subtitles | §8.6 | To migrate |
-| td-004 | Structured document extraction (docling) | §7.4 | To migrate |
+| [td-001](techniques/td-001-provider-model.md) | Provider model & capability activation | §8.1–§8.5, §8.8 | **Draft** |
+| [td-002](techniques/td-002-multimodal-media-chunks.md) | Multimodal media chunks (PDF page / A-V window) | §8.1.7 | **Draft** |
+| [td-003](techniques/td-003-transcription-translation-subtitles.md) | Transcription / translation / subtitles | §8.6 | **Draft** |
+| [td-004](techniques/td-004-representation-extraction.md) | Representation generation & structured extraction | §7.4 | **Draft** |
+| [td-005](techniques/td-005-distributed-embedding.md) | Distributed embedding (coordinator + workers) | §8.7 | **Draft** |
 
 ### Meta / non-normative (kept at `docs/` root or moved to `attic/`)
 - §0 Executive summary → folded into `df-000` + this index.

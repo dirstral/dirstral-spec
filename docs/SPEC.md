@@ -7,11 +7,13 @@
 > on mutable section numbers. Migrated documents are authoritative once marked
 > **Stable** there; until then this file remains the source of truth. See the
 > [document index](specs/README.md) and the [migration map](specs/MIGRATION.md).
-> Migrated so far: the **complete `df-*` data-format class** — `df-000`–`df-003`
-> and `df-005`–`df-009` (df-004 folded into df-000+df-003). The df-007 migration
-> also reconciled `spec/tools/schemas/common.json` to the implementation, fixing
-> the published-schema drift (dir2mcp #423). The `bs-*` (behavior) and `td-*`
-> (technique) classes are next.
+> **All three classes are now drafted** — 9 `df-*` (data formats), 11 `bs-*`
+> (behavior), 5 `td-*` (techniques), one per SPEC.md section (§2–§18). The df-007
+> migration also reconciled `spec/tools/schemas/common.json` to the
+> implementation, fixing the published-schema drift (dir2mcp #423). Only the
+> non-normative §19 (non-goals) and §20 (implementation guidance) remain. These
+> docs are **Draft**; this file stays authoritative until each is reviewed and
+> marked **Stable**.
 
 **Spec version:** `0.22.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
