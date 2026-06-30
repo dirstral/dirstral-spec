@@ -13,10 +13,11 @@ The HTTP transport for the dir2mcp MCP server, using the MCP Streamable HTTP
 binding pinned to protocol version `2025-11-25` (the same pin and `format_version`
 concept governed by [df-000](../data-formats/df-000-base.md)). Covers the
 endpoint, required headers, session lifecycle, notification handling, Origin
-checks (DNS-rebinding mitigation), and bearer-token auth. The JSON-RPC tool
-surface carried over this transport is defined in [bs-005](bs-005-mcp-lifecycle.md)
-(`search`/`ask`/`open_file`) and the error model in
-[df-008](../data-formats/df-008-error-taxonomy.md).
+checks (DNS-rebinding mitigation), and bearer-token auth. The wire-level
+handshake is [bs-005](bs-005-mcp-lifecycle.md); the JSON-RPC tool surface carried
+over this transport (`search`/`ask`/`open_file`, …) is defined in
+[bs-006](bs-006-mcp-tools-list-call.md) / [bs-007](bs-007-tool-specifications.md),
+and the error model in [df-008](../data-formats/df-008-error-taxonomy.md).
 
 ## Specification (normative)
 
@@ -120,6 +121,6 @@ If the `Origin` header is present:
   (2025-11-25)"). All normative requirements preserved verbatim in substance
   (endpoint, required headers, session lifecycle, notifications, Origin checks,
   auth). The pinned `protocolVersion 2025-11-25` and `format_version` concept are
-  cross-referenced to df-000; the tool surface is cross-referenced to bs-005 and
-  the error model to df-008. Added a non-normative drift note for the
+  cross-referenced to df-000; the lifecycle handshake to bs-005, the tool surface
+  to bs-006/bs-007, and the error model to df-008. Added a non-normative drift note for the
   protocolVersion echo-vs-pin behaviour (dir2mcp #404).

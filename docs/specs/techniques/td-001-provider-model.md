@@ -334,7 +334,3 @@ it MUST NOT make ingestion fail.
   `../../design/0001-multi-provider.md`. Added explicit "open set, not a closed
   enum" notes to the STT/TTS/rerank provider lists (faithful to §8.1.3's
   auto-selection semantics).
-  - *Drift note (not fixed here):* the already-migrated bs-003 references this
-    document as `../tool-definitions/td-001-providers.md`, but the README index
-    and this file place it at `techniques/td-001-provider-model.md`; the bs-003
-    link target should be reconciled in a follow-up.

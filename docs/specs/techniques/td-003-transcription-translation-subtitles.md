@@ -367,11 +367,6 @@ languages in one document**.
   `§8.6.x` references are retained as in-document subsection anchors. Cross-doc
   IDs are written as bare IDs (matching df-003/df-005), since several targets
   (bs-002, td-001, td-002) are not yet migrated.
-- **Drift notes (not fixed here):** (1) the search (`§15.2`) and open-media-clip
-  (`§15.11`) tool surfaces have no stable doc ID in the current migration set, so
-  they are cited by tool name with the original SPEC section retained inline; when
-  those surfaces migrate, rewire to the new ID. (2) Sibling doc td-004 links to
-  this document as `td-003-av-derivations.md`, but the migration map (README/
-  MIGRATION) and this file use `td-003-transcription-translation-subtitles.md`;
-  that stale link lives in td-004 and is out of scope for this PR.
-</content>
+- **Drift note:** the search and open-media-clip tool surfaces (`§15.2`,
+  `§15.11`) are cited inline by tool name; their behavior is specified in
+  [bs-007](../behavior/bs-007-tool-specifications.md) and their schemas in df-007.

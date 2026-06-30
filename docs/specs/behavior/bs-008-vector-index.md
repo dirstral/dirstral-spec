@@ -32,8 +32,8 @@ logical axes and the embed-identity binding below are invariant.
 Independent of backend, vectors are partitioned into two logical axes:
 
 - **text** axis: embeddings for `index_kind=text` chunks (raw text,
-  OCR/extracted markdown, transcripts, annotation_text, and — under media-chunk
-  embedding, td-001) — media chunks).
+  OCR/extracted markdown, transcripts, annotation_text, and — under multimodal
+  media-chunk embedding ([td-002](../techniques/td-002-multimodal-media-chunks.md)) — media chunks).
 - **code** axis: embeddings for `index_kind=code` chunks (source code and
   code-like configs).
 
@@ -129,14 +129,9 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   and no-silent-fallback rules, the `CGO_ENABLED=0` / `sqlite-vec`-rejected
   constraints, and the tombstone + oversampling deletion semantics. Cross-refs
   rewired to stable doc IDs: §1.2 → df-000 (zero-infra invariant); §5/§5.5 →
-  df-003 (`settings` keys, `chunk_id` ANN label, `index_kind`); §8.1.x (embed
-  identity, media chunks, reindex) → td-001; §16/§16.1.1/§16.2 → bs-011
-  (`index.backend`, `index:` connection params, credential handling). Internal
-  §6.x references kept; df-000/df-003 (existing files) are linked, while td-001
-  and bs-011 (not yet migrated) are cited as plain doc IDs to avoid dangling
-  links. **Drift notes:** (1) the media-chunk reference in §6.1 points at td-001
-  per this batch's §8.1–§8.5 → td-001 map, but the README/MIGRATION index slates
-  §8.1.7 (multimodal media chunks) for its own doc td-002 — reconcile the media
-  reference when td-002 lands. (2) SPEC.md §2.5 (preflight) and §19 (non-goals)
-  are referenced here but were not in this batch's ID map, so they remain
-  `SPEC.md §…` pointers pending their own migration.
+  df-003 (`settings` keys, `chunk_id` ANN label, `index_kind`); §8.1.x embed
+  identity/reindex → td-001; §8.1.7 multimodal media chunks → td-002;
+  §16/§16.1.1/§16.2 → bs-011 (`index.backend`, `index:` connection params,
+  credential handling). Internal §6.x references kept. **Drift note:** SPEC.md
+  §2.5 (preflight) and §19 (non-goals) are referenced here but have no migrated
+  doc ID yet, so they remain `SPEC.md §…` pointers pending their own migration.

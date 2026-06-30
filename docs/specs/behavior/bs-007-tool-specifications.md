@@ -357,7 +357,4 @@ optional refinement and MUST NOT change the bounds or error semantics above.
   doc IDs: §5 → df-003; §7 → bs-002; §8.1.7 → td-002; §8.6 → td-003; §9 →
   bs-003; §14 → df-008; §15.1.1 → df-005; §15.1.2 → df-006; §15 schemas →
   df-007; §16 → bs-011. The `§8.2` STT-provider reference was rewired to td-001
-  (matching the df-003 precedent). Drift note: [bs-006](bs-006-mcp-tools-list-call.md)
-  links to this document as `bs-007-tool-behavior.md`, but the migrated file is
-  `bs-007-tool-specifications.md` — bs-006's link target is stale (not fixed
-  here, per scope).
+  (matching the df-003 precedent).

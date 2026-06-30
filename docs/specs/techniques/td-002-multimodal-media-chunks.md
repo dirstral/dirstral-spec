@@ -170,5 +170,3 @@ multimodality is a property of the chosen embed model, not a new capability cell
   (bs-007) whose `CLIP_TOO_LARGE`/`MEDIA_CLIP_FAILED` errors live in df-008 —
   both faithful to the source, which already required the `MEDIA_NO_TEXT`
   behavior and the shared-space retrieval of media chunks.
-</content>
-</invoke>
