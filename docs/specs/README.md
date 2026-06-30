@@ -5,11 +5,11 @@
 > documents grouped by concern, modeled on
 > [ooni/spec](https://github.com/ooni/spec). This PR establishes the directory
 > layout, the per-document convention, the full old→new mapping
-> ([MIGRATION.md](MIGRATION.md)), and **three faithfully-migrated exemplar
-> documents** (`df-005`, `df-006`, `df-000`). The remaining documents are listed
-> below with their source sections and are migrated in follow-up PRs so each is
-> reviewable on its own. `docs/SPEC.md` stays authoritative until a document is
-> migrated and marked **Stable** here.
+> ([MIGRATION.md](MIGRATION.md)), and a growing set of **faithfully-migrated
+> data-format documents** (`df-000`, `df-001`, `df-005`, `df-006`, `df-008`).
+> The remaining documents are listed below with their source sections and are
+> migrated in follow-up PRs so each is reviewable on its own. `docs/SPEC.md`
+> stays authoritative until a document is migrated and marked **Stable** here.
 
 ## Why
 
@@ -62,15 +62,15 @@ Every spec document begins with:
 ### `data-formats/` — payload shapes
 | ID | Title | Source (SPEC.md) | Status |
 |----|-------|------------------|--------|
-| [df-000](data-formats/df-000-base.md) | Base conventions & `format_version` | §0, §1, NEW (dir2mcp #468) | **Draft (exemplar)** |
-| df-001 | `connection.json` | §4.3 | To migrate |
+| [df-000](data-formats/df-000-base.md) | Base conventions & `format_version` | §0, §1, NEW (dir2mcp #468) | **Draft** |
+| [df-001](data-formats/df-001-connection-json.md) | `connection.json` | §4.3 | **Draft** |
 | df-002 | State-dir outputs (`secret.token`, `corpus.json`, `daemon.json`, `server.pid`) | §4 | To migrate |
 | df-003 | SQLite metadata schema | §5 | To migrate |
 | df-004 | Document / representation / chunk model | §1.1, §5, §7 | To migrate |
-| [df-005](data-formats/df-005-span.md) | `Span` (lines/page/time/region/document + bbox) | §15.1.1 | **Draft (exemplar)** |
-| [df-006](data-formats/df-006-hit-citation.md) | `Hit` and `Citation` | §15.1.2 | **Draft (exemplar)** |
+| [df-005](data-formats/df-005-span.md) | `Span` (lines/page/time/region/document + bbox) | §15.1.1 | **Draft** |
+| [df-006](data-formats/df-006-hit-citation.md) | `Hit` and `Citation` | §15.1.2 | **Draft** |
 | df-007 | Tool input/output JSON schemas | §15.2–§15.x | To migrate (reconcile w/ `spec/tools/schemas/*.json`, #423) |
-| df-008 | Canonical error taxonomy | §14 | To migrate |
+| [df-008](data-formats/df-008-error-taxonomy.md) | Canonical error taxonomy | §14 | **Draft** |
 | df-009 | CLI output contract | §3 | To migrate |
 
 ### `behavior/` — semantics & contracts
