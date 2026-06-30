@@ -41,7 +41,7 @@ returned by `dir2mcp_ask` (`citations[]`). Both reference a [df-005
     "rep_type":  { "type": "string" },
     "score":     { "type": "number" },
     "snippet":   { "type": "string" },
-    "span":      { "$ref": "df-005-span.md" },
+    "span":      { "$ref": "#/definitions/Span" },
     "modality":  { "type": "string", "description": "Media/multimodal chunks (td-002): e.g. \"text\", \"image\", \"audio\", \"video\". Omitted for plain text." },
     "media_ref": { "type": "string", "description": "Media/multimodal chunks (td-002): reference to the source media used to embed this chunk. Omitted for plain text." }
   },
@@ -73,7 +73,7 @@ A `Citation` is the answer-grounding reference returned in `dir2mcp_ask`'s
     "chunk_id": { "type": "integer" },
     "rel_path": { "type": "string" },
     "title":    { "type": "string" },
-    "span":     { "$ref": "df-005-span.md" }
+    "span":     { "$ref": "#/definitions/Span" }
   },
   "required": ["chunk_id", "rel_path", "span"]
 }

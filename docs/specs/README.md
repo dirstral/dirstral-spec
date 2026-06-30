@@ -110,5 +110,5 @@ Per dirstral-spec#26: each data-format document is the **one** authoritative
 shape. The machine-readable schemas under `spec/tools/schemas/` MUST be
 generated from, or conformance-checked against, the `df-*` example payloads —
 closing the prose↔schema↔code drift behind dir2mcp #423. The
-`data_format_version` defined in `df-000` is the cross-version signal
+`format_version` defined in `df-000` is the cross-version signal
 (dir2mcp #468).

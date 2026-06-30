@@ -2,9 +2,12 @@
 
 This table maps every section of the legacy monolithic `docs/SPEC.md` to its
 target document under `docs/specs/`. It is the checklist for the split
-(dirstral-spec#24). A row is **Done** only when the target document is created,
-marked `Status: Stable`, and the corresponding SPEC.md section is replaced by a
-one-line pointer (`Moved to df-006`).
+(dirstral-spec#24). **State legend:** *Done* = the target document has been
+created and its content migrated (the doc carries `Status: Draft`). The content
+now lives in the numbered doc, but `SPEC.md` remains authoritative until that doc
+is reviewed and promoted to `Status: Stable`, at which point the SPEC.md section
+is replaced by a one-line pointer (`Moved to df-006`). So *Done* here means
+"migrated (Draft)", **not** yet "Stable".
 
 `SPEC.md` line numbers are as of the branch base (commit `b26728e`); they are a
 migration aid only and are not citable.

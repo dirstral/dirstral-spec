@@ -68,7 +68,7 @@
         "score": { "type": "number" },
         "snippet": { "type": "string" },
         "span": { "$ref": "#/definitions/Span" },
-        "modality": { "type": "string", "description": "Media/multimodal chunks (df-002 media model): e.g. text/image/audio/video. Omitted for plain text." },
+        "modality": { "type": "string", "description": "Media/multimodal chunks (td-002 multimodal media chunks): e.g. text/image/audio/video. Omitted for plain text." },
         "media_ref": { "type": "string", "description": "Media/multimodal chunks: reference to the source media used to embed this chunk. Omitted for plain text." }
       },
       "required": ["chunk_id", "rel_path", "score", "snippet", "span"]

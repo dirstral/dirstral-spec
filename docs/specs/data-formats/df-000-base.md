@@ -22,13 +22,15 @@ Every self-describing payload dir2mcp writes at a boundary **MUST** carry a
 implementation always knows the shape it is reading and can adapt or reject:
 
 - **`connection.json`** (df-001) MUST include `format_version`.
-- **`stats` tool output** SHOULD include `format_version` (or the daemon's
-  implemented spec version) so an MCP client can branch on payload evolution
-  (e.g. the df-006 `Hit`/`Citation` changes).
+- **`stats` tool output** SHOULD include `format_version`; if it is absent, an
+  MCP client MAY fall back to the daemon's implemented spec version to branch on
+  payload evolution (e.g. the df-006 `Hit`/`Citation` changes).
 - **SQLite** MUST set `PRAGMA user_version` to a monotonic schema version and
   check it on open: a database newer than the binary understands MUST be
   refused with a clear error, and a non-additive migration MUST be gated on the
-  version (closes dir2mcp #405).
+  version (closes dir2mcp #405). `PRAGMA user_version` is an **independent**
+  monotonic integer for the on-disk schema; it does not map to the semver
+  `format_version` of the wire payloads above.
 - **MCP `initialize`** MUST advertise the spec's pinned `protocolVersion`
   (`2025-11-25`) rather than echoing the client's requested version
   (closes dir2mcp #404).
