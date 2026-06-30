@@ -35,7 +35,8 @@ target: `2025-11-25`.
   (`data-formats/`, `behavior/`, `techniques/`) with a `README.md` index and a
   `MIGRATION.md` map
 - `spec/versioning.md` — versioning & compatibility policy
-- `spec/tools/schemas/*.json` — per-tool JSON Schemas + shared `common.json`
+- `spec/tools/schemas.md` + `spec/tools/schemas/*.json` — the schema prose
+  companion plus the per-tool JSON Schemas and shared `common.json`
   (`Span`/`Hit`/`Citation`)
 - `spec/sessions/lifecycle.md`, `spec/errors/taxonomy.md`, `spec/x402/extension.md`
 
@@ -62,4 +63,4 @@ before and broken strict clients. Keep prose ↔ schema ↔ implementation in sy
 - Keep changes scoped; no unrelated files.
 - Do **not** add a `Co-Authored-By` trailer to commits.
 - Pushing from macOS may hang on the osxkeychain credential helper — use
-  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push`.
+  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push -u origin <branch>`.
