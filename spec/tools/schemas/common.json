@@ -60,29 +60,29 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "chunk_id": { "type": "integer" },
         "rel_path": { "type": "string" },
+        "title": { "type": "string" },
         "doc_type": { "type": "string" },
-        "rep": { "type": "string" },
-        "chunk_id": { "type": "string" },
+        "rep_type": { "type": "string" },
         "score": { "type": "number" },
-        "text": { "type": "string" },
-        "span": { "$ref": "#/definitions/Span" }
+        "snippet": { "type": "string" },
+        "span": { "$ref": "#/definitions/Span" },
+        "modality": { "type": "string", "description": "Media/multimodal chunks (df-002 media model): e.g. text/image/audio/video. Omitted for plain text." },
+        "media_ref": { "type": "string", "description": "Media/multimodal chunks: reference to the source media used to embed this chunk. Omitted for plain text." }
       },
-      "required": ["rel_path", "doc_type", "rep", "chunk_id", "score", "text"]
+      "required": ["chunk_id", "rel_path", "score", "snippet", "span"]
     },
     "Citation": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "chunk_id": { "type": "integer" },
         "rel_path": { "type": "string" },
-        "doc_type": { "type": "string" },
-        "rep": { "type": "string" },
-        "chunk_id": { "type": "string" },
-        "span": { "$ref": "#/definitions/Span" },
-        "score": { "type": "number" },
-        "quote": { "type": "string" }
+        "title": { "type": "string" },
+        "span": { "$ref": "#/definitions/Span" }
       },
-      "required": ["rel_path", "doc_type", "rep", "chunk_id", "score"]
+      "required": ["chunk_id", "rel_path", "span"]
     }
   }
 }

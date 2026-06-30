@@ -16,11 +16,14 @@ returned by `dir2mcp_ask` (`citations[]`). Both reference a [df-005
 
 > **This document is the single source of truth for the Hit/Citation shape.**
 > It resolves dir2mcp #423: the published machine-readable mirror
-> `spec/tools/schemas/common.json` currently requires `chunk_id` as a **string**
-> and fields `doc_type`/`rep`/`text`, which contradicts both the prose (legacy
-> §15.1.2) and the implementation. A client validating a real response against
-> that mirror fails on every hit. `common.json` MUST be reconciled to the schema
-> below (tracked in the `df-007` migration); until then, `df-006` is authoritative.
+> `spec/tools/schemas/common.json` previously required `chunk_id` as a **string**
+> with fields `doc_type`/`rep`/`text` (and a `quote`-bearing `Citation`), which
+> contradicted both the implementation and the served `outputSchema` — a client
+> validating a real response against that mirror failed on every hit.
+> `common.json` has now been **reconciled to the shapes below** (df-007); they
+> are taken verbatim from the implementation's served `outputSchema`
+> (`hitDefinitionSchema` / `askOutputSchema` in `internal/mcp/tools.go`), which
+> the dir2mcp conformance test (#428) validates against the serializer.
 
 ## Specification (normative)
 
@@ -59,20 +62,39 @@ returned by `dir2mcp_ask` (`citations[]`). Both reference a [df-005
 
 ### `Citation`
 
-A `Citation` is a `Hit` restricted to the fields needed to ground an answer.
-It carries the same `chunk_id` (integer), `rel_path`, `title`, `score`, and
-`span`; `snippet` is the cited text. Producers **MUST** use the same field
-names and types as `Hit` (no `chunk_id`-as-string, no `text`/`rep` aliases).
+A `Citation` is the answer-grounding reference returned in `dir2mcp_ask`'s
+`citations[]`. It is intentionally **lean** — only what locates the cited chunk:
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "chunk_id": { "type": "integer" },
+    "rel_path": { "type": "string" },
+    "title":    { "type": "string" },
+    "span":     { "$ref": "df-005-span.md" }
+  },
+  "required": ["chunk_id", "rel_path", "span"]
+}
+```
+
+A `Citation` carries **no** `score`, `snippet`, `doc_type`, or `rep_type` — a
+caller that needs the cited text resolves the `chunk_id` via `dir2mcp_open_file`,
+or reads the corresponding `hits[]` entry (which is a full `Hit`). `chunk_id` is
+an **integer**; the legacy `common.json` `quote`/`rep`/`chunk_id`-string shape is
+removed (dir2mcp #423).
 
 ## Conformance
 
-The `df-007` tool-schema documents inline this shape as `definitions.Hit` /
-`definitions.Citation` in each tool's `outputSchema`. Per dirstral-spec#26,
-a CI fixture (an example `Hit`/`Citation` payload) MUST validate against the
-inlined schema, and the implementation's serializer output MUST validate against
-the published schema — the two-sided check that prevents the #387 and #423
+The canonical schema is `spec/tools/schemas/common.json` (`definitions.Hit` /
+`definitions.Citation`); `search.json` and `ask.json` `$ref` it. Those
+definitions now match the served `outputSchema` byte-for-byte. Per
+dirstral-spec#26, a CI fixture (an example `Hit`/`Citation` payload) MUST
+validate against `common.json`, and the implementation's serializer output MUST
+validate against it too — the two-sided check that prevents the #387 and #423
 drift classes from recurring (mirrored by the dir2mcp conformance test,
-dir2mcp #428).
+dir2mcp #428). See [df-007](df-007-tool-schemas.md) for the schema-file catalog.
 
 ## Example
 
@@ -95,8 +117,10 @@ dir2mcp #428).
 
 ## Changelog
 
-- **0.1.0** — Migrated from SPEC.md §15.1.2. Reconciled to the implementation:
-  added the optional `title`, `modality`, and `media_ref` fields (dir2mcp #387);
-  recorded `chunk_id` as **integer** and flagged the `common.json` mirror for
-  reconciliation (dir2mcp #423); added the `Citation` shape and the conformance
-  requirement.
+- **0.1.0** — Migrated from SPEC.md §15.1.2 and reconciled to the implementation's
+  served `outputSchema`: `Hit` gains optional `title`/`modality`/`media_ref`
+  (dir2mcp #387) and `chunk_id` is **integer**; `Citation` corrected to its actual
+  lean shape (`chunk_id`/`rel_path`/`span` + optional `title` — no
+  `score`/`snippet`/`quote`/`rep`). `spec/tools/schemas/common.json` updated to
+  match (the dir2mcp #423 fix), so prose, schema mirror, and implementation now
+  agree.

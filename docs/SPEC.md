@@ -7,11 +7,11 @@
 > on mutable section numbers. Migrated documents are authoritative once marked
 > **Stable** there; until then this file remains the source of truth. See the
 > [document index](specs/README.md) and the [migration map](specs/MIGRATION.md).
-> Migrated so far: the `df-*` data-format class — `df-000` (base +
-> `format_version`), `df-001` (connection.json), `df-002` (state outputs),
-> `df-003` (SQLite schema), `df-005` (Span), `df-006` (Hit/Citation),
-> `df-008` (error taxonomy), `df-009` (CLI output); only `df-007` (tool schemas)
-> remains in that class.
+> Migrated so far: the **complete `df-*` data-format class** — `df-000`–`df-003`
+> and `df-005`–`df-009` (df-004 folded into df-000+df-003). The df-007 migration
+> also reconciled `spec/tools/schemas/common.json` to the implementation, fixing
+> the published-schema drift (dir2mcp #423). The `bs-*` (behavior) and `td-*`
+> (technique) classes are next.
 
 **Spec version:** `0.22.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  

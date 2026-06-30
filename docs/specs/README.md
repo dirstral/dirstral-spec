@@ -5,12 +5,14 @@
 > documents grouped by concern, modeled on
 > [ooni/spec](https://github.com/ooni/spec). This PR establishes the directory
 > layout, the per-document convention, the full old→new mapping
-> ([MIGRATION.md](MIGRATION.md)), and the **faithfully-migrated data-format
-> documents** (`df-000`–`df-003`, `df-005`, `df-006`, `df-008`, `df-009`; only
-> `df-007` tool-schemas remains in that class). The `behavior/` and `techniques/`
-> documents are listed below with their source sections and are migrated in
-> follow-up PRs so each is reviewable on its own. `docs/SPEC.md` stays
-> authoritative until a document is migrated and marked **Stable** here.
+> ([MIGRATION.md](MIGRATION.md)), and the **complete `df-*` data-format class**
+> (`df-000`–`df-003`, `df-005`–`df-009`; `df-004` folded into df-000+df-003). The
+> df-007 migration also **reconciled `spec/tools/schemas/common.json`** to the
+> implementation, fixing the published-schema drift (dir2mcp #423). The
+> `behavior/` and `techniques/` documents are listed below with their source
+> sections and are migrated in follow-up PRs so each is reviewable on its own.
+> `docs/SPEC.md` stays authoritative until a document is migrated and marked
+> **Stable** here.
 
 ## Why
 
@@ -70,7 +72,7 @@ Every spec document begins with:
 | ~~df-004~~ | Document / representation / chunk model | §1.1, §5, §7 | **Folded** into df-000 (terms) + df-003 (schema) |
 | [df-005](data-formats/df-005-span.md) | `Span` (lines/page/time/region/document + bbox) | §15.1.1 | **Draft** |
 | [df-006](data-formats/df-006-hit-citation.md) | `Hit` and `Citation` | §15.1.2 | **Draft** |
-| df-007 | Tool input/output JSON schemas | §15.2–§15.x | To migrate (reconcile w/ `spec/tools/schemas/*.json`, #423) |
+| [df-007](data-formats/df-007-tool-schemas.md) | Tool input/output JSON schemas | §15.2–§15.11 + `spec/tools/schemas/*.json` | **Draft** (reconciled `common.json`, #423) |
 | [df-008](data-formats/df-008-error-taxonomy.md) | Canonical error taxonomy | §14 | **Draft** |
 | [df-009](data-formats/df-009-cli-output-contract.md) | CLI output contract | §3 | **Draft** |
 

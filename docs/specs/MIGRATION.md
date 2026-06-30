@@ -29,7 +29,7 @@ migration aid only and are not citable.
 | §14 Error taxonomy | 2192–2260 | **`df-008`** | **Done** |
 | §15.1.1 Span | 2264–2320 | **`df-005`** | **Done (exemplar)** |
 | §15.1.2 Hit | 2336–2360 | **`df-006`** | **Done (exemplar)** |
-| §15.2+ Tool schemas | 2360–2929 | `df-007` (schemas) + `bs-007` (behavior) | To do |
+| §15.2–§15.11 Tool schemas | 2371–2929 | **`df-007`** (schema catalog; `common.json` reconciled) + `bs-007` (behavior) | **Done** (df-007) |
 | §16 Configuration | 2930–3206 | `bs-011` | To do |
 | §17 Security & safety | 3207–3236 | `bs-009` | To do |
 | §18 Native x402 | 3237–3253 | `bs-010` | To do |
@@ -38,12 +38,15 @@ migration aid only and are not citable.
 
 ## Drift fixes folded into this work
 
-- **dir2mcp #423** — `spec/tools/schemas/common.json` requires `chunk_id` as a
-  **string** + `doc_type`/`rep`/`text`, contradicting both the prose (§15.1.2)
-  and the implementation (integer + `snippet`/`span`). `df-006` records the
-  authoritative shape (matching the prose + impl, including the `modality` /
-  `media_ref` fields that dir2mcp #387 added but §15.1.2 still omits). `common.json`
-  is reconciled to `df-006` in the `df-007` migration.
+- **dir2mcp #423** — `spec/tools/schemas/common.json` required `chunk_id` as a
+  **string** + `doc_type`/`rep`/`text` (and a `quote`-bearing `Citation`),
+  contradicting the implementation's served `outputSchema`. **Fixed** in the
+  df-007 migration: `common.json`'s `Hit`/`Citation` were rewritten to match the
+  implementation verbatim (`chunk_id` integer; `rep_type`/`snippet`; optional
+  `title`/`modality`/`media_ref`; the lean `Citation` of
+  `chunk_id`/`rel_path`/`span`+`title`). Verified with a JSON-Schema validator:
+  real payloads validate, the old shape is rejected. `search.json`/`ask.json`
+  `$ref` `common.json`, so the fix propagates.
 - **dir2mcp #422** — the code follows a quarantine model attributed to
   "spec 0.16.0" that conflicts with current SPEC.md. The behavior split
   (`bs-002`/`bs-007`) + the per-doc version header + `attic/` (dirstral-spec#25)
