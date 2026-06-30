@@ -1,6 +1,20 @@
 # SPEC.md
 ## dir2mcp Output & Integration Specification (Go)
 
+> **Restructure in progress (dirstral-spec#24).** This monolith is being split
+> into numbered, independently-versioned documents under
+> [`docs/specs/`](specs/README.md) (OONI-style), so spec references stop relying
+> on mutable section numbers. Migrated documents are authoritative once marked
+> **Stable** there; until then this file remains the source of truth. See the
+> [document index](specs/README.md) and the [migration map](specs/MIGRATION.md).
+> **All three classes are now drafted** — 9 `df-*` (data formats), 11 `bs-*`
+> (behavior), 5 `td-*` (techniques), one per SPEC.md section (§2–§18). The df-007
+> migration also reconciled `spec/tools/schemas/common.json` to the
+> implementation, fixing the published-schema drift (dir2mcp #423). Only the
+> non-normative §19 (non-goals) and §20 (implementation guidance) remain. These
+> docs are **Draft**; this file stays authoritative until each is reviewed and
+> marked **Stable**.
+
 **Spec version:** `0.22.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  

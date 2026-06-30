@@ -1,0 +1,60 @@
+# SPEC.md → numbered-docs migration map
+
+This table maps every section of the legacy monolithic `docs/SPEC.md` to its
+target document under `docs/specs/`. It is the checklist for the split
+(dirstral-spec#24). **State legend:** *Done* = the target document has been
+created and its content migrated (the doc carries `Status: Draft`). The content
+now lives in the numbered doc, but `SPEC.md` remains authoritative until that doc
+is reviewed and promoted to `Status: Stable`, at which point the SPEC.md section
+is replaced by a one-line pointer (`Moved to df-006`). So *Done* here means
+"migrated (Draft)", **not** yet "Stable".
+
+`SPEC.md` line numbers are as of the branch base (commit `b26728e`); they are a
+migration aid only and are not citable.
+
+| SPEC.md § | Lines | → Target doc | State |
+|-----------|-------|--------------|-------|
+| §0 Executive summary | 12–66 | `specs/README.md` + `df-000` | Folded |
+| §1 Definitions & invariants | 67–91 | `df-000` (terms) | Exemplar (partial) |
+| §2 CLI interface | 92–164 | **`bs-001`** | **Done** |
+| §3 CLI output contract | 165–279 | **`df-009`** | **Done** |
+| §4.3 connection.json | 321–339 | **`df-001`** | **Done** |
+| §4 On-disk outputs (rest) | 280–411 | **`df-002`** (layout/`secret.token`/`corpus.json`) | **Done** |
+| §5 SQLite metadata schema | 412–592 | **`df-003`** (df-004 folded into df-000+df-003) | **Done** |
+| §6 Vector index backends & identity | 593–686 | **`bs-008`** | **Done** |
+| §7 Ingestion pipeline | 687–1104 | **`bs-002`** (§7.1–7.3, 7.5–7.10); §7.4 → **`td-004`** | **Done** |
+| §8.1–§8.5, §8.8 Provider model | 1105–1330, 1777–1807 | **`td-001`** (§8.1.7 → **`td-002`**) | **Done** |
+| §8.6 Transcription/translation/subtitle | 1331–1657 | **`td-003`** | **Done** |
+| §8.7 Distributed embedding | 1658–1776 | **`td-005`** | **Done** |
+| §9 Retrieval & answer generation | 1808–1959 | **`bs-003`** | **Done** |
+| §10 MCP Streamable HTTP | 1960–2023 | **`bs-004`** | **Done** |
+| §11 MCP lifecycle (wire) | 2024–2095 | **`bs-005`** | **Done** |
+| §12 MCP tools list/call | 2096–2168 | **`bs-006`** | **Done** |
+| §13 Tool set | 2169–2191 | **`bs-006`** | **Done** |
+| §14 Error taxonomy | 2192–2260 | **`df-008`** | **Done** |
+| §15.1.1 Span | 2264–2320 | **`df-005`** | **Done** |
+| §15.1.2 Hit | 2336–2360 | **`df-006`** | **Done** |
+| §15.2–§15.11 Tool schemas + behavior | 2371–2929 | **`df-007`** (schemas; `common.json` reconciled) + **`bs-007`** (behavior) | **Done** |
+| §16 Configuration | 2930–3206 | **`bs-011`** | **Done** |
+| §17 Security & safety | 3207–3236 | **`bs-009`** | **Done** |
+| §18 Native x402 | 3237–3253 | **`bs-010`** | **Done** |
+| §19 Non-goals | 3254–3271 | `docs/scope.md` (non-normative) | To do |
+| §20 Implementation guidance | 3272–end | `docs/guidance.md` (non-normative) | To do |
+
+## Drift fixes folded into this work
+
+- **dir2mcp #423** — `spec/tools/schemas/common.json` required `chunk_id` as a
+  **string** + `doc_type`/`rep`/`text` (and a `quote`-bearing `Citation`),
+  contradicting the implementation's served `outputSchema`. **Fixed** in the
+  df-007 migration: `common.json`'s `Hit`/`Citation` were rewritten to match the
+  implementation verbatim (`chunk_id` integer; `rep_type`/`snippet`; optional
+  `title`/`modality`/`media_ref`; the lean `Citation` of
+  `chunk_id`/`rel_path`/`span`+`title`). Verified with a JSON-Schema validator:
+  real payloads validate, the old shape is rejected. `search.json`/`ask.json`
+  `$ref` `common.json`, so the fix propagates.
+- **dir2mcp #422** — the code follows a quarantine model attributed to
+  "spec 0.16.0" that conflicts with current SPEC.md. The behavior split
+  (`bs-002`/`bs-007`) + the per-doc version header + `attic/` (dirstral-spec#25)
+  make such a conflict visible instead of silent.
+- **dir2mcp #468 / #404 / #405** — `df-000` introduces `format_version`, the
+  cross-version signal the data currently lacks.
