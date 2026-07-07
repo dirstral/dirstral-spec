@@ -1,7 +1,7 @@
 # bs-010: Native x402 integration
 
 - **ID:** bs-010
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -44,8 +44,9 @@ points to.
 - When a paid route is called **without** valid payment, the server returns HTTP
   `402 Payment Required` with machine-readable payment requirements carried in
   the `PAYMENT-REQUIRED` field.
+- The challenge **MUST** carry a single-use, server-issued `nonce` and an explicit validity window (`validAfter`/`validUntil`, `maxTimeoutSeconds`), and **MUST** be bound to exactly one `(resource, cost)` pair: a proof valid for one tool/price **MUST NOT** be valid for another. The nonce is a stateless HMAC token bound to resource+cost+expiry. The canonical field schema lives in the [x402 payment adapter spec](../../x402-payment-adapter-spec.md).
 - Paid **retry** requests **MUST** be validated from `PAYMENT-SIGNATURE`
-  (x402 v2 semantics).
+  (x402 v2 semantics, wire profile `X402Version: 2`).
 - x402 **network identifiers** **MUST** use CAIP-2 format (for example:
   `eip155:8453`, `eip155:84532`,
   `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d`).
@@ -54,6 +55,8 @@ points to.
 
 - For paid requests, **verification and settlement** **MUST** be delegated to a
   **facilitator** (hosted or self-managed); dir2mcp remains **non-custodial**.
+- The adapter→facilitator transport **MUST** be `https` whenever it is credentialed or the facilitator host is non-loopback; a bearer token **MUST NOT** traverse plaintext `http` to a non-loopback host (all modes, including `on`). See the [adapter spec](../../x402-payment-adapter-spec.md).
+- Remaining **non-custodial** does **not** preclude single-use enforcement: dir2mcp **MAY** persist a bounded, non-custodial replay ledger of consumed nonces / idempotency keys. On the `verified -> settled` transition a nonce **MUST** be consumed exactly once; a replay of a consumed nonce — or the same nonce with a different request — **MUST** be rejected and **MUST NOT** drive a second execution or settlement. Replay detection keys off the payment nonce, not raw request bytes.
 - Successful paid responses **SHOULD** include facilitator settlement metadata
   via `PAYMENT-RESPONSE` when available.
 
@@ -86,6 +89,7 @@ points to.
 
 ## Changelog
 
+- **0.2.0** — x402 flow hardening (syncs canonical adapter spec; unblocks dir2mcp #421, follows #400). Challenge/retry: require single-use `nonce`, explicit validity window (`validAfter`/`validUntil`/`maxTimeoutSeconds`), and per-tool / per-`(resource, cost)` binding. Verification/settlement: require `https` transport for credentialed/non-loopback facilitators; permit a non-custodial replay ledger with exactly-once nonce consumption on `verified -> settled`. Wire profile marked `X402Version: 2`. Canonical field schema remains in the x402 payment adapter spec.
 - **0.1.0** — Migrated from SPEC.md §18 (native x402 integration requirements,
   minimum). Every normative requirement preserved; prose tightened and grouped
   by concern, with the `off|on|required` mode semantics made explicit. The
