@@ -1,7 +1,7 @@
 # td-004: Representation generation & structured extraction
 
 - **ID:** td-004
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -45,15 +45,29 @@ healthy.
 The `raw_text` `rep_type` and the `index_kind` routing are persisted per
 [df-003](../data-formats/df-003-sqlite-schema.md).
 
+**Markup boundary (html).** `html` is a *dual-path* format: it MAY be handled
+here as flat `raw_text`, or routed to a structured extraction engine (§B.1) that
+preserves headings/tables/links. §B.1 lists `html` as structured-capable so that
+best-available selection is *permitted* to promote it; this section no longer
+*requires* html to take the flat path. The **default** html routing is deferred
+to dir2mcp #556 and left unchanged here — until #556 lands an implementation MAY
+continue to route html to `raw_text` and MUST NOT be considered non-conforming
+for doing so.
+
 ### B) PDF / image / document
 
-Generate an `extracted_markdown` representation via the configured extractor
-(`ingest.extractor`, [bs-011](../behavior/bs-011-configuration.md)):
+Generate an `extracted_markdown` representation via a **capability-aware,
+per-format** selection over the extraction-engine registry (§B.1).
+`ingest.extractor` ([bs-011](../behavior/bs-011-configuration.md)) selects the
+*policy*, not a single global engine:
 
-- `auto` (default): prefer docling, fall back to Mistral OCR.
-- `docling`: require a docling command/binary.
-- `docling-serve`: require a reachable docling-serve HTTP endpoint (see below).
-- `mistral`: require a Mistral OCR key/config.
+- `auto` (default): **best available per format** — for each format, use the
+  highest-fidelity *active* engine that supports it (§B.1), falling through the
+  fidelity order; a format no active engine supports degrades per the
+  strict/lenient contract (§B.2).
+- `docling` / `docling-serve` / `mistral`: **pin** a single engine. A format the
+  pinned engine cannot read does not silently produce an empty representation —
+  it degrades honestly per §B.2.
 - `off`: skip the extracted representation.
 
 Route the extracted representation to `index_kind=text`. Cache extracted output
@@ -62,15 +76,97 @@ if caching is enabled.
 #### Extractor transport
 
 The `docling` *engine* produces the same structured document regardless of how
-it is reached; the `ingest.extractor` value selects the transport explicitly:
-`docling` invokes a local CLI subprocess, while `docling-serve` calls a
-docling-serve HTTP service at the endpoint addressed by
+it is reached; the `docling` vs `docling-serve` engine selection is the
+transport: `docling` invokes a local CLI subprocess, while `docling-serve` calls
+a docling-serve HTTP service at the endpoint addressed by
 `ingest.docling.serve_url` ([bs-011](../behavior/bs-011-configuration.md)). Both
 transports **MUST** produce identical output (the same `extracted_markdown`
 representation and `region` spans defined below); the choice is operational and
-carries no wire- or schema-level difference. Extraction is selected via
-`ingest.extractor` and is independent of the model/provider bindings in
-[td-001](td-001-provider-model.md) — it is not a provider capability.
+carries no wire- or schema-level difference.
+
+**Extraction is a §B routing decision, not a
+[td-001](td-001-provider-model.md) §8.1.2 capability cell.** Per-format engine
+selection lives here (§B.1), *not* in the td-001 §8.1.2 capability matrix:
+extraction fidelity is per-format and ordered, and two of the engines
+(`docling`, the future `pandoc`, #393) are local tools with no provider profile.
+Where an engine *is* a td-001 §8 surface — the `mistral` engine — it resolves
+through that capability's binding: the `mistral` extraction engine is the active
+`ocr` provider ([td-001](td-001-provider-model.md) §8.1.2/§8.1.3), so the
+OCR-tier engine follows the `ocr` binding rather than being pinned to a vendor
+name. The audio path (§C) already binds its engine to the `stt` capability; §B
+generalizes the same best-available-by-default, swappable, honestly-degrading
+shape to documents and images.
+
+#### B.1) Extraction-engine capability matrix (normative)
+
+The **extraction-engine registry** is the single source of truth for which
+engine can ingest which format, replacing scattered MIME allowlists and coarse
+`doc_type` routing. Each engine declares the format classes it supports and a
+**fidelity tier** (lower = higher fidelity = preferred as the best-available
+tiebreak):
+
+| Tier | Engine | Nature | Provenance produced |
+|---|---|---|---|
+| T1 | `docling` / `docling-serve` | structured document model | reading-order, `region` (page+bbox), section breadcrumb, labels, atomic tables (§B "Structured extraction") |
+| T2 | `pandoc` (future, #393) | structured markup → Markdown | structure without page/bbox; `page`/no spans |
+| T3 | `mistral` (= td-001 §8 `ocr` provider) | page-separated OCR | `page` spans (§B "Page-separated extraction") |
+| T0 | `raw_text` (§A) | flat text | none |
+
+**Format support** (`✅` = engine can ingest this format; tier from the table
+above). `pandoc` rows are forward-looking (#393) and non-binding until that
+engine ships:
+
+| Format class | Examples | docling(-serve) | mistral (ocr) | pandoc† | raw_text |
+|---|---|:--:|:--:|:--:|:--:|
+| pdf | `.pdf` | ✅ T1 | ✅ T3 | ❌ | ❌ |
+| raster-image (OCR-native) | `.png .jpg .jpeg .webp` | ✅ T1 | ✅ T3 | ❌ | ❌ |
+| raster-image (extended) | `.tiff .bmp .gif` | ✅ T1 | ❌ | ❌ | ❌ |
+| vector-image | `.svg` | ✅ T1 | ❌ | ❌ | ❌ |
+| office (OOXML) | `.docx .pptx .xlsx` | ✅ T1 | ❌ | ✅ T2 | ❌ |
+| office/ebook (legacy/ODF) | `.odt .rtf .doc .epub` | ❌ | ❌ | ✅ T2 | ❌ |
+| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T0 (§A, #556) |
+
+† `pandoc` cells are declared for matrix completeness (#393); an implementation
+without a pandoc engine simply treats those cells as inactive.
+
+**Best-available selection (`extractor: auto`).** For each classified document,
+select the **active** engine of lowest fidelity tier whose cell for that format
+is `✅`. "Active" means *available* in the §B "Extractor availability" sense
+(resolves + passes its probe; a reachable `serve_url`; a present `ocr`
+credential/binding). The selection is **per format**, deterministic, and cached
+for the run. A format with an active engine at some tier is never routed to an
+engine that cannot read it, and a higher-fidelity active engine is never
+bypassed (fixing the "html→raw_text while docling is active" and
+"tiff→mistral-rejected" defects, dir2mcp #394/#556).
+
+**Pinned selection (`extractor: docling|docling-serve|mistral`).** Only the
+named engine is eligible; formats outside its `✅` set degrade per §B.2. Pinning
+is honored exactly (no cross-engine fallback), matching the existing
+explicit-`docling` / explicit-`docling-serve` no-silent-fallback rule.
+
+#### B.2) Degradation contract (strict / lenient)
+
+When no active eligible engine supports a document's format (a coverage gap under
+`auto`, or a pinned engine that cannot read the format), the outcome is governed
+by `ingest.on_unsupported` ([bs-011](../behavior/bs-011-configuration.md)), a
+kill-switch-shaped knob mirroring the tri-state opt-out used elsewhere (e.g.
+`media.diarize`, [td-003](td-003-transcription-translation-subtitles.md)):
+
+- **`lenient` (default, backward-compatible)** — **skip with warning**: no
+  `extracted_markdown` is produced, the document is indexed with whatever other
+  representations it has (or none), and the gap is surfaced as a warning in
+  startup diagnostics and the honest coverage report
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md)). This preserves the
+  current not-indexed *outcome* for unsupported formats while replacing the
+  former **silent** empty representation with an honest, named one.
+- **`strict`** — the unsupported format is a **non-fatal per-document error**
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md)): `documents.status=error`
+  with an `UNSUPPORTED_FORMAT`-class reason; indexing continues for other
+  documents. Intended for CI / correctness-sensitive corpora that must not
+  silently under-cover.
+
+In neither mode is an unsupported format allowed to yield a silent empty
+representation reported as success.
 
 Selecting `docling-serve` **REQUIRES** a non-empty, reachable `serve_url`. An
 empty or unreachable endpoint makes the `docling-serve` extractor
@@ -230,6 +326,13 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
+- **0.2.0** — Reversed §B from single global extractor selection to
+  capability-aware per-format selection: added the §B.1 engine capability matrix
+  + fidelity ordering and the §B.2 strict/lenient degradation contract; recorded
+  the governance call (extraction stays a §B routing decision, not a td-001
+  §8.1.2 capability cell; the `mistral` engine binds the `ocr` capability); noted
+  the §A markup (html) dual-path boundary (dir2mcp #556). Unblocks dir2mcp #395
+  Stages 2–3.
 - **0.1.0** — Migrated from SPEC.md §7.4 (parts A–D). Cross-references rewired to
   stable doc IDs: §5 → [df-003](../data-formats/df-003-sqlite-schema.md) (the
   `spans`/`representations` rows, formerly §5.4/§5.2); §15.1.1 →

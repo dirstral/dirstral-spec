@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -133,6 +133,16 @@ rag:
 ingest:
   gitignore: true
   extractor: auto      # auto|docling|docling-serve|mistral|off
+  # auto = best-available per format (td-004 §B.1): highest-fidelity ACTIVE
+  # engine that supports each format; no format routed to an engine that can't
+  # read it, no higher-fidelity engine bypassed. A pinned engine (docling|
+  # docling-serve|mistral) is honored exactly; formats it can't read degrade
+  # per on_unsupported.
+  on_unsupported: lenient   # lenient|strict (td-004 §B.2). lenient (default) =
+    # skip-with-warning + name the gap in the coverage report (bs-002 §7.7);
+    # strict = non-fatal per-document UNSUPPORTED_FORMAT error (bs-002 §7.7).
+    # Backward-compatible: lenient preserves the current not-indexed outcome,
+    # minus the silent part.
   docling:
     # HTTP endpoint of a running docling-serve container. REQUIRED when
     # extractor=docling-serve: an empty or unreachable URL disables that
@@ -303,6 +313,8 @@ security:
 
 ## Changelog
 
+- **0.2.0** — ingest: documented extractor=auto as best-available-per-format
+  (td-004 §B.1) and added `ingest.on_unsupported: lenient|strict` (td-004 §B.2).
 - **0.1.0** — Migrated from SPEC.md §16 (Configuration — single file), including
   §16.1 Precedence, §16.1.1 Secret source precedence, and §16.2 the full
   annotated minimal config template. The "secrets are never persisted to the

@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -167,6 +167,24 @@ Fatal errors:
 - root inaccessible
 - cannot write state (disk full, permissions)
 - irrecoverable state corruption
+
+**Honest coverage report (normative).** Startup diagnostics and `dir2mcp doctor`
+MUST report extraction coverage honestly, extending the existing requirement
+that a present-but-broken extractor be visible rather than reported as healthy
+(td-004 §B). The report MUST:
+
+- list the **active extraction engines** and, per engine, its availability and
+  (when unavailable) the reason;
+- name every **corpus format class present but not covered** by any active
+  engine (per the td-004 §B.1 matrix) — e.g. "`.odt`, `.tiff` present, no active
+  engine covers them";
+- for each uncovered class, name a **remediation** — the engine/config to add
+  (e.g. "install docling for `.tiff`; add a pandoc engine (#393) for `.odt`; or
+  set `ingest.on_unsupported: strict` to fail instead of skip").
+
+Under `ingest.on_unsupported: lenient` the uncovered classes are warnings; under
+`strict` the affected documents are recorded as `status=error` (td-004 §B.2). A
+coverage gap MUST never be silent.
 
 ### 7.8 Remote corpus sources
 
@@ -352,6 +370,9 @@ re-indexes it.
 
 ## Changelog
 
+- **0.2.0** — §7.7: added the honest-coverage-report contract (list active
+  extraction engines + availability; name uncovered corpus format classes and
+  their remediation; never silent). Ties to td-004 §B.1/§B.2.
 - **0.1.0** — Migrated from SPEC.md §7 (§7.1 Discovery, §7.2 Safety exclusions,
   §7.3 Type classification, §7.5 Chunking defaults, §7.6 Incremental indexing,
   §7.7 Per-document error handling, §7.8 Remote corpus sources, §7.9 Cross-file
