@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -171,7 +171,8 @@ metadata mirrors the df-003 `documents` row.
 
 **Behavior.** Output carries `root`, `state_dir`, `protocol_version`,
 `doc_counts` (map of doc-type → integer), `total_docs`, `doc_counts_available`,
-`indexing`, and `models` (all required); `recent_failures` is optional.
+`indexing`, and `models` (all required); `recent_failures` and `skip_reasons`
+are optional.
 
 - `indexing` carries `job_id`, `running`, `mode` (`incremental | full`),
   `scanned`, `indexed`, `skipped`, `deleted`, `representations`, `chunks_total`,
@@ -191,6 +192,23 @@ metadata mirrors the df-003 `documents` row.
   **not** "unsupported". `error_message` is single-line, length-capped
   (implementations SHOULD cap at 512 bytes on a UTF-8 rune boundary), with
   control characters stripped, and MUST NOT contain secrets or raw file content.
+- `skip_reasons` (optional) is the honest-coverage breakdown: one
+  `{reason, count}` entry per distinct reason a document was set to
+  `status="skipped"` during ingest, with `count` the number of documents skipped
+  for that reason across the corpus (aggregated in `CorpusStats`, parallel to
+  `recent_failures`). Whereas `doc_counts` groups `status="ready"` documents by
+  `doc_type` and so **overstates** coverage, `skip_reasons` reports what was
+  **not** indexed and why. `reason` is a stable, closed enum for a given spec
+  minor: `unsupported_format` (no extractor — e.g. `.odt`/`.rtf`, encrypted PDF,
+  image outside the OCR allowlist, video with no sidecar), `binary_ignored`,
+  `archive` (container or un-expanded nested member), `ignore_rule`,
+  `secret_excluded`, `path_excluded`, `size_cap`. New reasons are added only by a
+  minor version bump (additive); a client MAY receive an unrecognized value from
+  a newer server and SHOULD render it verbatim rather than error. `count` is
+  always **>= 1** (zero-count reasons are omitted). Implementations MAY omit the
+  field when nothing was skipped; clients MUST treat omission as "nothing
+  skipped", **not** "unsupported". The `indexing.skipped` total equals the sum of
+  all `skip_reasons[].count`.
 
 ### dir2mcp_transcribe
 
