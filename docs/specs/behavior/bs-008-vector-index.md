@@ -1,7 +1,7 @@
 # bs-008: Vector index backends & embed identity
 
 - **ID:** bs-008
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -82,13 +82,16 @@ two collections/namespaces (§6.3).
 
 ### 6.4 Embed identity binds every backend
 
-The corpus-lifetime **embed identity** — `provider | text_model | code_model |
-text_dim | code_dim | multimodal` (td-001) — binds the index **regardless of
-backend**. On load, if the configured embed identity differs from the one
-recorded for the index (embedded snapshot or external collection metadata), the
-server MUST refuse to mix vector spaces: it either errors (`CONFIG_INVALID`) or
-triggers a full reindex (td-001). A backend MUST NOT silently serve a collection
-built under a different embed identity.
+The corpus-lifetime **embed identity** — `provider | base_url | text_model |
+code_model | text_dim | code_dim | multimodal` (td-001; `base_url` **normalized**
+per td-001 §8.1.4, empty for providers where the endpoint is not meaningful and
+for pre-existing indexes) — binds the index **regardless of backend**. On load, if
+the configured embed identity differs from the one recorded for the index
+(embedded snapshot or external collection metadata), the server MUST refuse to mix
+vector spaces: it either errors (`CONFIG_INVALID`) or triggers a full reindex
+(td-001). A backend MUST NOT silently serve a collection built under a different
+embed identity — including one built under the same provider/model at a
+**different endpoint**.
 
 ### 6.5 Pure-Go / `CGO_ENABLED=0` (normative)
 
@@ -120,11 +123,19 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
 ## Changelog
 
+- **0.2.0** — Added the normalized `base_url` component to the corpus-lifetime
+  embed identity tuple in §6.4, to prevent two profiles of the same
+  provider/model at different endpoints from silently sharing one vector space
+  (mirrors td-001 §8.1.4). `base_url` is normalized and empties for providers
+  where the endpoint is not meaningful; pre-existing indexes recorded no
+  `base_url` and are treated as `base_url == ""` (a valid component), so
+  hosted/default corpora stay valid. Normalization and back-compat rules are
+  authoritative in td-001 §8.1.4. Unblocks dir2mcp #560.
 - **0.1.0** — Migrated from SPEC.md §6 (vector index backends and identity),
   preserving every normative requirement: the embedded-default = zero-infra
   invariant, the Tier A/B/C backend model, the text/code logical axes with
   `chunk_id` as the mandatory vector label, the corpus-lifetime embed identity
-  (`provider | text_model | code_model | text_dim | code_dim | multimodal`) and
+  (`provider | base_url | text_model | code_model | text_dim | code_dim | multimodal`) and
   its refuse-to-mix / full-reindex rule, the external-store-optional-never-required
   and no-silent-fallback rules, the `CGO_ENABLED=0` / `sqlite-vec`-rejected
   constraints, and the tombstone + oversampling deletion semantics. Cross-refs

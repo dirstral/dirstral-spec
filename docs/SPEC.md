@@ -596,6 +596,7 @@ breadcrumb:
   * `protocol_version` = `2025-11-25`
   * `corpus_id`
   * `index_format_version`
+  * `embed_provider`, `embed_base_url`   # embed_base_url = normalized per §8.1.4; "" is a valid value (pre-existing indexes and non-meaningful/default endpoints)
   * `embed_text_model`, `embed_text_dim`
   * `embed_code_model`, `embed_code_dim`
   * `ocr_model`
@@ -660,13 +661,15 @@ external store they are two collections/namespaces (§6.3).
 
 ### 6.4 Embed identity binds every backend
 
-The corpus-lifetime **embed identity** — `provider | text_model | code_model |
-text_dim | code_dim | multimodal` (§8.1.4) — binds the index **regardless of
-backend**. On load, if the configured embed identity differs from the one
-recorded for the index (embedded snapshot or external collection metadata), the
-server MUST refuse to mix vector spaces: it either errors (`CONFIG_INVALID`) or
-triggers a full reindex (§8.1.4). A backend MUST NOT silently serve a collection
-built under a different embed identity.
+The corpus-lifetime **embed identity** — `provider | base_url | text_model |
+code_model | text_dim | code_dim | multimodal` (§8.1.4; `base_url` **normalized**
+per §8.1.4, empty for providers where the endpoint is not meaningful) — binds the
+index **regardless of backend**. On load, if the configured embed identity differs
+from the one recorded for the index (embedded snapshot or external collection
+metadata), the server MUST refuse to mix vector spaces: it either errors
+(`CONFIG_INVALID`) or triggers a full reindex (§8.1.4). A backend MUST NOT silently
+serve a collection built under a different embed identity — including one built
+under the same provider/model at a **different endpoint**.
 
 ### 6.5 Pure-Go / `CGO_ENABLED=0` (normative)
 
@@ -1158,7 +1161,16 @@ For each capability, with `<cap>.provider`:
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
-Vectors from different embed providers/models are not comparable. The embed **identity** — provider, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+
+**Why `base_url` is part of the identity.** Two profiles with the same `kind` and model name pointed at **different** endpoints (e.g. two `kind: openai` self-hosted vLLM/Ollama deployments, or a proxy vs. the hosted API) serve **different** vector spaces. Without `base_url` in the identity they collapse to one identity and their vectors can silently mix in a single index — a violation of the "MUST refuse to mix vector spaces" rule above. Including the endpoint closes that gap.
+
+**`base_url` normalization (normative).** `base_url` enters the identity in **canonical, normalized** form so that trivially-different-but-equivalent URLs do not fragment the identity and force needless re-embeds. The recorded value is computed as follows:
+1. **Not-meaningful → empty.** For a `kind` whose embed endpoint is a single canonical provider surface that does not select an alternate model space (native `gemini`, `cohere`), the normalized `base_url` is the **empty string** `""` — `base_url` does not participate in the identity for that provider.
+2. **Canonical/default → empty.** If the effective `base_url` is unset, or equals the built-in profile's shipped canonical `base_url` for that provider (e.g. `kind: openai` at `https://api.openai.com/v1`, the default `mistral` profile at `https://api.mistral.ai/v1`), it normalizes to `""`. Only an operator-**overridden**, non-canonical endpoint (the exact mis-bind case) yields a non-empty component.
+3. **URL canonicalization** (applied before comparison, for the non-empty case): lowercase the scheme and host; remove the default port (`80` for `http`, `443` for `https`); strip trailing slash(es) and collapse duplicate slashes in the path; **preserve** the remaining path (e.g. `/v1`, which can select a different API mount); drop any userinfo, query, and fragment; apply canonical percent-/IDN-encoding. The result is compared exactly (path remains case-sensitive after host lowercasing).
+
+**`""` is a valid identity component.** The empty string is a first-class, legitimate value of the `base_url` component, not a sentinel for "unknown". Consequently an index built **before** this rule — which recorded no `base_url` — is treated as having `base_url == ""` and remains **valid** on reload against any provider whose normalized `base_url` is also `""` (all built-in/hosted-default deployments, per rules 1–2). Only a corpus whose embed endpoint is a **non-canonical / custom** `base_url` sees a one-time `CONFIG_INVALID`/reindex on first reload after this change — the correct, bounded safety action, since those are exactly the corpora previously at risk of silent cross-endpoint mixing.
 
 #### 8.1.5 Asymmetric embeddings (input role)
 
@@ -2701,6 +2713,27 @@ through the OCR / transcript cache, never through a direct file read.
           }
         },
         "required": ["rel_path", "doc_type", "mtime_unix", "error_message"]
+      }
+    },
+    "skip_reasons": {
+      "type": "array",
+      "description": "Optional honest-coverage breakdown: one entry per distinct reason a document was set to status='skipped' during ingest, with the count of documents skipped for that reason across the current corpus. Aggregated in CorpusStats parallel to recent_failures. Unlike doc_counts (which groups status='ready' documents by doc_type and therefore overstates coverage), this field reports what was NOT indexed and why. Implementations MAY omit this field when nothing was skipped; clients MUST treat omission as 'nothing skipped', not as 'unsupported'. Entries whose count would be 0 MUST be omitted (the array carries only non-empty reasons; an empty corpus omits the field entirely). Intended for coverage / 'what wasn't indexed & why' UIs; the same breakdown also surfaces in dir2mcp support-bundle.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap"],
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of documents skipped for this reason in the current corpus. Always >= 1 (zero-count reasons are omitted)."
+          }
+        },
+        "required": ["reason", "count"]
       }
     }
   },
