@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -152,6 +152,9 @@ bounding box and **SHOULD** carry the section breadcrumb:
 - `index_format_version` — the schema/index version fence; see
   [df-000](df-000-base.md) (also surfaced as `PRAGMA user_version`) and the
   `INDEX_VERSION_MISMATCH` code ([df-008](df-008-error-taxonomy.md)).
+- `embed_provider`, `embed_base_url` — `embed_base_url` normalized per
+  SPEC §8.1.4 / td-001; `""` is a valid value (pre-existing indexes,
+  non-meaningful/default endpoints)
 - `embed_text_model`, `embed_text_dim`
 - `embed_code_model`, `embed_code_dim`
 - `ocr_model`
@@ -160,6 +163,11 @@ bounding box and **SHOULD** carry the section breadcrumb:
 
 ## Changelog
 
+- **0.2.0** — Added the `embed_provider` and `embed_base_url` persisted
+  `settings` keys mirroring the embed-identity amendment in SPEC §8.1.4 /
+  td-001 §8.1.4 and the §6.4 / bs-008 tuple. `embed_base_url` is normalized per
+  td-001 §8.1.4 and `""` is a valid value (pre-existing indexes and
+  non-meaningful/default endpoints stay valid on reload). Unblocks dir2mcp #560.
 - **0.1.0** — Migrated from SPEC.md §5. Cross-references rewired to doc IDs
   (bs-002/bs-003/bs-008, td-001/td-003/td-004, df-000/df-005/df-006/df-008).
   Added the `embedding_status` retrieval-eligibility note (dir2mcp #443/#412) and

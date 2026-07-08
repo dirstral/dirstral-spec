@@ -596,6 +596,7 @@ breadcrumb:
   * `protocol_version` = `2025-11-25`
   * `corpus_id`
   * `index_format_version`
+  * `embed_provider`, `embed_base_url`   # embed_base_url = normalized per §8.1.4; "" is a valid value (pre-existing indexes and non-meaningful/default endpoints)
   * `embed_text_model`, `embed_text_dim`
   * `embed_code_model`, `embed_code_dim`
   * `ocr_model`
@@ -660,13 +661,15 @@ external store they are two collections/namespaces (§6.3).
 
 ### 6.4 Embed identity binds every backend
 
-The corpus-lifetime **embed identity** — `provider | text_model | code_model |
-text_dim | code_dim | multimodal` (§8.1.4) — binds the index **regardless of
-backend**. On load, if the configured embed identity differs from the one
-recorded for the index (embedded snapshot or external collection metadata), the
-server MUST refuse to mix vector spaces: it either errors (`CONFIG_INVALID`) or
-triggers a full reindex (§8.1.4). A backend MUST NOT silently serve a collection
-built under a different embed identity.
+The corpus-lifetime **embed identity** — `provider | base_url | text_model |
+code_model | text_dim | code_dim | multimodal` (§8.1.4; `base_url` **normalized**
+per §8.1.4, empty for providers where the endpoint is not meaningful) — binds the
+index **regardless of backend**. On load, if the configured embed identity differs
+from the one recorded for the index (embedded snapshot or external collection
+metadata), the server MUST refuse to mix vector spaces: it either errors
+(`CONFIG_INVALID`) or triggers a full reindex (§8.1.4). A backend MUST NOT silently
+serve a collection built under a different embed identity — including one built
+under the same provider/model at a **different endpoint**.
 
 ### 6.5 Pure-Go / `CGO_ENABLED=0` (normative)
 
@@ -774,11 +777,38 @@ Use extension + MIME sniff + binary heuristics to classify:
 
 #### A) Code/text/md/data/html
 
-* Generate `raw_text` (normalized UTF-8, `\n` line endings).
-* Route to index kind:
+* **Code/text/md/data.** Generate `raw_text` (normalized UTF-8, `\n` line
+  endings). Route to index kind:
 
   * code → `index_kind=code`
   * others → `index_kind=text`
+
+* **HTML.** HTML MAY be routed through structured extraction rather than flat
+  `raw_text`. When a structured extraction engine that accepts HTML is
+  *available* — the docling family of §7.4.B, subject to the same
+  `ingest.extractor` selection and the *Extractor availability* rules there —
+  the pipeline SHOULD route HTML through it, producing an `extracted_markdown`
+  representation and the structured `region` spans of §7.4.B (heading hierarchy
+  → section breadcrumb; tables rendered atomically to Markdown; element labels
+  in `extra_json.label`). HTML carries no page/`bbox` provenance, so its
+  `region` spans carry the section breadcrumb and `label` and fall back to no
+  page span, per the provenance-unavailable rule in §7.4.B.
+* When no structured HTML engine is available — including when the extractor is
+  `off`, explicitly disabled/unavailable (§7.7), or does not accept HTML — HTML
+  MUST fall back to `raw_text`, exactly as before. `raw_text` remains the
+  guaranteed baseline: HTML is never dropped, and behavior MUST NOT regress
+  when docling is absent.
+* Either path routes to `index_kind=text`. The path choice does not change the
+  index kind and follows the re-indexing semantics of §7.6 — a document
+  previously indexed as flat `raw_text` keeps that representation until it is
+  re-indexed.
+
+> **Scope.** This rule governs only HTML's §7.4.A routing. The general,
+> per-format "which engine handles which type" capability matrix is specified
+> separately (dir2mcp #395); §7.4.A here narrowly *permits* a structured engine
+> for the single HTML format (preferring it when available, `raw_text`
+> otherwise) and defers the cross-format matrix to that work. HTML is treated
+> as one format whose §7.4.A routing now admits a structured engine.
 
 #### B) PDF/image/document
 
@@ -1158,7 +1188,16 @@ For each capability, with `<cap>.provider`:
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
-Vectors from different embed providers/models are not comparable. The embed **identity** — provider, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+
+**Why `base_url` is part of the identity.** Two profiles with the same `kind` and model name pointed at **different** endpoints (e.g. two `kind: openai` self-hosted vLLM/Ollama deployments, or a proxy vs. the hosted API) serve **different** vector spaces. Without `base_url` in the identity they collapse to one identity and their vectors can silently mix in a single index — a violation of the "MUST refuse to mix vector spaces" rule above. Including the endpoint closes that gap.
+
+**`base_url` normalization (normative).** `base_url` enters the identity in **canonical, normalized** form so that trivially-different-but-equivalent URLs do not fragment the identity and force needless re-embeds. The recorded value is computed as follows:
+1. **Not-meaningful → empty.** For a `kind` whose embed endpoint is a single canonical provider surface that does not select an alternate model space (native `gemini`, `cohere`), the normalized `base_url` is the **empty string** `""` — `base_url` does not participate in the identity for that provider.
+2. **Canonical/default → empty.** If the effective `base_url` is unset, or equals the built-in profile's shipped canonical `base_url` for that provider (e.g. `kind: openai` at `https://api.openai.com/v1`, the default `mistral` profile at `https://api.mistral.ai/v1`), it normalizes to `""`. Only an operator-**overridden**, non-canonical endpoint (the exact mis-bind case) yields a non-empty component.
+3. **URL canonicalization** (applied before comparison, for the non-empty case): lowercase the scheme and host; remove the default port (`80` for `http`, `443` for `https`); strip trailing slash(es) and collapse duplicate slashes in the path; **preserve** the remaining path (e.g. `/v1`, which can select a different API mount); drop any userinfo, query, and fragment; apply canonical percent-/IDN-encoding. The result is compared exactly (path remains case-sensitive after host lowercasing).
+
+**`""` is a valid identity component.** The empty string is a first-class, legitimate value of the `base_url` component, not a sentinel for "unknown". Consequently an index built **before** this rule — which recorded no `base_url` — is treated as having `base_url == ""` and remains **valid** on reload against any provider whose normalized `base_url` is also `""` (all built-in/hosted-default deployments, per rules 1–2). Only a corpus whose embed endpoint is a **non-canonical / custom** `base_url` sees a one-time `CONFIG_INVALID`/reindex on first reload after this change — the correct, bounded safety action, since those are exactly the corpora previously at risk of silent cross-endpoint mixing.
 
 #### 8.1.5 Asymmetric embeddings (input role)
 
@@ -1930,15 +1969,38 @@ today (unchanged results).
 * **Argument shape.** `languages` is an array of BCP-47 language tags (e.g.
   `["en"]`, `["pt-BR", "es"]`). An empty array is equivalent to omitting it (no
   filter). The argument is OPTIONAL; existing callers that never send it observe
-  no behavior change.
-* **Matching semantics.** A hit matches when its source representation's recorded
-  `language` (§5.2) matches **any** requested tag (logical OR across the array).
-  Matching is performed on the **BCP-47 primary subtag**, **case-insensitively**:
-  a request for `en` matches a representation recorded as `en`, `EN`, or
-  `en-US`, and a request for `pt-BR` matches `pt` (primary-subtag match). Region,
-  script, and other subtags MUST NOT cause a match to be missed when the primary
-  subtags agree. Implementations MAY additionally honor an exact full-tag match
-  but MUST AT LEAST honor primary-subtag matching.
+  no behavior change. An OPTIONAL companion argument `language_match` selects the
+  matching mode for the whole array: `"primary"` (the DEFAULT — primary-subtag
+  matching, below) or `"strict"` (opt-in region/script narrowing, below). Absent
+  or empty ⇒ `"primary"`; existing callers that never send it observe no behavior
+  change. An unrecognized `language_match` value is `INVALID_FIELD` (§14).
+* **Matching semantics (default — `language_match: "primary"`).** A hit matches
+  when its source representation's recorded `language` (§5.2) matches **any**
+  requested tag (logical OR across the array). Matching is performed on the
+  **BCP-47 primary subtag**, **case-insensitively**: a request for `en` matches a
+  representation recorded as `en`, `EN`, or `en-US`, and a request for `pt-BR`
+  matches `pt` (primary-subtag match). Region, script, and other subtags MUST NOT
+  cause a match to be missed when the primary subtags agree. Implementations MAY
+  additionally honor an exact full-tag match but MUST AT LEAST honor
+  primary-subtag matching. This is the DEFAULT and is unchanged from prior
+  versions; callers that omit `language_match` (or send `"primary"`) observe
+  exactly this behavior.
+* **Region/script narrowing (opt-in — `language_match: "strict"`).** When the
+  caller sets `language_match` to `"strict"`, matching uses **BCP-47 Basic
+  Filtering** (RFC 4647 §3.3.1) instead of primary-subtag matching: a requested
+  tag matches a recorded `language` **iff** the recorded value equals the
+  requested tag or extends it with additional subtags (the recorded tag begins
+  with the requested tag followed by a `-` separator), compared
+  **case-insensitively** on canonicalized subtags. Under `"strict"`, region,
+  script, and variant subtags in the request DO narrow the match: `pt-BR` matches
+  representations recorded as `pt-BR` (and `pt-BR-…`) but **not** bare `pt` or
+  `pt-PT`; `zh-Hans` matches `zh-Hans`/`zh-Hans-CN` but **not** `zh-Hant` or bare
+  `zh`. A request that carries only a primary subtag (e.g. `pt`) still matches
+  that primary subtag and all its region/script extensions (`pt`, `pt-BR`,
+  `pt-PT`), so `"strict"` narrows **only** to the precision the caller actually
+  supplies. The default `"primary"` guarantee that region/script MUST NOT cause a
+  miss is **unaffected**: narrowing occurs only when the caller explicitly opts in
+  via `language_match: "strict"`.
 * **Unknown / absent language.** A representation with **no** recorded language
   (unknown, §8.8) **never** matches a specific language filter — it is excluded
   whenever `languages` is non-empty. When `languages` is absent/empty, unknown
@@ -2678,6 +2740,27 @@ through the OCR / transcript cache, never through a direct file read.
           }
         },
         "required": ["rel_path", "doc_type", "mtime_unix", "error_message"]
+      }
+    },
+    "skip_reasons": {
+      "type": "array",
+      "description": "Optional honest-coverage breakdown: one entry per distinct reason a document was set to status='skipped' during ingest, with the count of documents skipped for that reason across the current corpus. Aggregated in CorpusStats parallel to recent_failures. Unlike doc_counts (which groups status='ready' documents by doc_type and therefore overstates coverage), this field reports what was NOT indexed and why. Implementations MAY omit this field when nothing was skipped; clients MUST treat omission as 'nothing skipped', not as 'unsupported'. Entries whose count would be 0 MUST be omitted (the array carries only non-empty reasons; an empty corpus omits the field entirely). Intended for coverage / 'what wasn't indexed & why' UIs; the same breakdown also surfaces in dir2mcp support-bundle.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap"],
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of documents skipped for this reason in the current corpus. Always >= 1 (zero-count reasons are omitted)."
+          }
+        },
+        "required": ["reason", "count"]
       }
     }
   },
