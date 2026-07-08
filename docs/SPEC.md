@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.26.0`  
+**Spec version:** `0.27.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -777,11 +777,38 @@ Use extension + MIME sniff + binary heuristics to classify:
 
 #### A) Code/text/md/data/html
 
-* Generate `raw_text` (normalized UTF-8, `\n` line endings).
-* Route to index kind:
+* **Code/text/md/data.** Generate `raw_text` (normalized UTF-8, `\n` line
+  endings). Route to index kind:
 
   * code → `index_kind=code`
   * others → `index_kind=text`
+
+* **HTML.** HTML MAY be routed through structured extraction rather than flat
+  `raw_text`. When a structured extraction engine that accepts HTML is
+  *available* — the docling family of §7.4.B, subject to the same
+  `ingest.extractor` selection and the *Extractor availability* rules there —
+  the pipeline SHOULD route HTML through it, producing an `extracted_markdown`
+  representation and the structured `region` spans of §7.4.B (heading hierarchy
+  → section breadcrumb; tables rendered atomically to Markdown; element labels
+  in `extra_json.label`). HTML carries no page/`bbox` provenance, so its
+  `region` spans carry the section breadcrumb and `label` and fall back to no
+  page span, per the provenance-unavailable rule in §7.4.B.
+* When no structured HTML engine is available — including when the extractor is
+  `off`, explicitly disabled/unavailable (§7.7), or does not accept HTML — HTML
+  MUST fall back to `raw_text`, exactly as before. `raw_text` remains the
+  guaranteed baseline: HTML is never dropped, and behavior MUST NOT regress
+  when docling is absent.
+* Either path routes to `index_kind=text`. The path choice does not change the
+  index kind and follows the re-indexing semantics of §7.6 — a document
+  previously indexed as flat `raw_text` keeps that representation until it is
+  re-indexed.
+
+> **Scope.** This rule governs only HTML's §7.4.A routing. The general,
+> per-format "which engine handles which type" capability matrix is specified
+> separately (dir2mcp #395); §7.4.A here narrowly *permits* a structured engine
+> for the single HTML format (preferring it when available, `raw_text`
+> otherwise) and defers the cross-format matrix to that work. HTML is treated
+> as one format whose §7.4.A routing now admits a structured engine.
 
 #### B) PDF/image/document
 
