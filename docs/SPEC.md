@@ -850,7 +850,7 @@ tiebreak):
 | T1 | `docling` / `docling-serve` | structured document model | reading-order, `region` (page+bbox), section breadcrumb, labels, atomic tables (§7.4.B "Structured extraction") |
 | T2 | `pandoc` (future, #393) | structured markup → Markdown | structure without page/bbox; `page`/no spans |
 | T3 | `mistral` (= §8 `ocr` provider) | page-separated OCR | `page` spans (§7.4.B "Page-separated extraction") |
-| T0 | `raw_text` (§7.4.A) | flat text | none |
+| T4 | `raw_text` (§7.4.A) | flat text | none |
 
 **Format support** (`✅` = engine can ingest this format; tier from the table
 above). `pandoc` rows are forward-looking (#393) and non-binding until that
@@ -864,7 +864,7 @@ engine ships:
 | vector-image | `.svg` | ✅ T1 | ❌ | ❌ | ❌ |
 | office (OOXML) | `.docx .pptx .xlsx` | ✅ T1 | ❌ | ✅ T2 | ❌ |
 | office/ebook (legacy/ODF) | `.odt .rtf .doc .epub` | ❌ | ❌ | ✅ T2 | ❌ |
-| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T0 (§7.4.A, #556) |
+| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§7.4.A, #556) |
 
 † `pandoc` cells are declared for matrix completeness (#393); an implementation
 without a pandoc engine simply treats those cells as inactive.
