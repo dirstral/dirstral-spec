@@ -109,11 +109,13 @@ This adapter does not define:
 
 ---
 
-> **x402 wire profile:** `X402Version: 2` — PROVISIONAL. This revision extends the
-> `PAYMENT-REQUIRED` challenge shape (adds `nonce`, `validAfter`/`validUntil`,
-> `maxTimeoutSeconds`, and promotes `resource` to a first-class field). Because the
-> wire challenge shape changed, the profile version is bumped per the sync
-> checklist below and MUST match the `X402Version` recorded in SPEC.md §18.
+> **x402 wire profile:** `X402Version: 2`. This revision extends the
+> `PAYMENT-REQUIRED` challenge shape additively (adds `nonce`,
+> `validAfter`/`validUntil`, `maxTimeoutSeconds`, and promotes `resource` to a
+> first-class field) — a `X402Version: 2` client still parses the `402`; the new
+> fields are additive and the hardening is server-side enforcement, so the
+> profile integer is unchanged and matches the shipped implementation
+> (`x402Version: 2`) and the `X402Version` recorded in SPEC.md §18.
 
 > **Note:** this document is paired with the global MCP [SPEC.md](../SPEC.md). whenever the
 > protocol version, message formats, field definitions, or error codes evolve you must keep
