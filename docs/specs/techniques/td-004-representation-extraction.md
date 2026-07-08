@@ -1,7 +1,7 @@
 # td-004: Representation generation & structured extraction
 
 - **ID:** td-004
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -37,13 +37,46 @@ healthy.
 
 ### A) Code / text / md / data / html
 
+**Code / text / md / data.**
+
 - Generate a `raw_text` representation: normalized UTF-8 with `\n` line endings.
 - Route to index kind:
   - `code` → `index_kind=code`
   - all others → `index_kind=text`
 
-The `raw_text` `rep_type` and the `index_kind` routing are persisted per
-[df-003](../data-formats/df-003-sqlite-schema.md).
+**HTML.** HTML **MAY** be routed through structured extraction rather than flat
+`raw_text`:
+
+- When a structured extraction engine that accepts HTML is *available* — the
+  docling family of §B, under the same `ingest.extractor` selection and the
+  *Extractor availability* rules of §B — the pipeline **SHOULD** route HTML
+  through it, producing an `extracted_markdown` representation and the
+  structured `region` spans of §B (heading hierarchy → section breadcrumb;
+  tables rendered atomically to Markdown; element labels in
+  `extra_json.label`). HTML carries no page/`bbox` provenance, so its `region`
+  spans carry the section breadcrumb and `label` and fall back to no page span,
+  per the provenance-unavailable rule in §B.
+- When no structured HTML engine is available — including `extractor: off`, an
+  explicitly disabled/unavailable extractor
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md)), or an engine that does
+  not accept HTML — HTML **MUST** fall back to `raw_text`, exactly as before.
+  `raw_text` remains the guaranteed baseline: HTML is never dropped and behavior
+  **MUST NOT** regress when docling is absent.
+- Either path routes to `index_kind=text`; the choice does not change the index
+  kind and follows the re-indexing semantics of
+  [bs-002](../behavior/bs-002-ingestion-pipeline.md) — a document previously
+  indexed as flat `raw_text` keeps that representation until re-indexed.
+
+The `raw_text` / `extracted_markdown` `rep_type` values and the `index_kind`
+routing are persisted per
+[df-003](../data-formats/df-003-sqlite-schema.md); the `region` `Span` shape is
+[df-005](../data-formats/df-005-span.md).
+
+> **Scope.** This governs only HTML's §A routing. The general per-format
+> engine/type capability matrix is specified separately (dir2mcp #395); §A here
+> narrowly permits a structured engine for the single HTML format (preferring
+> it when available, `raw_text` otherwise) and defers the cross-format matrix to
+> that work.
 
 **Markup boundary (html).** `html` is a *dual-path* format: it MAY be handled
 here as flat `raw_text`, or routed to a structured extraction engine (§B.1) that
@@ -326,7 +359,7 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
-- **0.2.0** — Reversed §B from single global extractor selection to
+- **0.3.0** — Reversed §B from single global extractor selection to
   capability-aware per-format selection: added the §B.1 engine capability matrix
   + fidelity ordering and the §B.2 strict/lenient degradation contract; recorded
   the governance call (extraction stays a §B routing decision, not a td-001
