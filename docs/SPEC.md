@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.24.0`  
+**Spec version:** `0.25.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2690,6 +2690,27 @@ through the OCR / transcript cache, never through a direct file read.
           }
         },
         "required": ["rel_path", "doc_type", "mtime_unix", "error_message"]
+      }
+    },
+    "skip_reasons": {
+      "type": "array",
+      "description": "Optional honest-coverage breakdown: one entry per distinct reason a document was set to status='skipped' during ingest, with the count of documents skipped for that reason across the current corpus. Aggregated in CorpusStats parallel to recent_failures. Unlike doc_counts (which groups status='ready' documents by doc_type and therefore overstates coverage), this field reports what was NOT indexed and why. Implementations MAY omit this field when nothing was skipped; clients MUST treat omission as 'nothing skipped', not as 'unsupported'. Entries whose count would be 0 MUST be omitted (the array carries only non-empty reasons; an empty corpus omits the field entirely). Intended for coverage / 'what wasn't indexed & why' UIs; the same breakdown also surfaces in dir2mcp support-bundle.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap"],
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of documents skipped for this reason in the current corpus. Always >= 1 (zero-count reasons are omitted)."
+          }
+        },
+        "required": ["reason", "count"]
       }
     }
   },
