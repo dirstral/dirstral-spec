@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -91,6 +91,17 @@ if the configured endpoint lacks it, the failure surfaces **at first use** as a
 provider error — a required STT path fails that ingest item, optional TTS fails
 open (8.3) — never as `CONFIG_INVALID`. All other `✅` cells are statically
 valid.
+
+**Extraction is not a cell in this matrix.** Document/image *extraction-engine*
+selection (docling / docling-serve / mistral-ocr / pandoc) is a per-format,
+fidelity-ordered routing decision owned by
+[td-004](td-004-representation-extraction.md) §B.1, not a `kind`-level capability
+here: extraction fidelity is per-format and two engines (`docling`, `pandoc`)
+have no §8.1.1 provider profile. Where an extraction engine *is* an §8 surface,
+it binds through the corresponding capability — the `mistral` extraction engine
+is the active `ocr` provider (selected per 8.1.3), and the audio extraction path
+binds `stt` ([td-004](td-004-representation-extraction.md) §C). No
+`extract`/`CapExtract` capability cell is added.
 
 #### 8.1.3 Provider selection
 
@@ -364,6 +375,9 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.3.0** — §8.1.2: clarified that document/image extraction-engine selection
+  is a td-004 §B.1 routing decision, not a capability cell here; the `mistral`
+  extraction engine binds the `ocr` capability (§8.1.3). No matrix cell added.
 - **0.2.0** — Added the normalized embed endpoint `base_url` to the
   corpus-lifetime embed identity in §8.1.4, with normalization rules
   (not-meaningful/default → empty; scheme/host/port/trailing-slash
