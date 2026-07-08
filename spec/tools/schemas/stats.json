@@ -70,6 +70,27 @@
             },
             "required": ["rel_path", "doc_type", "mtime_unix", "error_message"]
           }
+        },
+        "skip_reasons": {
+          "type": "array",
+          "description": "Optional honest-coverage breakdown: one {reason, count} entry per distinct reason a document was set to status='skipped' during ingest, counted across the current corpus (parallel to recent_failures). Unlike doc_counts (which groups status='ready' docs and overstates coverage), this reports what was NOT indexed and why. Implementations MAY omit when nothing was skipped; clients MUST treat omission as 'nothing skipped', not as 'unsupported'. Zero-count reasons are omitted; an empty corpus omits the field.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap"],
+                "description": "Stable, closed skip-reason enum for a given spec minor. New reasons are added only by a minor version bump (additive); a client MAY receive an unrecognized value from a newer server and SHOULD render it verbatim rather than error."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Number of documents skipped for this reason in the current corpus. Always >= 1 (zero-count reasons are omitted)."
+              }
+            },
+            "required": ["reason", "count"]
+          }
         }
       },
       "required": ["root", "state_dir", "protocol_version", "doc_counts", "total_docs", "doc_counts_available", "indexing", "models"]

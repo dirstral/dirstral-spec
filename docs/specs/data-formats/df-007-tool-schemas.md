@@ -1,7 +1,7 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -28,7 +28,7 @@ the conformance contract. Shared shapes — [df-005 `Span`](df-005-span.md) and
 | `dir2mcp_ask` (§15.3) | `ask.json` | `citations[]` `$ref`s `Citation`; `hits[]` `$ref`s `Hit`. |
 | `dir2mcp_open_file` (§15.4) | `open_file.json` | Returns `content` + a df-005 `Span` (incl. the `document` variant). |
 | `dir2mcp_list_files` (§15.5) | `list_files.json` | |
-| `dir2mcp_stats` (§15.6) | `stats.json` | SHOULD carry `format_version` (df-000). |
+| `dir2mcp_stats` (§15.6) | `stats.json` | SHOULD carry `format_version` (df-000). Optional additive `skip_reasons` coverage array (reason→count; closed reason enum). |
 | `dir2mcp_transcribe` (§15.7) | `transcribe.json` | recommended tool. |
 | `dir2mcp_annotate` (§15.8) | `annotate.json` | recommended tool. |
 | `dir2mcp_transcribe_and_ask` (§15.9) | `transcribe_and_ask.json` | recommended tool. |
