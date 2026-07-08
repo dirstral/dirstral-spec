@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.27.0`  
+**Spec version:** `0.28.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3335,9 +3335,10 @@ security:
 
 * x402 mode is optional and must be switchable via config/flags (`off|on|required`).
 * Payment enforcement MUST happen at the HTTP/MCP request boundary, not in retrieval/indexing internals.
-* When a paid route is called without valid payment, server returns HTTP `402 Payment Required` with machine-readable payment requirements in `PAYMENT-REQUIRED`.
+* When a paid route is called without valid payment, server returns HTTP `402 Payment Required` with machine-readable payment requirements in `PAYMENT-REQUIRED` (standard x402 v2 `PaymentRequired`: first-class `resource` + `accepts[]` with `maxTimeoutSeconds`). The adapter MUST enforce x402 v2's replay/binding primitives (no new wire fields): the client's single-use `authorization.nonce` is consumed exactly once via a replay ledger, the `validAfter`/`validBefore` window and `maxTimeoutSeconds` are checked adapter-side, and the proof is matched against the entire selected `PaymentRequirements` and the challenge `resource` — so a proof valid for one resource/price MUST NOT be valid for another. Wire profile `X402Version: 2` (current latest). Enforcement detail: `docs/x402-payment-adapter-spec.md`.
 * Paid retry requests MUST be validated from `PAYMENT-SIGNATURE` (x402 v2 semantics).
-* For paid requests, verification and settlement MUST be delegated to a facilitator (hosted or self-managed); dir2mcp remains non-custodial.
+* For paid requests, verification and settlement MUST be delegated to a facilitator (hosted or self-managed); dir2mcp remains non-custodial. The adapter→facilitator transport MUST be `https` when credentialed or when the facilitator host is non-loopback (a bearer token MUST NOT traverse plaintext `http` to a non-loopback host), in all modes including `on`.
+* dir2mcp remains non-custodial but MAY persist a bounded, non-custodial replay ledger (consumed nonces / idempotency keys). A payment nonce MUST be consumed exactly once on the `verified -> settled` transition; a replay of a consumed nonce — or the same nonce with a different request — MUST be rejected and MUST NOT drive a second execution or settlement. Replay detection keys off the payment nonce, not raw request bytes.
 * Successful paid responses SHOULD include facilitator settlement metadata via `PAYMENT-RESPONSE` when available.
 * x402 network identifiers MUST use CAIP-2 format (for example: `eip155:8453`, `eip155:84532`, `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d`).
 * Recommended paid scope: gate `tools/call` (or selected tool names); keep lifecycle (`initialize`, `tools/list`) ungated.
