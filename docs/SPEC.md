@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.26.0`  
+**Spec version:** `0.25.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -596,6 +596,7 @@ breadcrumb:
   * `protocol_version` = `2025-11-25`
   * `corpus_id`
   * `index_format_version`
+  * `embed_provider`, `embed_base_url`   # embed_base_url = normalized per §8.1.4; "" is a valid value (pre-existing indexes and non-meaningful/default endpoints)
   * `embed_text_model`, `embed_text_dim`
   * `embed_code_model`, `embed_code_dim`
   * `ocr_model`
@@ -660,13 +661,15 @@ external store they are two collections/namespaces (§6.3).
 
 ### 6.4 Embed identity binds every backend
 
-The corpus-lifetime **embed identity** — `provider | text_model | code_model |
-text_dim | code_dim | multimodal` (§8.1.4) — binds the index **regardless of
-backend**. On load, if the configured embed identity differs from the one
-recorded for the index (embedded snapshot or external collection metadata), the
-server MUST refuse to mix vector spaces: it either errors (`CONFIG_INVALID`) or
-triggers a full reindex (§8.1.4). A backend MUST NOT silently serve a collection
-built under a different embed identity.
+The corpus-lifetime **embed identity** — `provider | base_url | text_model |
+code_model | text_dim | code_dim | multimodal` (§8.1.4; `base_url` **normalized**
+per §8.1.4, empty for providers where the endpoint is not meaningful) — binds the
+index **regardless of backend**. On load, if the configured embed identity differs
+from the one recorded for the index (embedded snapshot or external collection
+metadata), the server MUST refuse to mix vector spaces: it either errors
+(`CONFIG_INVALID`) or triggers a full reindex (§8.1.4). A backend MUST NOT silently
+serve a collection built under a different embed identity — including one built
+under the same provider/model at a **different endpoint**.
 
 ### 6.5 Pure-Go / `CGO_ENABLED=0` (normative)
 
@@ -1158,7 +1161,16 @@ For each capability, with `<cap>.provider`:
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
-Vectors from different embed providers/models are not comparable. The embed **identity** — provider, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+
+**Why `base_url` is part of the identity.** Two profiles with the same `kind` and model name pointed at **different** endpoints (e.g. two `kind: openai` self-hosted vLLM/Ollama deployments, or a proxy vs. the hosted API) serve **different** vector spaces. Without `base_url` in the identity they collapse to one identity and their vectors can silently mix in a single index — a violation of the "MUST refuse to mix vector spaces" rule above. Including the endpoint closes that gap.
+
+**`base_url` normalization (normative).** `base_url` enters the identity in **canonical, normalized** form so that trivially-different-but-equivalent URLs do not fragment the identity and force needless re-embeds. The recorded value is computed as follows:
+1. **Not-meaningful → empty.** For a `kind` whose embed endpoint is a single canonical provider surface that does not select an alternate model space (native `gemini`, `cohere`), the normalized `base_url` is the **empty string** `""` — `base_url` does not participate in the identity for that provider.
+2. **Canonical/default → empty.** If the effective `base_url` is unset, or equals the built-in profile's shipped canonical `base_url` for that provider (e.g. `kind: openai` at `https://api.openai.com/v1`, the default `mistral` profile at `https://api.mistral.ai/v1`), it normalizes to `""`. Only an operator-**overridden**, non-canonical endpoint (the exact mis-bind case) yields a non-empty component.
+3. **URL canonicalization** (applied before comparison, for the non-empty case): lowercase the scheme and host; remove the default port (`80` for `http`, `443` for `https`); strip trailing slash(es) and collapse duplicate slashes in the path; **preserve** the remaining path (e.g. `/v1`, which can select a different API mount); drop any userinfo, query, and fragment; apply canonical percent-/IDN-encoding. The result is compared exactly (path remains case-sensitive after host lowercasing).
+
+**`""` is a valid identity component.** The empty string is a first-class, legitimate value of the `base_url` component, not a sentinel for "unknown". Consequently an index built **before** this rule — which recorded no `base_url` — is treated as having `base_url == ""` and remains **valid** on reload against any provider whose normalized `base_url` is also `""` (all built-in/hosted-default deployments, per rules 1–2). Only a corpus whose embed endpoint is a **non-canonical / custom** `base_url` sees a one-time `CONFIG_INVALID`/reindex on first reload after this change — the correct, bounded safety action, since those are exactly the corpora previously at risk of silent cross-endpoint mixing.
 
 #### 8.1.5 Asymmetric embeddings (input role)
 

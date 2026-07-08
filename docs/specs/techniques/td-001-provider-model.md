@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -109,16 +109,57 @@ For each capability, with `<cap>.provider`:
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
-Vectors from different embed providers/models are not comparable. The embed
-**identity** — provider, per-axis model, **and the requested output dimension**
+Vectors from different embed providers/models — **or from the same provider/model
+served at a different endpoint** — are not comparable. The embed
+**identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**,
+per-axis model, **and the requested output dimension**
 (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, df-003 §5.5) — is bound to
 the index at first build and recorded in the config snapshot. On load, if the
 configured embed identity differs from the index's, the server MUST refuse to mix
 vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex.
-`embed.provider`/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim`
+`embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim`
 — **and the multimodal mode (td-002)** — are therefore deploy-time,
 reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are
 runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+
+**Why `base_url` is part of the identity.** Two profiles with the same `kind` and
+model name pointed at **different** endpoints (e.g. two `kind: openai` self-hosted
+vLLM/Ollama deployments, or a proxy vs. the hosted API) serve **different** vector
+spaces. Without `base_url` in the identity they collapse to one identity and their
+vectors can silently mix in a single index — a violation of the "MUST refuse to
+mix vector spaces" rule above. Including the endpoint closes that gap.
+
+**`base_url` normalization (normative).** `base_url` enters the identity in
+**canonical, normalized** form so that trivially-different-but-equivalent URLs do
+not fragment the identity and force needless re-embeds. The recorded value is
+computed as follows:
+1. **Not-meaningful → empty.** For a `kind` whose embed endpoint is a single
+   canonical provider surface that does not select an alternate model space
+   (native `gemini`, `cohere`), the normalized `base_url` is the **empty string**
+   `""` — `base_url` does not participate in the identity for that provider.
+2. **Canonical/default → empty.** If the effective `base_url` is unset, or equals
+   the built-in profile's shipped canonical `base_url` for that provider (e.g.
+   `kind: openai` at `https://api.openai.com/v1`, the default `mistral` profile at
+   `https://api.mistral.ai/v1`), it normalizes to `""`. Only an
+   operator-**overridden**, non-canonical endpoint (the exact mis-bind case)
+   yields a non-empty component.
+3. **URL canonicalization** (applied before comparison, for the non-empty case):
+   lowercase the scheme and host; remove the default port (`80` for `http`, `443`
+   for `https`); strip trailing slash(es) and collapse duplicate slashes in the
+   path; **preserve** the remaining path (e.g. `/v1`, which can select a different
+   API mount); drop any userinfo, query, and fragment; apply canonical
+   percent-/IDN-encoding. The result is compared exactly (path remains
+   case-sensitive after host lowercasing).
+
+**`""` is a valid identity component.** The empty string is a first-class,
+legitimate value of the `base_url` component, not a sentinel for "unknown".
+Consequently an index built **before** this rule — which recorded no `base_url` —
+is treated as having `base_url == ""` and remains **valid** on reload against any
+provider whose normalized `base_url` is also `""` (all built-in/hosted-default
+deployments, per rules 1–2). Only a corpus whose embed endpoint is a
+**non-canonical / custom** `base_url` sees a one-time `CONFIG_INVALID`/reindex on
+first reload after this change — the correct, bounded safety action, since those
+are exactly the corpora previously at risk of silent cross-endpoint mixing.
 
 #### 8.1.5 Asymmetric embeddings (input role)
 
@@ -323,6 +364,12 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.2.0** — Added the normalized embed endpoint `base_url` to the
+  corpus-lifetime embed identity in §8.1.4, with normalization rules
+  (not-meaningful/default → empty; scheme/host/port/trailing-slash
+  canonicalization) and the back-compat rule that pre-existing indexes with no
+  recorded `base_url` are treated as `""` and stay valid. Mirrors the §6.4 tuple
+  in bs-008. Unblocks dir2mcp #560.
 - **0.1.0** — Migrated from SPEC.md §8.1–§8.5 and §8.8. §8.1.7 (multimodal
   embeddings & media chunking) is **not** included here — it moves to td-002, and
   8.1.7 is replaced by a one-line pointer. §8.6 (→td-003) and §8.7 (→td-005) are
