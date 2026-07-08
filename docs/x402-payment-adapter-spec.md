@@ -70,9 +70,22 @@ already-recorded nonce via the `rejected` failure branch — even against an
 idempotent-success or sandbox facilitator that would otherwise re-approve it.
 Replay detection MUST key off the authorization `nonce`, **not** the raw request
 bytes: a request carrying a consumed nonce (regardless of payload framing) MUST
-be rejected and MUST NOT drive a second tool execution or settlement. Idempotent
-retry of the same `(nonce, request)` pair MUST resolve to the original outcome,
-not a re-charge.
+be rejected and MUST NOT drive a second tool execution or settlement.
+
+Consumption is a two-phase **reserve → commit/rollback** so a transient failure
+never permanently burns an otherwise-valid nonce. The ledger entry recorded
+before settlement is a *reservation* that blocks concurrent replays while the
+settle call is in flight; it becomes **durably consumed only when settlement
+succeeds**. On success the adapter MUST retain the settled outcome and
+re-surface it on any idempotent retry of the same `(nonce, request)` pair
+(never a re-charge). If settlement fails with a **retryable/transient** error
+(network timeout, facilitator `5xx`, or any non-terminal `failed`), the adapter
+MUST roll the reservation back — release the nonce — so the same
+`(nonce, request)` pair MAY be retried; a transient settlement failure MUST NOT
+leave the nonce consumed. A **terminal** failure (`invalid`, `rejected`,
+`expired`) is a durable outcome: the payment is not valid, the nonce is not
+retryable, and an idempotent retry MUST resolve to that same terminal outcome
+rather than a fresh charge.
 
 **Validity window (normative).** The adapter MUST reject a proof whose
 `authorization.validAfter`/`validBefore` window does not cover the current time
@@ -105,7 +118,7 @@ The contract defines, at a minimum, the following elements:
 * **Authentication** – adapter-to-facilitator auth must be explicit (for example API key auth for hosted facilitator, mTLS or signed requests for self-managed deployments).  
 * **Transport security** – the adapter→facilitator transport MUST be `https` whenever the connection is **credentialed** (any bearer token, API key, or signed credential is attached) **or** the facilitator host is **non-loopback**. A bearer token or payment payload MUST NEVER traverse plaintext `http` to a non-loopback host. Plaintext `http` is permitted ONLY for a loopback (`127.0.0.0/8`, `::1`) host with no credential attached (local development). This requirement holds in **all** modes, including `on` (fail-open) — a non-https credentialed/non-loopback facilitator URL is a configuration error, not a degradable condition.  
 * **Payment state model** – canonical states `required -> verified -> settled` with failure branches (`invalid`, `rejected`, `expired`, `failed`). dir2mcp does not persist **custodial** payment state; the facilitator is source of truth for verify/settle outcomes. dir2mcp MAY, however, persist **non-custodial replay-protection state** — a bounded ledger of consumed authorization nonces / payment idempotency keys — for single-use enforcement. This ledger holds no funds and no custodial balance; it records only which nonces have been spent, with a TTL at least as long as `maxTimeoutSeconds` and SHOULD survive process restart.
-  * **Single-use / replay semantics on `verified -> settled`.** The client's `authorization.nonce` (the 32-byte value in the `PaymentPayload`) MUST be consumed **exactly once**. On the `verified -> settled` transition the adapter MUST atomically mark that nonce consumed in the replay ledger before finalizing settlement. A subsequent request presenting an already-consumed nonce MUST be rejected via the `rejected` failure branch and MUST NOT drive a second tool execution or a second settlement — even against an idempotent-success or sandbox facilitator that would otherwise re-approve it. Replay detection MUST key off the authorization `nonce` (not off the raw request bytes): a replay carrying the same nonce but a **different** request payload MUST be rejected rather than treated as a fresh payment. Idempotent retry of the *same* `(nonce, request)` pair MUST resolve to the original outcome, not a re-charge.  
+  * **Single-use / replay semantics on `verified -> settled`.** The client's `authorization.nonce` (the 32-byte value in the `PaymentPayload`) MUST be consumed **exactly once**. On the `verified -> settled` transition the adapter MUST atomically mark that nonce consumed in the replay ledger before finalizing settlement. A subsequent request presenting an already-consumed nonce MUST be rejected via the `rejected` failure branch and MUST NOT drive a second tool execution or a second settlement — even against an idempotent-success or sandbox facilitator that would otherwise re-approve it. Replay detection MUST key off the authorization `nonce` (not off the raw request bytes): a replay carrying the same nonce but a **different** request payload MUST be rejected rather than treated as a fresh payment. Consumption is **reserve → commit/rollback**: the pre-settlement ledger entry is a reservation that becomes durably consumed only on settlement success (its outcome retained and re-surfaced on idempotent retry of the same `(nonce, request)` pair, never a re-charge); a **retryable/transient** settlement failure MUST roll the reservation back so the pair MAY be retried, whereas a **terminal** failure (`invalid`, `rejected`, `expired`) is durable and its outcome is re-surfaced rather than re-charged.  
 * **Error codes and retries** – standard HTTP handling (`402`, `4xx`, `5xx`), idempotent settle calls, bounded retry/backoff for transient failures, and explicit non-retryable classes for invalid signatures/requirements mismatch.  
 * **Network normalization** – adapters must use CAIP-2 network identifiers at all payment-related boundaries.  Examples include:
   * `eip155:8453`
