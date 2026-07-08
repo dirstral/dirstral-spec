@@ -1,7 +1,7 @@
 # bs-003: Retrieval and answer generation
 
 - **ID:** bs-003
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -151,15 +151,39 @@ behave exactly as today (unchanged results).
 - **Argument shape.** `languages` is an array of BCP-47 language tags (e.g.
   `["en"]`, `["pt-BR", "es"]`). An empty array is equivalent to omitting it (no
   filter). The argument is OPTIONAL; existing callers that never send it observe
-  no behavior change.
-- **Matching semantics.** A hit matches when its source representation's recorded
-  `language` (df-003) matches **any** requested tag (logical OR across the array).
-  Matching is performed on the **BCP-47 primary subtag**, **case-insensitively**:
-  a request for `en` matches a representation recorded as `en`, `EN`, or `en-US`,
-  and a request for `pt-BR` matches `pt` (primary-subtag match). Region, script,
-  and other subtags MUST NOT cause a match to be missed when the primary subtags
-  agree. Implementations MAY additionally honor an exact full-tag match but MUST
-  AT LEAST honor primary-subtag matching.
+  no behavior change. An OPTIONAL companion argument `language_match` selects the
+  matching mode for the whole array: `"primary"` (the DEFAULT — primary-subtag
+  matching, below) or `"strict"` (opt-in region/script narrowing, below). Absent
+  or empty ⇒ `"primary"`; existing callers that never send it observe no behavior
+  change. An unrecognized `language_match` value is `INVALID_FIELD`
+  ([df-008](../data-formats/df-008-error-taxonomy.md)).
+- **Matching semantics (default — `language_match: "primary"`).** A hit matches
+  when its source representation's recorded `language` (df-003) matches **any**
+  requested tag (logical OR across the array). Matching is performed on the
+  **BCP-47 primary subtag**, **case-insensitively**: a request for `en` matches a
+  representation recorded as `en`, `EN`, or `en-US`, and a request for `pt-BR`
+  matches `pt` (primary-subtag match). Region, script, and other subtags MUST NOT
+  cause a match to be missed when the primary subtags agree. Implementations MAY
+  additionally honor an exact full-tag match but MUST AT LEAST honor
+  primary-subtag matching. This is the DEFAULT and is unchanged from prior
+  versions; callers that omit `language_match` (or send `"primary"`) observe
+  exactly this behavior.
+- **Region/script narrowing (opt-in — `language_match: "strict"`).** When the
+  caller sets `language_match` to `"strict"`, matching uses **BCP-47 Basic
+  Filtering** (RFC 4647 §3.3.1) instead of primary-subtag matching: a requested
+  tag matches a recorded `language` **iff** the recorded value equals the
+  requested tag or extends it with additional subtags (the recorded tag begins
+  with the requested tag followed by a `-` separator), compared
+  **case-insensitively** on canonicalized subtags. Under `"strict"`, region,
+  script, and variant subtags in the request DO narrow the match: `pt-BR` matches
+  representations recorded as `pt-BR` (and `pt-BR-…`) but **not** bare `pt` or
+  `pt-PT`; `zh-Hans` matches `zh-Hans`/`zh-Hans-CN` but **not** `zh-Hant` or bare
+  `zh`. A request that carries only a primary subtag (e.g. `pt`) still matches
+  that primary subtag and all its region/script extensions (`pt`, `pt-BR`,
+  `pt-PT`), so `"strict"` narrows **only** to the precision the caller actually
+  supplies. The default `"primary"` guarantee that region/script MUST NOT cause a
+  miss is **unaffected**: narrowing occurs only when the caller explicitly opts in
+  via `language_match: "strict"`.
 - **Unknown / absent language.** A representation with **no** recorded language
   (unknown; td-001) **never** matches a specific language filter — it is excluded
   whenever `languages` is non-empty. When `languages` is absent/empty, unknown
@@ -194,6 +218,12 @@ migration and no breaking change.
 
 ## Changelog
 
+- **0.2.0** — Per-language retrieval filter: added the OPTIONAL `language_match`
+  mode (`"primary"` default / `"strict"` opt-in). `"strict"` selects BCP-47 Basic
+  Filtering (RFC 4647 §3.3.1) so region/script/variant subtags narrow the match
+  (`pt-BR` ≠ `pt`, `zh-Hans` ≠ `zh-Hant`). Additive and backward-compatible: the
+  default preserves the primary-subtag "region/script MUST NOT cause a miss"
+  guarantee. Syncs SPEC.md §9.5. Unblocks dir2mcp #558.
 - **0.1.0** — Migrated from SPEC.md §9 (search routing, reranking, result
   structure/provenance, cross-file de-duplication, citation formatting, RAG
   generation, and the §9.5 per-language retrieval filter). Cross-references
