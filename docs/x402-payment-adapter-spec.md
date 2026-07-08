@@ -42,34 +42,51 @@ The adapter MUST align with x402 v2 concepts and headers, at wire profile
 * `PAYMENT-SIGNATURE` for client payment proof
 * `PAYMENT-RESPONSE` for settlement/receipt metadata
 
-### PAYMENT-REQUIRED challenge schema
+### Challenge conformance and hardening (x402 v2 enforcement)
 
-Every `PAYMENT-REQUIRED` challenge (`HTTP 402`) MUST carry, in addition to the
-existing `scheme`, `network`, amount/`asset`, and `payTo` fields:
+The `PAYMENT-REQUIRED` challenge (`HTTP 402`) is the standard x402 v2
+`PaymentRequired` object: `x402Version: 2`, a first-class `resource`
+(`ResourceInfo`: `url`, optional `description`/`mimeType`), an `accepts` array of
+`PaymentRequirements` (`scheme`, `network`, `amount`, `asset`, `payTo`,
+`maxTimeoutSeconds`, optional `extra`), and optional `extensions`. The adapter
+MUST emit `resource` and `maxTimeoutSeconds` as first-class fields (never only
+inside `extra`), and MUST advertise a distinct `PaymentRequirements` per paid
+route rather than reuse one global requirement across routes (per-resource
+binding, below).
 
-* `X402Version` — integer wire-profile version of the challenge (currently `2`).
-* `resource` — the fully-qualified paid resource identifier. It MUST be a
-  first-class, canonically-placed field of the challenge; it MUST NOT be buried
-  only inside an opaque `extra` blob.
-* `nonce` — a single-use, server-issued challenge token. The nonce is
-  **stateless**: it is an HMAC token (keyed by a server secret) that binds the
-  challenge to `(resource, cost, network, validAfter, validUntil)`. The adapter
-  MUST be able to recompute and verify the nonce without shared mutable state,
-  and additionally enforce single-use via the replay ledger (see *Payment state
-  model*).
-* `validAfter` / `validUntil` — the inclusive lower and exclusive upper bounds
-  of the challenge's validity window (RFC 3339 timestamps or Unix seconds,
-  consistently applied). A proof presented outside the window MUST be rejected
-  with the `expired` failure branch.
-* `maxTimeoutSeconds` — the maximum age, in seconds, the adapter will accept
-  between challenge issuance and a matching `PAYMENT-SIGNATURE`.
+x402 v2 already defines the primitives needed to prevent replay and cross-route
+reuse — a client-signed `authorization.nonce` (a 32-byte random value, *"to
+prevent replay attacks"*), a `validAfter`/`validBefore` validity window,
+`maxTimeoutSeconds`, and a Parameter-Matching verification step. This section
+adds **no new wire fields**; it makes those guarantees enforced by the adapter
+rather than nominal.
 
-**Per-resource / per-tool binding (normative).** A challenge — and therefore any
-proof derived from it — MUST be bound to exactly one `(resource, cost)` pair via
-the nonce. A `PAYMENT-SIGNATURE` proof that verifies against the challenge for
-one tool/price MUST NOT verify against any other tool or price, even when both
-are served by the same node. Implementations MUST NOT reuse a single global
-requirement value across distinct paid routes.
+**Single-use nonce / replay (normative).** The `nonce` carried in the client's
+`PaymentPayload.payload.authorization` MUST be treated as single-use. On the
+`verified -> settled` transition the adapter MUST atomically record the nonce in
+a bounded, non-custodial replay ledger (see *Payment state model*) before
+finalizing settlement, and MUST reject any later request presenting an
+already-recorded nonce via the `rejected` failure branch — even against an
+idempotent-success or sandbox facilitator that would otherwise re-approve it.
+Replay detection MUST key off the authorization `nonce`, **not** the raw request
+bytes: a request carrying a consumed nonce (regardless of payload framing) MUST
+be rejected and MUST NOT drive a second tool execution or settlement. Idempotent
+retry of the same `(nonce, request)` pair MUST resolve to the original outcome,
+not a re-charge.
+
+**Validity window (normative).** The adapter MUST reject a proof whose
+`authorization.validAfter`/`validBefore` window does not cover the current time
+(the `expired`/`invalid` failure branch), and MUST enforce the matched
+`PaymentRequirements.maxTimeoutSeconds` as the maximum age between challenge and
+`PAYMENT-SIGNATURE`. It MUST NOT rely on the facilitator alone for the time
+check.
+
+**Per-resource / per-tool binding (normative).** Following x402 v2's
+Parameter-Matching verification step, the adapter MUST verify the client's proof
+against the **entire** selected `PaymentRequirements` object (not `scheme` +
+`network` alone), and MUST match the challenge `resource` to the route actually
+being invoked. A `PAYMENT-SIGNATURE` proof that verifies for one resource/price
+MUST NOT verify against any other tool, price, or route served by the same node.
 
 Reference materials:
 
@@ -87,8 +104,8 @@ The contract defines, at a minimum, the following elements:
 * **Facilitator operations** – call facilitator verify and settle endpoints and map their responses into dir2mcp transport behavior. Adapters must implement verify (to validate payment proofs) and settle (to finalize payments) operations according to their facilitator's API specification.
 * **Authentication** – adapter-to-facilitator auth must be explicit (for example API key auth for hosted facilitator, mTLS or signed requests for self-managed deployments).  
 * **Transport security** – the adapter→facilitator transport MUST be `https` whenever the connection is **credentialed** (any bearer token, API key, or signed credential is attached) **or** the facilitator host is **non-loopback**. A bearer token or payment payload MUST NEVER traverse plaintext `http` to a non-loopback host. Plaintext `http` is permitted ONLY for a loopback (`127.0.0.0/8`, `::1`) host with no credential attached (local development). This requirement holds in **all** modes, including `on` (fail-open) — a non-https credentialed/non-loopback facilitator URL is a configuration error, not a degradable condition.  
-* **Payment state model** – canonical states `required -> verified -> settled` with failure branches (`invalid`, `rejected`, `expired`, `failed`). dir2mcp does not persist **custodial** payment state; the facilitator is source of truth for verify/settle outcomes. dir2mcp MAY, however, persist **non-custodial replay-protection state** — a bounded ledger of consumed challenge nonces / payment idempotency keys — for single-use enforcement. This ledger holds no funds and no custodial balance; it records only which nonces have been spent, with a TTL at least as long as `maxTimeoutSeconds` and SHOULD survive process restart.
-  * **Single-use / replay semantics on `verified -> settled`.** A challenge nonce MUST be consumed **exactly once**. On the `verified -> settled` transition the adapter MUST atomically mark the nonce consumed in the replay ledger before finalizing settlement. A subsequent request presenting an already-consumed nonce MUST be rejected via the `rejected` failure branch and MUST NOT drive a second tool execution or a second settlement — even against an idempotent-success or sandbox facilitator that would otherwise re-approve it. Replay detection MUST key off the payment nonce (not off the raw request bytes): a replay carrying the same nonce but a **different** request payload MUST be rejected rather than treated as a fresh payment. Idempotent retry of the *same* `(nonce, request)` pair MUST resolve to the original outcome, not a re-charge.  
+* **Payment state model** – canonical states `required -> verified -> settled` with failure branches (`invalid`, `rejected`, `expired`, `failed`). dir2mcp does not persist **custodial** payment state; the facilitator is source of truth for verify/settle outcomes. dir2mcp MAY, however, persist **non-custodial replay-protection state** — a bounded ledger of consumed authorization nonces / payment idempotency keys — for single-use enforcement. This ledger holds no funds and no custodial balance; it records only which nonces have been spent, with a TTL at least as long as `maxTimeoutSeconds` and SHOULD survive process restart.
+  * **Single-use / replay semantics on `verified -> settled`.** The client's `authorization.nonce` (the 32-byte value in the `PaymentPayload`) MUST be consumed **exactly once**. On the `verified -> settled` transition the adapter MUST atomically mark that nonce consumed in the replay ledger before finalizing settlement. A subsequent request presenting an already-consumed nonce MUST be rejected via the `rejected` failure branch and MUST NOT drive a second tool execution or a second settlement — even against an idempotent-success or sandbox facilitator that would otherwise re-approve it. Replay detection MUST key off the authorization `nonce` (not off the raw request bytes): a replay carrying the same nonce but a **different** request payload MUST be rejected rather than treated as a fresh payment. Idempotent retry of the *same* `(nonce, request)` pair MUST resolve to the original outcome, not a re-charge.  
 * **Error codes and retries** – standard HTTP handling (`402`, `4xx`, `5xx`), idempotent settle calls, bounded retry/backoff for transient failures, and explicit non-retryable classes for invalid signatures/requirements mismatch.  
 * **Network normalization** – adapters must use CAIP-2 network identifiers at all payment-related boundaries.  Examples include:
   * `eip155:8453`
@@ -109,13 +126,14 @@ This adapter does not define:
 
 ---
 
-> **x402 wire profile:** `X402Version: 2`. This revision extends the
-> `PAYMENT-REQUIRED` challenge shape additively (adds `nonce`,
-> `validAfter`/`validUntil`, `maxTimeoutSeconds`, and promotes `resource` to a
-> first-class field) — a `X402Version: 2` client still parses the `402`; the new
-> fields are additive and the hardening is server-side enforcement, so the
-> profile integer is unchanged and matches the shipped implementation
-> (`x402Version: 2`) and the `X402Version` recorded in SPEC.md §18.
+> **x402 wire profile:** `X402Version: 2`. This revision adds **no new wire
+> fields**: it requires server-side *enforcement* of primitives x402 v2 already
+> defines — single-use of the client's `authorization.nonce`, the
+> `validAfter`/`validBefore` window, `maxTimeoutSeconds`, and full
+> Parameter-Matching binding — plus `https` transport for credentialed/non-loopback
+> facilitators. The profile integer is therefore unchanged and matches both the
+> shipped implementation (`x402Version: 2`, the current latest x402 version) and
+> the `X402Version` recorded in SPEC.md §18.
 
 > **Note:** this document is paired with the global MCP [SPEC.md](../SPEC.md). whenever the
 > protocol version, message formats, field definitions, or error codes evolve you must keep
