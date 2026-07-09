@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -196,9 +196,13 @@ are optional.
   `{reason, count}` entry per distinct reason a document was set to
   `status="skipped"` during ingest, with `count` the number of documents skipped
   for that reason across the corpus (aggregated in `CorpusStats`, parallel to
-  `recent_failures`). Whereas `doc_counts` groups `status="ready"` documents by
-  `doc_type` and so **overstates** coverage, `skip_reasons` reports what was
-  **not** indexed and why. `reason` is a stable, closed enum for a given spec
+  `recent_failures`). Whereas `doc_counts` groups **all** non-deleted documents
+  by `doc_type` — regardless of status, so a skipped `.odt` and an extracted
+  `.docx` both count as `document` — and therefore **overstates** coverage,
+  `skip_reasons` reports what was **not** indexed and why. This overstatement is
+  deliberate: `doc_counts` answers "what is in the corpus", `skip_reasons`
+  answers "what of it is retrievable". A client MUST NOT read `doc_counts` as an
+  indexed-document count. `reason` is a stable, closed enum for a given spec
   minor: `unsupported_format` (no extractor — e.g. `.odt`/`.rtf`, encrypted PDF,
   image outside the OCR allowlist, video with no sidecar), `binary_ignored`,
   `archive` (container or un-expanded nested member), `ignore_rule`,
@@ -376,3 +380,5 @@ optional refinement and MUST NOT change the bounds or error semantics above.
   bs-003; §14 → df-008; §15.1.1 → df-005; §15.1.2 → df-006; §15 schemas →
   df-007; §16 → bs-011. The `§8.2` STT-provider reference was rewired to td-001
   (matching the df-003 precedent).
+- **0.2.0** — Added the optional `skip_reasons` honest-coverage breakdown to `dir2mcp_stats` (one `{reason, count}` entry per distinct reason a document was set to `status="skipped"`), and marked `recent_failures` and `skip_reasons` as the tool's two optional output fields. Backfilled: the version header was bumped to `0.2.0` in spec 0.26.0 without a corresponding changelog entry.
+- **0.3.0** — Corrected the `doc_counts` description in `skip_reasons`. It claimed `doc_counts` groups `status="ready"` documents, which was wrong twice over: no `ready` status exists (the enum is `ok | skipped | error`, see `dir2mcp_list_files`), and a count restricted to successfully-indexed documents could not "overstate" coverage — the sentence contradicted its own rationale. `doc_counts` groups **all** non-deleted documents by `doc_type` regardless of status; that is precisely why it overstates, and why `skip_reasons` exists. Clarification only — no behavior change.

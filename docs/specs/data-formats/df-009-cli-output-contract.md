@@ -1,7 +1,7 @@
 # df-009: CLI output contract
 
 - **ID:** df-009
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -55,16 +55,38 @@ Emit NDJSON — one JSON object per line:
 {
   "ts": "2026-02-25T12:34:56.789Z",
   "level": "info|warn|error",
-  "event": "index_loaded|server_started|connection|scan_progress|embed_progress|file_error|payment_required|payment_verified|payment_settled|payment_failed|fatal",
+  "event": "index_loaded|server_started|connection|scan_progress|embed_progress|file_error|file_skip|payment_required|payment_verified|payment_settled|payment_failed|fatal",
   "data": {}
 }
 ```
 
 Required events for `up`: `index_loaded`, `server_started`, `connection`
 (endpoint + headers + token reference), periodic `scan_progress` and
-`embed_progress`, `file_error` for per-document (non-fatal) failures, and — if
-x402 is enabled — `payment_required`, `payment_verified`, `payment_settled`,
-`payment_failed`.
+`embed_progress`, `file_error` for per-document (non-fatal) failures, `file_skip`
+for per-document skips, and — if x402 is enabled — `payment_required`,
+`payment_verified`, `payment_settled`, `payment_failed`.
+
+`file_error` is emitted **per document**, at `level: "error"`, once per document
+set to `status="error"` during ingest. It **MUST NOT** be used to report a
+whole-run fatal failure (`fatal` covers that). `file_error.data` **MUST**
+include `rel_path`, `doc_type`, and `message` — single-line, length-capped, and
+secret-redacted exactly as `recent_failures.error_message` is
+([bs-007](../behavior/bs-007-tool-specifications.md)), because the NDJSON stream
+is an untrusted sink (commonly redirected to a log file or piped to another
+process).
+
+`file_skip` is emitted **per document**, at `level: "warn"`, once per document
+set to `status="skipped"` during ingest — the streaming counterpart of the
+`skip_reasons` honest-coverage aggregate. `file_skip.data` **MUST** include
+`rel_path`, `doc_type`, and `reason` (a value from the `skip_reasons` enum:
+`unsupported_format`, `binary_ignored`, `archive`, `ignore_rule`,
+`secret_excluded`, `path_excluded`, `size_cap`). New reasons are additive under
+a minor version bump; a client **MAY** receive an unrecognized value from a
+newer server and **SHOULD** render it verbatim rather than error.
+
+A document produces **either** a `file_error` **or** a `file_skip`, never both:
+the two events partition the never-indexed set. The number of `file_skip` events
+emitted during a run equals that run's terminal `indexing.skipped`.
 
 `connection.data` **MUST** include `transport: "mcp_streamable_http"`, `url`,
 `headers` (with `MCP-Protocol-Version` and an `Authorization` placeholder), and
@@ -126,3 +148,7 @@ Expected pass conditions:
 
 - **0.1.0** — Migrated from SPEC.md §3. Cross-referenced the on-disk artifacts to
   df-001/df-002 and `CONFIG_INVALID` to df-008.
+- **0.2.0** — Added the `file_skip` event and pinned `file_error` as strictly
+  per-document (never whole-run fatal). Defined required `data` fields and the
+  secret-redaction requirement for both, and stated that the two events
+  partition the never-indexed set.

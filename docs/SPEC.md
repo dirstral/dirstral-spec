@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.29.0`  
+**Spec version:** `0.30.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -217,7 +217,7 @@ Emit NDJSON (one JSON object per line), schema:
 {
   "ts": "2026-02-25T12:34:56.789Z",
   "level": "info|warn|error",
-  "event": "index_loaded|server_started|connection|scan_progress|embed_progress|file_error|payment_required|payment_verified|payment_settled|payment_failed|fatal",
+  "event": "index_loaded|server_started|connection|scan_progress|embed_progress|file_error|file_skip|payment_required|payment_verified|payment_settled|payment_failed|fatal",
   "data": {}
 }
 ```
@@ -229,7 +229,38 @@ Required events for `up`:
 * `connection` (endpoint + headers + token reference)
 * periodic `scan_progress` and `embed_progress`
 * `file_error` for per-document failures (non-fatal)
+* `file_skip` for per-document skips (never-indexed documents)
 * if x402 is enabled: `payment_required`, `payment_verified`, `payment_settled`, `payment_failed`
+
+`file_error` is emitted **per document**, at `level: "error"`, once for each
+document set to `status="error"` during ingest. It MUST NOT be used to report a
+whole-run fatal failure — that is what `fatal` is for. `file_error.data` MUST
+include:
+
+* `rel_path` — the document's corpus-relative path
+* `doc_type`
+* `message` — single-line, length-capped, secret-redacted per §15.6. The NDJSON
+  stream is an untrusted sink (it is commonly redirected to a log file or piped
+  to another process), so the same redaction that applies to
+  `recent_failures.error_message` applies here.
+
+`file_skip` is emitted **per document**, at `level: "warn"`, once for each
+document set to `status="skipped"` during ingest. It is the streaming
+counterpart of the `skip_reasons` honest-coverage aggregate (§15.2) — the
+aggregate answers "what was not indexed, in total"; the event answers "which
+file, right now". `file_skip.data` MUST include:
+
+* `rel_path`
+* `doc_type`
+* `reason` — a value from the `skip_reasons` enum (§15.2): `unsupported_format`,
+  `binary_ignored`, `archive`, `ignore_rule`, `secret_excluded`, `path_excluded`,
+  `size_cap`. New reasons are added only by a minor version bump; a client MAY
+  receive an unrecognized value from a newer server and SHOULD render it
+  verbatim rather than error.
+
+A skipped document MUST NOT also produce a `file_error`, and vice versa: the two
+events partition the never-indexed set. The count of `file_skip` events emitted
+for a run equals the run's terminal `indexing.skipped`.
 
 `connection.data` must include:
 
@@ -2860,7 +2891,7 @@ through the OCR / transcript cache, never through a direct file read.
     },
     "skip_reasons": {
       "type": "array",
-      "description": "Optional honest-coverage breakdown: one entry per distinct reason a document was set to status='skipped' during ingest, with the count of documents skipped for that reason across the current corpus. Aggregated in CorpusStats parallel to recent_failures. Unlike doc_counts (which groups status='ready' documents by doc_type and therefore overstates coverage), this field reports what was NOT indexed and why. Implementations MAY omit this field when nothing was skipped; clients MUST treat omission as 'nothing skipped', not as 'unsupported'. Entries whose count would be 0 MUST be omitted (the array carries only non-empty reasons; an empty corpus omits the field entirely). Intended for coverage / 'what wasn't indexed & why' UIs; the same breakdown also surfaces in dir2mcp support-bundle.",
+      "description": "Optional honest-coverage breakdown: one entry per distinct reason a document was set to status='skipped' during ingest, with the count of documents skipped for that reason across the current corpus. Aggregated in CorpusStats parallel to recent_failures. Unlike doc_counts (which groups ALL non-deleted documents by doc_type regardless of status — a skipped .odt and an extracted .docx both count as 'document' — and therefore overstates coverage), this field reports what was NOT indexed and why. Clients MUST NOT read doc_counts as an indexed-document count. Implementations MAY omit this field when nothing was skipped; clients MUST treat omission as 'nothing skipped', not as 'unsupported'. Entries whose count would be 0 MUST be omitted (the array carries only non-empty reasons; an empty corpus omits the field entirely). Intended for coverage / 'what wasn't indexed & why' UIs; the same breakdown also surfaces in dir2mcp support-bundle.",
       "items": {
         "type": "object",
         "additionalProperties": false,
