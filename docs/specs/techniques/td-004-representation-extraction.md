@@ -1,7 +1,7 @@
 # td-004: Representation generation & structured extraction
 
 - **ID:** td-004
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -98,9 +98,9 @@ per-format** selection over the extraction-engine registry (§B.1).
   highest-fidelity *active* engine that supports it (§B.1), falling through the
   fidelity order; a format no active engine supports degrades per the
   strict/lenient contract (§B.2).
-- `docling` / `docling-serve` / `mistral`: **pin** a single engine. A format the
-  pinned engine cannot read does not silently produce an empty representation —
-  it degrades honestly per §B.2.
+- `docling` / `docling-serve` / `mistral` / `pandoc`: **pin** a single engine. A
+  format the pinned engine cannot read does not silently produce an empty
+  representation — it degrades honestly per §B.2.
 - `off`: skip the extracted representation.
 
 Route the extracted representation to `index_kind=text`. Cache extracted output
@@ -121,7 +121,7 @@ carries no wire- or schema-level difference.
 [td-001](td-001-provider-model.md) §8.1.2 capability cell.** Per-format engine
 selection lives here (§B.1), *not* in the td-001 §8.1.2 capability matrix:
 extraction fidelity is per-format and ordered, and two of the engines
-(`docling`, the future `pandoc`, #393) are local tools with no provider profile.
+(`docling`, `pandoc` #393) are local tools with no provider profile.
 Where an engine *is* a td-001 §8 surface — the `mistral` engine — it resolves
 through that capability's binding: the `mistral` extraction engine is the active
 `ocr` provider ([td-001](td-001-provider-model.md) §8.1.2/§8.1.3), so the
@@ -141,13 +141,15 @@ tiebreak):
 | Tier | Engine | Nature | Provenance produced |
 |---|---|---|---|
 | T1 | `docling` / `docling-serve` | structured document model | reading-order, `region` (page+bbox), section breadcrumb, labels, atomic tables (§B "Structured extraction") |
-| T2 | `pandoc` (future, #393) | structured markup → Markdown | structure without page/bbox; `page`/no spans |
+| T2 | `pandoc` (#393) | born-digital markup/office/ebook → Markdown | structure without page/bbox: section breadcrumb + `label`; no `page`/`bbox` spans |
 | T3 | `mistral` (= td-001 §8 `ocr` provider) | page-separated OCR | `page` spans (§B "Page-separated extraction") |
 | T4 | `raw_text` (§A) | flat text | none |
 
 **Format support** (`✅` = engine can ingest this format; tier from the table
-above). `pandoc` rows are forward-looking (#393) and non-binding until that
-engine ships:
+above). The `pandoc` engine (#393) is **optional and capability-activated**: its
+cells participate in selection whenever a `pandoc` binary is available (see
+*Extractor availability*) and are inactive otherwise, exactly as a missing
+`docling` binary deactivates the T1 cells:
 
 | Format class | Examples | docling(-serve) | mistral (ocr) | pandoc† | raw_text |
 |---|---|:--:|:--:|:--:|:--:|
@@ -155,12 +157,20 @@ engine ships:
 | raster-image (OCR-native) | `.png .jpg .jpeg .webp` | ✅ T1 | ✅ T3 | ❌ | ❌ |
 | raster-image (extended) | `.tiff .bmp .gif` | ✅ T1 | ❌ | ❌ | ❌ |
 | vector-image | `.svg` | ✅ T1 | ❌ | ❌ | ❌ |
-| office (OOXML) | `.docx .pptx .xlsx` | ✅ T1 | ❌ | ✅ T2 | ❌ |
-| office/ebook (legacy/ODF) | `.odt .rtf .doc .epub` | ❌ | ❌ | ✅ T2 | ❌ |
+| office (Word, OOXML) | `.docx` | ✅ T1 | ❌ | ✅ T2 | ❌ |
+| office (slides/sheets, OOXML) | `.pptx .xlsx` | ✅ T1 | ❌ | ❌ | ❌ |
+| office/ebook (ODF/RTF/EPUB) | `.odt .rtf .epub` | ❌ | ❌ | ✅ T2 | ❌ |
+| legacy office (binary) | `.doc` | ❌ | ❌ | ❌ | ❌ |
 | markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§A, #556) |
 
-† `pandoc` cells are declared for matrix completeness (#393); an implementation
-without a pandoc engine simply treats those cells as inactive.
+† `pandoc` (T2, #393) is a born-digital markup/office/ebook converter with a
+**reader-only** support set: it ingests `.docx`, `.odt`, `.rtf`, `.epub`, and
+`.html`, but **not** `.pptx`/`.xlsx` (pandoc has no PowerPoint/Excel reader —
+those are docling-only) nor legacy binary `.doc` (docx-only), and no raster/PDF
+input — so those cells are permanently `❌`. Its readable cells are active only
+when a `pandoc` binary is available; an implementation or deployment without
+`pandoc` treats them as inactive, exactly as a missing `docling` binary
+deactivates T1.
 
 **Best-available selection (`extractor: auto`).** For each classified document,
 select the **active** engine of lowest fidelity tier whose cell for that format
@@ -172,10 +182,12 @@ engine that cannot read it, and a higher-fidelity active engine is never
 bypassed (fixing the "html→raw_text while docling is active" and
 "tiff→mistral-rejected" defects, dir2mcp #394/#556).
 
-**Pinned selection (`extractor: docling|docling-serve|mistral`).** Only the
-named engine is eligible; formats outside its `✅` set degrade per §B.2. Pinning
-is honored exactly (no cross-engine fallback), matching the existing
-explicit-`docling` / explicit-`docling-serve` no-silent-fallback rule.
+**Pinned selection (`extractor: docling|docling-serve|mistral|pandoc`).** Only
+the named engine is eligible; formats outside its `✅` set degrade per §B.2.
+Pinning is honored exactly (no cross-engine fallback), matching the existing
+explicit-`docling` / explicit-`docling-serve` no-silent-fallback rule. Pinning
+`pandoc` when no `pandoc` binary is available disables extraction, exactly as
+pinning an unavailable `docling`.
 
 #### B.2) Degradation contract (strict / lenient)
 
@@ -224,8 +236,10 @@ extractor as unavailable (never as available), and **SHOULD** cache the result
 for the run rather than probing per document.
 
 - Under `extractor: auto`, an unavailable `docling` CLI is skipped and the
-  cascade continues (docling-serve, then Mistral OCR, then disabled), so a
-  broken docling install degrades gracefully instead of failing every document.
+  per-format tier order continues (docling-serve, then `pandoc` for the formats
+  it covers, then Mistral OCR, then `raw_text` for HTML (§A), then disabled), so
+  a broken docling install
+  degrades gracefully instead of failing every document.
 - Under `extractor: docling` (explicit), an unavailable command disables
   extraction — PDF/image/document contribute no `extracted_markdown` — and
   **MUST NOT** silently fall back to another engine, mirroring explicit
@@ -234,6 +248,16 @@ for the run rather than probing per document.
   surfaced in startup diagnostics and by `dir2mcp doctor`
   ([bs-002](../behavior/bs-002-ingestion-pipeline.md)), so a present-but-broken extractor
   is visible rather than reported as healthy.
+
+The `pandoc` engine (T2, #393) follows the same availability rule: it is
+*available* only when a `pandoc` binary both **resolves** (on `PATH`, or via
+`ingest.pandoc.command`) **and** passes a `pandoc --version` functional check. It
+is **capability-activated** — no enable flag; a working binary activates the T2
+matrix cells and its absence deactivates them (opt-out only). Under
+`extractor: auto` an unavailable `pandoc` is skipped and the per-format tier
+order continues; under `extractor: pandoc` (explicit) an unavailable binary
+disables extraction and **MUST NOT** silently fall back, mirroring explicit
+`docling`.
 
 #### Structured extraction (docling)
 
@@ -305,6 +329,38 @@ behavior applies:
 - store page numbers as `page` spans;
 - chunk per page first.
 
+#### Markup/office extraction (pandoc) (#393)
+
+When the active engine is `pandoc` (T2) — a born-digital converter with no page
+raster or layout model — the pipeline produces an `extracted_markdown`
+representation by converting the source to Markdown, and **MUST NOT** fabricate
+page/`bbox` provenance it does not have:
+
+- Convert the document to Markdown (`pandoc -t gfm`), preserving reading order —
+  pandoc emits a single linear document.
+- An implementation **SHOULD**, where the Markdown heading hierarchy is
+  available, carry a **section breadcrumb** onto the chunks beneath each heading
+  as the structured path does, and **MAY** carry an element kind (e.g. table,
+  code block) in span `extra_json.label`. Unlike docling's structured model this
+  is a **progressive enhancement** over the guaranteed Markdown text, not a
+  structured-model guarantee.
+- **No page/`bbox` provenance exists** for born-digital formats: pandoc spans
+  carry the section breadcrumb (and `label` where derivable) and otherwise fall
+  back to **no `page` span** — the pipeline **MUST NOT** fabricate one. This is
+  the provenance-unavailable rule of the structured path applied to an engine
+  that never has page provenance. Citations are therefore section-granular,
+  coarser than docling's `region` spans.
+- **Tables** are rendered to Markdown and kept atomic where the converter
+  preserves them.
+- Route to `index_kind=text`. `rep_hash` is computed over the rendered Markdown,
+  exactly as the docling and flat paths; the persisted representation type is
+  unchanged (`extracted_markdown`), only the span provenance is coarser.
+- Re-indexing semantics are unchanged
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md)): under `auto`, a format
+  later covered by a higher-fidelity active engine (e.g. docling installed) is
+  re-extracted through it on re-index per the best-available rule; until then the
+  pandoc representation stands.
+
 ### C) Audio (STT provider is configurable)
 
 Generate a `transcript` representation via the STT provider. The transcription
@@ -359,6 +415,19 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
+- **0.4.0** — Made the §B.1 T2 `pandoc` engine binding rather than
+  forward-looking (dir2mcp #393): pandoc is a **capability-activated** born-digital
+  markup/office/ebook converter (active iff a `pandoc` binary resolves + passes a
+  `pandoc --version` functional check, via `PATH` or `ingest.pandoc.command`);
+  added it to the pinnable engine set; added its availability rule (skipped under
+  `auto`, no-silent-fallback when pinned) and a "Markup/office extraction
+  (pandoc)" output-shape section (Markdown conversion; section breadcrumb a
+  SHOULD progressive enhancement, not a structured-model guarantee; **no**
+  page/`bbox` provenance — section-granular citations). Corrected pandoc's
+  matrix cells to its **reader-only** set — `.docx .odt .rtf .epub .html`;
+  `.pptx`/`.xlsx` (docling-only) and legacy `.doc` are pandoc `❌`, split out into
+  their own rows — and spelled out the §A `raw_text`-for-HTML step in the auto
+  tier order. No behavior change when `pandoc` is absent.
 - **0.3.0** — Reversed §B from single global extractor selection to
   capability-aware per-format selection: added the §B.1 engine capability matrix
   + fidelity ordering and the §B.2 strict/lenient degradation contract; recorded
