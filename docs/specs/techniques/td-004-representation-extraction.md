@@ -157,15 +157,20 @@ cells participate in selection whenever a `pandoc` binary is available (see
 | raster-image (OCR-native) | `.png .jpg .jpeg .webp` | ✅ T1 | ✅ T3 | ❌ | ❌ |
 | raster-image (extended) | `.tiff .bmp .gif` | ✅ T1 | ❌ | ❌ | ❌ |
 | vector-image | `.svg` | ✅ T1 | ❌ | ❌ | ❌ |
-| office (OOXML) | `.docx .pptx .xlsx` | ✅ T1 | ❌ | ✅ T2 | ❌ |
-| office/ebook (legacy/ODF) | `.odt .rtf .doc .epub` | ❌ | ❌ | ✅ T2 | ❌ |
+| office (Word, OOXML) | `.docx` | ✅ T1 | ❌ | ✅ T2 | ❌ |
+| office (slides/sheets, OOXML) | `.pptx .xlsx` | ✅ T1 | ❌ | ❌ | ❌ |
+| office/ebook (ODF/RTF/EPUB) | `.odt .rtf .epub` | ❌ | ❌ | ✅ T2 | ❌ |
+| legacy office (binary) | `.doc` | ❌ | ❌ | ❌ | ❌ |
 | markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§A, #556) |
 
-† `pandoc` (T2, #393) is a born-digital markup/office/ebook converter. Its cells
-are active only when a `pandoc` binary is available; an implementation or
-deployment without `pandoc` treats those cells as inactive, exactly as a missing
-`docling` binary deactivates T1. pandoc reads no raster/PDF input, so its pdf and
-image cells are permanently `❌`.
+† `pandoc` (T2, #393) is a born-digital markup/office/ebook converter with a
+**reader-only** support set: it ingests `.docx`, `.odt`, `.rtf`, `.epub`, and
+`.html`, but **not** `.pptx`/`.xlsx` (pandoc has no PowerPoint/Excel reader —
+those are docling-only) nor legacy binary `.doc` (docx-only), and no raster/PDF
+input — so those cells are permanently `❌`. Its readable cells are active only
+when a `pandoc` binary is available; an implementation or deployment without
+`pandoc` treats them as inactive, exactly as a missing `docling` binary
+deactivates T1.
 
 **Best-available selection (`extractor: auto`).** For each classified document,
 select the **active** engine of lowest fidelity tier whose cell for that format
@@ -232,7 +237,8 @@ for the run rather than probing per document.
 
 - Under `extractor: auto`, an unavailable `docling` CLI is skipped and the
   per-format tier order continues (docling-serve, then `pandoc` for the formats
-  it covers, then Mistral OCR, then disabled), so a broken docling install
+  it covers, then Mistral OCR, then `raw_text` for HTML (§A), then disabled), so
+  a broken docling install
   degrades gracefully instead of failing every document.
 - Under `extractor: docling` (explicit), an unavailable command disables
   extraction — PDF/image/document contribute no `extracted_markdown` — and
@@ -417,8 +423,11 @@ A page-separated OCR fallback span:
   `auto`, no-silent-fallback when pinned) and a "Markup/office extraction
   (pandoc)" output-shape section (Markdown conversion; section breadcrumb a
   SHOULD progressive enhancement, not a structured-model guarantee; **no**
-  page/`bbox` provenance — section-granular citations). No change to the
-  matrix cells or to behavior when `pandoc` is absent.
+  page/`bbox` provenance — section-granular citations). Corrected pandoc's
+  matrix cells to its **reader-only** set — `.docx .odt .rtf .epub .html`;
+  `.pptx`/`.xlsx` (docling-only) and legacy `.doc` are pandoc `❌`, split out into
+  their own rows — and spelled out the §A `raw_text`-for-HTML step in the auto
+  tier order. No behavior change when `pandoc` is absent.
 - **0.3.0** — Reversed §B from single global extractor selection to
   capability-aware per-format selection: added the §B.1 engine capability matrix
   + fidelity ordering and the §B.2 strict/lenient degradation contract; recorded
