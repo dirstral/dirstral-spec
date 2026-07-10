@@ -332,15 +332,18 @@ page/`bbox` provenance it does not have:
 
 - Convert the document to Markdown (`pandoc -t gfm`), preserving reading order —
   pandoc emits a single linear document.
-- Maintain a **section breadcrumb** from the Markdown heading hierarchy and
-  attach it to chunks emitted beneath each heading, exactly as the structured
-  path does. Where the converter exposes an element kind (e.g. table, code
-  block), it **MAY** be carried in span `extra_json.label`.
+- An implementation **SHOULD**, where the Markdown heading hierarchy is
+  available, carry a **section breadcrumb** onto the chunks beneath each heading
+  as the structured path does, and **MAY** carry an element kind (e.g. table,
+  code block) in span `extra_json.label`. Unlike docling's structured model this
+  is a **progressive enhancement** over the guaranteed Markdown text, not a
+  structured-model guarantee.
 - **No page/`bbox` provenance exists** for born-digital formats: pandoc spans
-  carry the section breadcrumb (and `label` where derivable) and fall back to
-  **no `page` span** — the provenance-unavailable rule of the structured path
-  applied to an engine that never has page provenance. Citations are therefore
-  section-granular, coarser than docling's `region` spans.
+  carry the section breadcrumb (and `label` where derivable) and otherwise fall
+  back to **no `page` span** — the pipeline **MUST NOT** fabricate one. This is
+  the provenance-unavailable rule of the structured path applied to an engine
+  that never has page provenance. Citations are therefore section-granular,
+  coarser than docling's `region` spans.
 - **Tables** are rendered to Markdown and kept atomic where the converter
   preserves them.
 - Route to `index_kind=text`. `rep_hash` is computed over the rendered Markdown,
@@ -412,8 +415,9 @@ A page-separated OCR fallback span:
   `pandoc --version` functional check, via `PATH` or `ingest.pandoc.command`);
   added it to the pinnable engine set; added its availability rule (skipped under
   `auto`, no-silent-fallback when pinned) and a "Markup/office extraction
-  (pandoc)" output-shape section (Markdown conversion, section-breadcrumb spans,
-  **no** page/`bbox` provenance — section-granular citations). No change to the
+  (pandoc)" output-shape section (Markdown conversion; section breadcrumb a
+  SHOULD progressive enhancement, not a structured-model guarantee; **no**
+  page/`bbox` provenance — section-granular citations). No change to the
   matrix cells or to behavior when `pandoc` is absent.
 - **0.3.0** — Reversed §B from single global extractor selection to
   capability-aware per-format selection: added the §B.1 engine capability matrix
