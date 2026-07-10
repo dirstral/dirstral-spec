@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.2.0
+- **Version:** 0.2.1
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -179,7 +179,7 @@ that a present-but-broken extractor be visible rather than reported as healthy
   engine (per the td-004 §B.1 matrix) — e.g. "`.odt`, `.tiff` present, no active
   engine covers them";
 - for each uncovered class, name a **remediation** — the engine/config to add
-  (e.g. "install docling for `.tiff`; add a pandoc engine (#393) for `.odt`; or
+  (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393); or
   set `ingest.on_unsupported: strict` to fail instead of skip").
 
 Under `ingest.on_unsupported: lenient` the uncovered classes are warnings; under
@@ -370,6 +370,9 @@ re-indexes it.
 
 ## Changelog
 
+- **0.2.1** — §7.7: reworded the pandoc remediation example to "install `pandoc`"
+  now that the T2 engine is a binding, capability-activated engine (td-004 §B.1,
+  dir2mcp #393); no contract change.
 - **0.2.0** — §7.7: added the honest-coverage-report contract (list active
   extraction engines + availability; name uncovered corpus format classes and
   their remediation; never silent). Ties to td-004 §B.1/§B.2.
