@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.2.1
+- **Version:** 0.2.2
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -182,9 +182,12 @@ that a present-but-broken extractor be visible rather than reported as healthy
   (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393); or
   set `ingest.on_unsupported: strict` to fail instead of skip").
 
-Under `ingest.on_unsupported: lenient` the uncovered classes are warnings; under
-`strict` the affected documents are recorded as `status=error` (td-004 §B.2). A
-coverage gap MUST never be silent.
+Under `ingest.on_unsupported: lenient` the uncovered classes are warnings, and a
+document left with no searchable representation is recorded as a durable
+`status=skipped` (unsupported-format `skip_reason`) so the gap survives the run
+that produced it (td-004 §B.2); under `strict` the affected documents are recorded
+as `status=error` (td-004 §B.2). A coverage gap MUST never be silent, and MUST
+never be reported as an indexed document.
 
 ### 7.8 Remote corpus sources
 
@@ -370,6 +373,10 @@ re-indexes it.
 
 ## Changelog
 
+- **0.2.2** — §7.7: a lenient unsupported-format skip that leaves a
+  document with no searchable representation is now a durable `status=skipped`
+  (not `status=ok`), so the coverage gap survives the producing run (td-004 §B.2,
+  dir2mcp #584).
 - **0.2.1** — §7.7: reworded the pandoc remediation example to "install `pandoc`"
   now that the T2 engine is a binding, capability-activated engine (td-004 §B.1,
   dir2mcp #393); no contract change.

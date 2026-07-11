@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.31.0`  
+**Spec version:** `0.32.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -956,12 +956,28 @@ When no active eligible engine supports a document's format (a coverage gap unde
 by `ingest.on_unsupported` (§16.2), a kill-switch-shaped knob mirroring the
 tri-state opt-out used elsewhere (e.g. `media.diarize`, §8.6.8):
 
-* **`lenient` (default, backward-compatible)** — **skip with warning**: no
-  `extracted_markdown` is produced, the document is indexed with whatever other
-  representations it has (or none), and the gap is surfaced as a warning in
-  startup diagnostics and the honest coverage report (§7.7). This preserves the
-  current not-indexed *outcome* for unsupported formats while replacing the
-  former **silent** empty representation with an honest, named one.
+* **`lenient` (default, backward-compatible)** — **skip with warning**, recorded
+  honestly and **durably**. No `extracted_markdown` is produced; the outcome then
+  depends on whether the document is searchable by any other means:
+  * If it retains **at least one searchable representation** (e.g. a
+    direct-embedding media chunk, a sidecar transcript), it stays **indexed**
+    (`documents.status=ok`) and the missing extraction is named in the honest
+    coverage report (§7.7).
+  * If it has **no searchable representation** — extraction was its only path to
+    being searchable — it is **not indexed** and MUST be recorded as a **durable
+    skip**: `documents.status=skipped` with a `skip_reason` in the
+    unsupported-format class (§7.7 `skip_reasons`). It counts toward
+    `indexing.skipped`, contributes to the durable coverage aggregate (so
+    `status`/`reindex` name it **after a restart**, not only during the run that
+    produced it), and emits a per-document `file_skip` event on the `--json`
+    stream (§3.2) — the streaming counterpart of the aggregate. An implementation
+    MUST NOT leave such a document at `status=ok`: that mislabels an unsearchable
+    document as indexed and makes the gap invisible once the producing run ends
+    (dir2mcp #584).
+
+  This preserves the **not-indexed outcome** for unsupported formats while making
+  it honest, durable, and observable — never a silent empty representation, and
+  never an unsearchable document reported as indexed.
 * **`strict`** — the unsupported format is a **non-fatal per-document error**
   (§7.7): `documents.status=error` with an `UNSUPPORTED_FORMAT`-class reason;
   indexing continues for other documents. Intended for CI / correctness-sensitive
@@ -1177,9 +1193,12 @@ that a present-but-broken extractor be visible rather than reported as healthy
   (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393); or
   set `ingest.on_unsupported: strict` to fail instead of skip").
 
-Under `ingest.on_unsupported: lenient` the uncovered classes are warnings; under
-`strict` the affected documents are recorded as `status=error` (§7.4.B.2). A
-coverage gap MUST never be silent.
+Under `ingest.on_unsupported: lenient` the uncovered classes are warnings, and a
+document left with no searchable representation is recorded as a durable
+`status=skipped` (skip_reason in the unsupported-format class) so the gap survives
+the run that produced it (§7.4.B.2); under `strict` the affected documents are
+recorded as `status=error` (§7.4.B.2). A coverage gap MUST never be silent, and
+MUST never be reported as an indexed document.
 
 ### 7.8 Remote corpus sources
 
