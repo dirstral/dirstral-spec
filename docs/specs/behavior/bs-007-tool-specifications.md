@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -56,6 +56,12 @@ input-validation, and provider codes in df-008 apply across all tools.
   any of these BCP-47 languages (case-insensitive **primary-subtag** match).
   Absent/empty ⇒ no filtering. **Unknown-language** representations never match
   a specific filter.
+- `date_from` / `date_to` — optional (§9.6): restrict hits to a **document date
+  window** matched against `documents.mtime_unix`. Each is an RFC 3339 timestamp
+  or a bare `YYYY-MM-DD` date (bare `date_from` = start of day, `date_to` = end of
+  day; both bounds inclusive). Absent ⇒ open on that side. A malformed value or
+  `date_from` > `date_to` is `INVALID_FIELD`; a window matching nothing is an
+  empty result, not an error.
 
 **Behavior.** Output carries `query`, `k`, `index_used`, `hits[]`, and
 `indexing_complete` (the latter three plus `query` are required).
@@ -83,6 +89,9 @@ result `content[]` MUST include at least one `text` item summarizing results
   representations in any of these BCP-47 languages (case-insensitive
   primary-subtag match). Absent/empty ⇒ no filtering; unknown-language
   representations never match a specific filter.
+- `date_from` / `date_to` — optional (§9.6): restrict retrieved **contexts** to a
+  document date window matched against `documents.mtime_unix`, same value forms
+  and semantics as `dir2mcp_search`.
 
 **Behavior.** Output carries `question`, `answer`, `citations[]`, `hits[]`, and
 `indexing_complete` (`question`, `citations`, `hits`, `indexing_complete` are
@@ -278,8 +287,8 @@ this call).
 Optional and additive.
 
 **Parameters.** The input **inherits all** `dir2mcp_ask` fields (`question`,
-`k`, `mode`, `index`, `path_prefix`, `file_glob`, `doc_types`) plus
-audio-specific additive options:
+`k`, `mode`, `index`, `path_prefix`, `file_glob`, `doc_types`, `languages`,
+`date_from`, `date_to`) plus audio-specific additive options:
 
 - `voice_id` — optional.
 - `format` — `mp3 | wav`, default **`mp3`**.
@@ -366,6 +375,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 ## Changelog
 
+- **0.4.0** — added the optional `date_from`/`date_to` document date-window filter to `dir2mcp_search`/`dir2mcp_ask` (SPEC §9.6, dir2mcp #326): RFC 3339 or bare-date bounds matched against `documents.mtime_unix`, inclusive, additive/off-by-default, `INVALID_FIELD` on malformed/inverted range. Also corrected the ask-audio inherited-field list (was missing `languages`).
 - **0.1.0** — Migrated the **behavioral** semantics of all ten MCP tools from
   SPEC.md §15.2–§15.11 (`dir2mcp_search`, `_ask`, `_open_file`, `_list_files`,
   `_stats`, `_transcribe`, `_annotate`, `_transcribe_and_ask`, `_ask_audio`,
