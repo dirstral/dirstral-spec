@@ -1,7 +1,7 @@
 # td-004: Representation generation & structured extraction
 
 - **ID:** td-004
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -197,13 +197,27 @@ by `ingest.on_unsupported` ([bs-011](../behavior/bs-011-configuration.md)), a
 kill-switch-shaped knob mirroring the tri-state opt-out used elsewhere (e.g.
 `media.diarize`, [td-003](td-003-transcription-translation-subtitles.md)):
 
-- **`lenient` (default, backward-compatible)** — **skip with warning**: no
-  `extracted_markdown` is produced, the document is indexed with whatever other
-  representations it has (or none), and the gap is surfaced as a warning in
-  startup diagnostics and the honest coverage report
-  ([bs-002](../behavior/bs-002-ingestion-pipeline.md)). This preserves the
-  current not-indexed *outcome* for unsupported formats while replacing the
-  former **silent** empty representation with an honest, named one.
+- **`lenient` (default, backward-compatible)** — **skip with warning**, recorded
+  honestly and **durably**. No `extracted_markdown` is produced; the outcome then
+  depends on whether the document is searchable by any other means:
+  - If it retains **at least one searchable representation** (e.g. a
+    direct-embedding media chunk, a sidecar transcript), it stays **indexed**
+    (`documents.status=ok`) and the missing extraction is named in the honest
+    coverage report ([bs-002](../behavior/bs-002-ingestion-pipeline.md)).
+  - If it has **no searchable representation** — extraction was its only path to
+    being searchable — it is **not indexed** and MUST be recorded as a **durable
+    skip**: `documents.status=skipped` with a `skip_reason` in the
+    unsupported-format class. It counts toward `indexing.skipped`, contributes to
+    the durable coverage aggregate (so `status`/`reindex` name it **after a
+    restart**), and emits a per-document `file_skip` event on the `--json` stream
+    ([df-009](../data-formats/df-009-cli-output-contract.md)). An implementation
+    MUST NOT leave such a document at `status=ok` — that mislabels an unsearchable
+    document as indexed and makes the gap invisible once the producing run ends
+    (dir2mcp #584).
+
+  This preserves the **not-indexed outcome** for unsupported formats while making
+  it honest, durable, and observable — never a silent empty representation, and
+  never an unsearchable document reported as indexed.
 - **`strict`** — the unsupported format is a **non-fatal per-document error**
   ([bs-002](../behavior/bs-002-ingestion-pipeline.md)): `documents.status=error`
   with an `UNSUPPORTED_FORMAT`-class reason; indexing continues for other
@@ -415,6 +429,15 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
+- **0.5.0** — §B.2 lenient: a document a lenient unsupported-format skip leaves
+  with **no searchable representation** MUST now be recorded as a **durable skip**
+  (`documents.status=skipped`, unsupported-format `skip_reason`) — counting toward
+  `indexing.skipped`, feeding the durable coverage aggregate (survives restart),
+  and emitting a `file_skip` event — instead of being left at `status=ok` (which
+  mislabeled an unsearchable document as indexed and hid the gap after the run).
+  A document that retains other searchable representations still stays indexed.
+  Closes the honest-coverage gap dir2mcp #584. No new fields (reuses the
+  status/skip_reason/file_skip machinery of df-009).
 - **0.4.0** — Made the §B.1 T2 `pandoc` engine binding rather than
   forward-looking (dir2mcp #393): pandoc is a **capability-activated** born-digital
   markup/office/ebook converter (active iff a `pandoc` binary resolves + passes a
