@@ -287,8 +287,8 @@ this call).
 Optional and additive.
 
 **Parameters.** The input **inherits all** `dir2mcp_ask` fields (`question`,
-`k`, `mode`, `index`, `path_prefix`, `file_glob`, `doc_types`) plus
-audio-specific additive options:
+`k`, `mode`, `index`, `path_prefix`, `file_glob`, `doc_types`, `languages`,
+`date_from`, `date_to`) plus audio-specific additive options:
 
 - `voice_id` — optional.
 - `format` — `mp3 | wav`, default **`mp3`**.
