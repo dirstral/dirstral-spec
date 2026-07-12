@@ -19,7 +19,9 @@
       "path_prefix": { "type": "string" },
       "file_glob": { "type": "string" },
       "doc_types": { "type": "array", "items": { "type": "string" } },
-      "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (SPEC §9.5): restrict retrieved contexts to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering; unknown-language representations never match a specific filter." }
+      "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (SPEC §9.5): restrict retrieved contexts to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering; unknown-language representations never match a specific filter." },
+      "date_from": { "type": "string", "description": "Optional (SPEC §9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude contexts from documents dated before this (inclusive; a bare date = start of that day UTC). Absent = open lower bound." },
+      "date_to": { "type": "string", "description": "Optional (SPEC §9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude contexts from documents dated after this (inclusive; a bare date = end of that day UTC). Absent = open upper bound." }
     },
     "required": ["question"]
   },

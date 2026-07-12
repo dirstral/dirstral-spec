@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.31.0`  
+**Spec version:** `0.32.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2235,6 +2235,35 @@ writes (§8.8), so a corpus indexed before any language was recorded simply has
 unknown-language representations that no specific filter matches — there is no
 migration and no breaking change.
 
+### 9.6 Date/time-range filter (optional)
+
+`dir2mcp_search` and `dir2mcp_ask` MAY accept optional `date_from` and `date_to`
+arguments that restrict results to a **document date window**. The filter is
+**additive and off by default**: an absent bound is an open range on that side,
+and existing callers that never send them observe no change (dir2mcp #326).
+
+* **Value.** Each bound is an **RFC 3339** timestamp (e.g.
+  `2026-04-01T00:00:00Z`) or a bare calendar date `YYYY-MM-DD`. A bare `date_from`
+  date is interpreted as the **start** of that day (`00:00:00Z`); a bare `date_to`
+  date as the **end** of that day (`23:59:59.999Z`), so a single day is expressed
+  as `date_from = date_to = YYYY-MM-DD`. A value that parses as neither, or a
+  `date_from` strictly later than `date_to`, is an `INVALID_FIELD` error (§14).
+* **What "document date" means.** The bound is compared against the document's
+  recorded modification time (`documents.mtime_unix`, §5.1) — the calendar anchor
+  every document carries, independent of representation type. (A future
+  content-derived "recorded date" MAY refine this per representation; until then
+  `mtime` is the anchor.) Media **time** spans (§5.4) are *intra-document offsets*,
+  not calendar dates, and are NOT used here.
+* **Semantics.** The range is **inclusive** on both provided bounds: a hit is kept
+  iff its document date is `>= date_from` (when given) **and** `<= date_to` (when
+  given). It composes with the other filters (`path_prefix` / `file_glob` /
+  `doc_types` / `languages`, §9.5) by **conjunction**.
+* **Pipeline placement.** Applied as a **candidate-selection** filter alongside
+  `path_prefix` / `file_glob` / `doc_types` (§9.1), before ranking — so `k` counts
+  only in-window hits, and a filtered query MAY return fewer than `k`.
+* **No match is not an error.** A window that excludes every hit returns an empty
+  result set, not an error, exactly as the language filter (§9.5).
+
 ---
 
 ## 10) MCP server: Streamable HTTP (2025-11-25)
@@ -2654,7 +2683,9 @@ timed slice.
     "file_glob": { "type": "string" },
     "doc_types": { "type": "array", "items": { "type": "string" } },
     "speaker": { "type": "string", "description": "Optional (§8.6.8): restrict time-spanned transcript hits to this speaker id. A corpus without diarized transcripts returns no speaker-filtered hits." },
-    "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (§9.5): restrict hits to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering. Unknown-language representations never match a specific filter." }
+    "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (§9.5): restrict hits to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering. Unknown-language representations never match a specific filter." },
+    "date_from": { "type": "string", "description": "Optional (§9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude hits from documents dated before this (inclusive; a bare date = start of that day UTC). Absent = open lower bound." },
+    "date_to": { "type": "string", "description": "Optional (§9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude hits from documents dated after this (inclusive; a bare date = end of that day UTC). Absent = open upper bound." }
   },
   "required": ["query"]
 }
@@ -2704,7 +2735,9 @@ timed slice.
     "path_prefix": { "type": "string" },
     "file_glob": { "type": "string" },
     "doc_types": { "type": "array", "items": { "type": "string" } },
-    "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (§9.5): restrict retrieved contexts to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering. Unknown-language representations never match a specific filter." }
+    "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (§9.5): restrict retrieved contexts to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering. Unknown-language representations never match a specific filter." },
+    "date_from": { "type": "string", "description": "Optional (§9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude contexts from documents dated before this (inclusive; a bare date = start of that day UTC). Absent = open lower bound." },
+    "date_to": { "type": "string", "description": "Optional (§9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude contexts from documents dated after this (inclusive; a bare date = end of that day UTC). Absent = open upper bound." }
   },
   "required": ["question"]
 }
@@ -3090,7 +3123,7 @@ through the OCR / transcript cache, never through a direct file read.
 
 ### 15.10 `dir2mcp_ask_audio` (optional extension)
 
-**Description:** same as `ask` but includes audio output (TTS). Optional and additive. The input schema inherits all fields of `dir2mcp_ask` (`question`, `k`, `mode`, `index`, `path_prefix`, `file_glob`, `doc_types`) plus the audio-specific fields shown below.
+**Description:** same as `ask` but includes audio output (TTS). Optional and additive. The input schema inherits all fields of `dir2mcp_ask` (`question`, `k`, `mode`, `index`, `path_prefix`, `file_glob`, `doc_types`, `languages`, `date_from`, `date_to`) plus the audio-specific fields shown below.
 
 Input is the same as `dir2mcp_ask`, with additive audio options:
 - `voice_id` (optional)
