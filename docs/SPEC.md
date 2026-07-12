@@ -3367,9 +3367,11 @@ ingest:
   # (resolved via PATH or pandoc.command) => its docx/odt/rtf/epub/html cells are
   # active; absent or non-functional => inactive.
   on_unsupported: lenient   # lenient|strict (§7.4.B.2). lenient (default) =
-    # skip-with-warning + name the gap in the coverage report (§7.7); strict =
-    # non-fatal per-document UNSUPPORTED_FORMAT error (§7.7). Backward-compatible:
-    # lenient preserves the current not-indexed outcome, minus the silent part.
+    # skip-with-warning: a doc left with NO searchable representation is recorded
+    # as a durable status=skipped (unsupported-format skip_reason) + file_skip, so
+    # the gap is named in the coverage report (§7.7) and survives a restart; strict
+    # = non-fatal per-document UNSUPPORTED_FORMAT error (§7.7). Backward-compatible:
+    # lenient keeps the not-indexed outcome, minus the silent part.
   docling:
     # HTTP endpoint of a running docling-serve container. REQUIRED when
     # extractor=docling-serve: an empty or unreachable URL disables that
