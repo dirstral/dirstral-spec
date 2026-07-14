@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.32.0`  
+**Spec version:** `0.33.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -406,10 +406,20 @@ A lightweight summary:
     "representations": 88,
     "chunks_total": 1480,
     "embedded_ok": 920,
-    "errors": 1
+    "errors": 1,
+    "watch_overflows": 0
   }
 }
 ```
+
+`watch_overflows` (optional, additive; dir2mcp #591) is the count of fsnotify
+kernel event-buffer overflows observed over the file-watcher's lifetime. A
+non-zero value means a burst of filesystem changes exceeded the kernel buffer and
+some events were dropped, so those changes were reconciled by a periodic safety
+rescan rather than per-event — a signal that the index may briefly lag reality
+after heavy churn. It is omitted when the server is not running the watcher (e.g.
+a one-shot index) or on platforms without overflow reporting; consumers MUST treat
+its absence as "unknown / not applicable", not zero.
 
 When indexing stats are unavailable (e.g., the ListFiles-only fallback path where no live
 `IndexingState` is present), the fields `representations`, `chunks_total`, and `embedded_ok`
