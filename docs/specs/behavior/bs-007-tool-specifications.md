@@ -188,12 +188,11 @@ are optional.
   `embedded_ok`, and `errors` (all required). `representations`, `chunks_total`,
   and `embedded_ok` have minimum **−1**: **−1** means "not derivable" (the
   ListFiles-only fallback path) and MUST be treated as **unavailable**, not as
-  an error. It **MAY** additionally carry `watch_overflows` (optional, additive;
-  dir2mcp #591): the lifetime count of fsnotify kernel event-buffer overflows —
-  non-zero means some filesystem changes were reconciled by a periodic rescan
-  rather than per-event. It is omitted when the watcher is not running or the
-  platform does not report overflows; consumers MUST treat absence as
-  "unknown / not applicable", not zero.
+  an error. It **MAY** additionally carry the optional, additive
+  `watch_overflows` integer (dir2mcp #591) — an fsnotify kernel event-buffer
+  overflow counter whose absence means "unknown / not applicable", not zero;
+  see `stats.json` (df-007) for the field contract and SPEC §15.6 for its full
+  normative semantics.
 - `models` carries `embed_text`, `embed_code`, `ocr`, `stt_provider`,
   `stt_model`, `chat` (all required). `stt_provider` is **not** a closed enum —
   any STT-capable provider (e.g. `mistral | elevenlabs | openai | gemini |
@@ -380,7 +379,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 ## Changelog
 
-- **0.5.0** — `dir2mcp_stats.indexing` MAY carry an optional additive `watch_overflows` integer (fsnotify kernel event-buffer overflow count; absence = unknown/NA, not zero). Schema: `stats.json`. SPEC §15.6, dir2mcp #591.
+- **0.5.0** — `dir2mcp_stats.indexing` MAY carry an optional additive `watch_overflows` integer (fsnotify kernel event-buffer overflow count; absence = unknown/NA, not zero). Schema: `stats.json` (df-007). dir2mcp #591.
 - **0.4.0** — added the optional `date_from`/`date_to` document date-window filter to `dir2mcp_search`/`dir2mcp_ask` (SPEC §9.6, dir2mcp #326): RFC 3339 or bare-date bounds matched against `documents.mtime_unix`, inclusive, additive/off-by-default, `INVALID_FIELD` on malformed/inverted range. Also corrected the ask-audio inherited-field list (was missing `languages`).
 - **0.1.0** — Migrated the **behavioral** semantics of all ten MCP tools from
   SPEC.md §15.2–§15.11 (`dir2mcp_search`, `_ask`, `_open_file`, `_list_files`,
