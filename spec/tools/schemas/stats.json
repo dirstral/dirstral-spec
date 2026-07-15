@@ -36,7 +36,8 @@
             "representations": { "type": "integer" },
             "chunks_total": { "type": "integer" },
             "embedded_ok": { "type": "integer" },
-            "errors": { "type": "integer" }
+            "errors": { "type": "integer" },
+            "watch_overflows": { "type": "integer", "minimum": 0, "description": "Optional (§15.6, dir2mcp #591): count of fsnotify kernel event-buffer overflows over the watcher's lifetime. Non-zero means some filesystem changes were reconciled by a periodic rescan rather than per-event. Absent when not running the watcher / unsupported." }
           },
           "required": ["job_id", "running", "mode", "scanned", "indexed", "skipped", "deleted", "representations", "chunks_total", "embedded_ok", "errors"]
         },
