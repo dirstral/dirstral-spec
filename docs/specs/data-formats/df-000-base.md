@@ -1,11 +1,11 @@
 # df-000: Base conventions & `format_version`
 
 - **ID:** df-000
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
-- **Source:** SPEC.md §0, §1; introduces `format_version` (dir2mcp #468), NEW
+- **Source:** SPEC.md §0, §1, §1.3; introduces `format_version` (dir2mcp #468), NEW
 
 ## Scope
 
@@ -73,5 +73,11 @@ on older producers.
 
 ## Changelog
 
+- **0.2.0** — The `format_version` contract is now mirrored authoritatively in
+  SPEC.md §1.3 (with the four boundaries wired into §4.3 connection.json, §5.6
+  the `PRAGMA user_version` fence, §11.2 the `initialize` protocolVersion pin,
+  and §15.6 + `stats.json` the optional stats field), so implementations have an
+  authoritative surface to conform to while this Draft is not yet Stable. No
+  normative change here — the semantics are unchanged from 0.1.0.
 - **0.1.0** — Initial. Established `format_version` (dir2mcp #468, folding in
   #404 and #405); migrated shared terms and invariants from SPEC.md §1.

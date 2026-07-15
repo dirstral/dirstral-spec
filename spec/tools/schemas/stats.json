@@ -13,6 +13,10 @@
         "root": { "type": "string" },
         "state_dir": { "type": "string" },
         "protocol_version": { "type": "string" },
+        "format_version": {
+          "type": "string",
+          "description": "Optional (SHOULD, df-000): payload-shape semver signalling which spec generation produced this output. Absent on older producers; a client MUST treat absence as 'unknown, fall back to protocol_version', not as an error. Independent of the spec document's version."
+        },
         "doc_counts": {
           "type": "object",
           "additionalProperties": { "type": "integer" }

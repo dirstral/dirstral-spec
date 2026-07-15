@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.33.0`  
+**Spec version:** `0.34.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -100,6 +100,36 @@ Current high-level status:
 - The default vector index is **embedded/on-disk** and requires **no external service**.
 - An external vector store MAY be configured (§6, Tier C) but MUST NOT be required: a conforming deployment MUST be able to run with **zero external infrastructure beyond the model providers** (the embedded default).
 - The state directory is always **local**, even when the corpus root is remote (§7.8): SQLite metadata, the embedded index, and caches never live on the remote source.
+
+### 1.3 `format_version` (cross-version signal)
+
+Every self-describing payload dir2mcp writes at a boundary **MUST** or **SHOULD**
+(as specified below) carry a `format_version` string (semver, e.g. `"0.1.0"`), so
+an independent implementation always knows the payload shape it is reading and can
+adapt or reject rather than silently mis-parse (dir2mcp #468; folds in #404/#405).
+`format_version` is an **independent** payload-shape version — it is **not** the
+`Spec version` of this document and does not track it.
+
+- **`connection.json`** (§4.3) **MUST** include `format_version`.
+- **`dir2mcp_stats` output** (§15.6) **SHOULD** include `format_version`; when it
+  is absent a client MAY fall back to the daemon's advertised `protocol_version`
+  to branch on payload evolution (e.g. the `Hit`/`Citation` shape).
+- **SQLite** (§5.6) **MUST** set `PRAGMA user_version` to a monotonic schema
+  version and check it on open: a database written by a **newer** schema than the
+  binary understands **MUST** be refused with a clear error, and any non-additive
+  migration **MUST** be gated on that version (closes #405). `PRAGMA user_version`
+  is an **independent** monotonic integer for the on-disk schema; it does **not**
+  map to the semver `format_version` of the wire payloads above.
+- **MCP `initialize`** (§11.2) **MUST** advertise this spec's pinned
+  `protocolVersion` (`2025-11-25`) rather than echoing the client's requested
+  value (closes #404).
+
+A consumer that encounters a **major**-incompatible `format_version` **MUST** fail
+closed (reject), not silently mis-parse. Additive (minor/patch) changes **MUST**
+be backward-compatible: unknown fields are ignored, and new optional fields are
+absent on older producers. The canonical, independently-versioned home for these
+conventions is [df-000](specs/data-formats/df-000-base.md); this section stays
+authoritative until that document is marked **Stable**.
 
 ---
 
@@ -356,10 +386,12 @@ All state lives under `<state-dir>` (default `<root>/.dir2mcp/`).
 
 ### 4.3 `connection.json`
 
-Written on `up`:
+Written on `up`. It **MUST** carry `format_version` (§1.3) so a reader can detect
+an incompatible payload shape before connecting:
 
 ```json
 {
+  "format_version": "0.1.0",
   "transport": "mcp_streamable_http",
   "url": "http://127.0.0.1:52143/mcp",
   "headers": {
@@ -643,6 +675,29 @@ breadcrumb:
   * `ocr_model`
   * `stt_provider`, `stt_model`
   * `chat_model`
+
+### 5.6 Schema version fence (`PRAGMA user_version`)
+
+The on-disk metadata database **MUST** carry a monotonic schema version and
+enforce it on open (§1.3; closes #405):
+
+* On create/migrate, the daemon **MUST** set `PRAGMA user_version` to the integer
+  schema version its binary implements.
+* On open, it **MUST** read `PRAGMA user_version`. If the stored value is
+  **greater** than the binary's known schema version, the database was written by
+  a newer build; the daemon **MUST** refuse to open it with a clear, actionable
+  error (naming the found vs. supported version) rather than operate on a shape it
+  does not understand. A **lower** stored value selects the appropriate forward
+  migration.
+* Any **non-additive** migration (a column/table drop or a type/semantics change,
+  as opposed to a purely additive column) **MUST** be gated on this version and
+  **MUST** bump it, so a downgrade lands on the refusal path above instead of
+  silently corrupting a mixed-version database.
+
+`PRAGMA user_version` is an integer for the **on-disk schema** and is independent
+of both the wire `format_version` (§1.3) and the settings-row
+`index_format_version` (§5.5, which fences **index/embedding** compatibility, not
+table shape).
 
 ---
 
@@ -2417,6 +2472,12 @@ Body:
 }
 ```
 
+The server **MUST** advertise this spec's pinned `protocolVersion` (`2025-11-25`,
+§1.3) in the response rather than echoing back whatever value the client sent in
+its `initialize` request; a client that requested a different version thereby
+learns the server's actual protocol generation instead of having its own guess
+reflected (closes #404).
+
 ### 11.3 `notifications/initialized` (example)
 
 ```json
@@ -2944,6 +3005,7 @@ through the OCR / transcript cache, never through a direct file read.
     "root": { "type": "string" },
     "state_dir": { "type": "string" },
     "protocol_version": { "type": "string" },
+    "format_version": { "type": "string", "description": "Optional (SHOULD, §1.3): payload-shape semver (df-000). Absent on older producers; a client MAY fall back to protocol_version. Independent of the spec version." },
     "doc_counts": { "type": "object", "additionalProperties": { "type": "integer" } },
     "total_docs": { "type": "integer" },
     "doc_counts_available": { "type": "boolean" },
