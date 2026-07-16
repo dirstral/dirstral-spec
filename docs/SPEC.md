@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.34.0`  
+**Spec version:** `0.35.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1620,6 +1620,54 @@ the chosen embed model, not a new capability cell.
 * STT provider is selected per 8.1.3 among STT-capable profiles (8.1.2): **Mistral** (Voxtral), **ElevenLabs** (Scribe), **OpenAI** (Whisper / `gpt-4o-transcribe`), **Gemini**. Default profile: **Mistral**.
 * Outputs MUST be normalized to the same `transcript` representation format regardless of provider.
 * **Gemini** transcribes via the native `models/{model}:generateContent` surface: the audio is sent as an inline-data part (base64, with its MIME type) alongside a transcription instruction, and the model's text output is the transcript. Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the native surface is required (a `kind: openai` Gemini profile is therefore not STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional `stt_language` apply as for other providers.
+
+#### 8.2.1 Language-coverage-aware selection (honest coverage)
+
+A single configured STT model does not cover every language equally. Some
+languages are **absent from or weak in** a model's training (e.g. Whisper on a
+low-resource language): rather than erroring, such a model typically **detects
+the nearest in-vocabulary language and emits wrong-language, repetition-prone
+output**, so coverage collapses **silently** — the §8.6.6 quality gate then drops
+much of it, hiding the cause. STT selection MAY therefore be
+**language-coverage-aware**. This section is **domain-general**: dir2mcp ships **no
+built-in model→language table** (such tables are provider-specific and go stale);
+coverage is **operator-declared** and defaults to *open/unknown* (today's
+behavior — attempt any language).
+
+* **Source-language detection.** The source language is resolved before
+  transcription from, in precedence order: an explicit `media.language` /
+  `stt_language` pin, else automatic detection (`internal/langdetect`). The
+  resolved language is recorded on the `transcript` representation's `meta_json`
+  (§5.2) for observability regardless of the rules below.
+* **Declared coverage (optional).** An STT-capable provider profile MAY declare
+  `stt_languages` — a **non-empty** set of BCP-47 tags it is known to transcribe
+  well. **Unset _or_ empty (`[]`) = open/unknown**: no coverage assertion is made
+  and selection proceeds as today — an empty list is treated as "no declaration",
+  **never** as "covers zero languages" (which would pointlessly floor every
+  language). A declared (non-empty) set is a *positive* assertion only (a language
+  in the set is covered); it never expands to imply exclusion beyond the
+  honest-coverage rule below.
+* **Per-language routing (optional).** `media.stt.language_providers` maps a
+  BCP-47 tag → the **name of an STT-capable provider profile** (§8.1.2/§8.1.3).
+  When the resolved source language matches a key, that profile transcribes the
+  item, overriding the default STT provider for that item only — so an operator
+  can route a language their default model handles poorly to a model that covers
+  it. A mapped name that is absent or not STT-capable is `CONFIG_INVALID`
+  (static validation). An empty/unset map is today's single-provider behavior.
+* **Honest-coverage floor.** When the resolved source language is **outside the
+  selected model's declared `stt_languages`** (a **non-empty** set is declared and
+  the language is not in it) **and** no `language_providers` route covers it, the
+  daemon MUST
+  NOT silently emit degraded output as if it were fine. It MUST **proceed but
+  record honest coverage**: emit a warning and note the (language, model,
+  `covered=false`) fact on the transcript `meta_json`, so an operator can see
+  "transcribed in a language this model does not declare" instead of only a
+  downstream quality-gate drop. This is **fail-open** (transcription still runs;
+  the §8.6.6 quality gate remains the backstop for degenerate output) — a strict
+  *skip-instead-of-transcribe* mode and a `dir2mcp_stats` coverage aggregate are
+  a planned additive extension, not required here. When coverage is **unknown**
+  (no `stt_languages`, or an empty one) the floor does not apply — absence of a
+  declared set is not evidence of non-coverage.
 
 ### 8.3 Note on TTS
 
@@ -3536,6 +3584,7 @@ stt:
     api_key: ${MISTRAL_API_KEY}
     model: voxtral-mini-latest
     timestamps: true
+    # stt_languages: [ru, en]  # optional declared coverage (BCP-47); omit or [] => open/unknown (§8.2.1)
   elevenlabs:
     api_key: ${ELEVENLABS_API_KEY}
     model: scribe_v1
@@ -3545,6 +3594,10 @@ stt:
 # Domain-general: no built-in language list, no default target language.
 media:
   # language: ""              # optional pin; omit => auto-detect source language
+  stt:                        # language-coverage-aware STT selection (§8.2.1)
+    language_providers: {}    # NO default; map BCP-47 lang => STT provider profile name
+                              #   (e.g. route a language the default model covers poorly
+                              #    to one that covers it). Empty => single-provider behavior.
   translate:
     enabled: false            # opt-in; off by default (§8.6.2)
     target_langs: []          # NO default; enabling with [] is CONFIG_INVALID
