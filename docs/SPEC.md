@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.35.0`  
+**Spec version:** `0.36.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1772,6 +1772,24 @@ stable across re-indexing.
   representations of the same document). A translated transcript MUST record its
   `source_language` plus the **translation provider/model** that produced it
   (§5.2, §8.6.7).
+* **Terminology guidance (optional).** When translation runs on a chat provider
+  (`media.translate.engine: chat`), the operator MAY supply a
+  **`media.translate.glossary`** — a mapping of source term/phrase → preferred
+  rendering — that is injected into the translate prompt as guidance so proper
+  nouns, domain terms, and preferred spellings render **consistently**. Because it
+  guides the model rather than post-processing output, it handles the target
+  language's **morphology** (a term declines/inflects correctly across surface
+  forms), which a find/replace cannot. It is **keyed per target language**
+  (`glossary: { <bcp47-target>: { "<source term>": "<rendering>" } }`) since a
+  rendering is target-language-specific; only the entries for the current target
+  language are injected. It applies to **both** the per-line and windowed
+  (cross-line-context) translate prompts. Empty/unset = no guidance (today's
+  behavior). This is **guidance, not a hard constraint** — the model SHOULD honor
+  it but MAY deviate where grammar requires. It is **distinct from
+  `media.subtitles.glossary`** (§8.6.3), which is a deterministic, export-time
+  find/replace on already-rendered cue text; the two MAY be used together (prompt
+  guidance during translation, a regex safety-net at export). It is **domain-general**:
+  no built-in terms ship; the map is entirely operator-provided.
 
 #### 8.6.3 Subtitle export
 
@@ -3601,6 +3619,9 @@ media:
   translate:
     enabled: false            # opt-in; off by default (§8.6.2)
     target_langs: []          # NO default; enabling with [] is CONFIG_INVALID
+    glossary: {}              # optional terminology guidance for the chat translator (§8.6.2);
+                              #   keyed per target language: { <lang>: { "<source term>": "<rendering>" } }
+                              #   guides the prompt (handles morphology); distinct from subtitles.glossary
   subtitles:
     formats: [vtt, srt]       # always available, derived from segment spans (§8.6.3)
     ttml:
