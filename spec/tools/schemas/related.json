@@ -15,6 +15,10 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Exactly ONE of chunk_id / rel_path identifies the source segment. Supplying neither or both is INVALID_FIELD.",
+        "oneOf": [
+            { "required": ["chunk_id"], "not": { "required": ["rel_path"] } },
+            { "required": ["rel_path"], "not": { "required": ["chunk_id"] } }
+        ],
         "properties": {
             "chunk_id": {
                 "type": "integer",
@@ -41,7 +45,7 @@
             "exclude_same_document": {
                 "type": "boolean",
                 "default": true,
-                "description": "When true (default), hits from the SAME document as the source are excluded, so results are 'other documents like this'. When false, other segments of the same document may appear (the source chunk / source document's chunks are still excluded per the identifier above)."
+                "description": "For a chunk_id request: when true (default) all chunks of the source chunk's document are excluded ('other documents like this'); when false the source document's OTHER chunks may appear (the source chunk itself is always excluded). No-op for a rel_path request — a document's own chunks are always excluded (a document is never related to itself)."
             },
             "path_prefix": {
                 "type": "string"
@@ -89,7 +93,7 @@
             },
             "hits": {
                 "type": "array",
-                "description": "Nearest-neighbour segments, most-similar first, with the source excluded (and same-document hits excluded unless exclude_same_document=false). Same Hit shape as dir2mcp_search.",
+                "description": "Nearest-neighbour segments, ordered by descending similarity (ties broken by ascending chunk_id for determinism), with the source excluded (and same-document hits excluded per exclude_same_document). Same Hit shape as dir2mcp_search.",
                 "items": { "$ref": "#/definitions/Hit" }
             },
             "indexing_complete": {

@@ -3471,15 +3471,21 @@ so results are "other documents like this"), and the same `path_prefix` /
 
 **Behavior:**
 
-* `chunk_id` ranks by similarity to **that chunk's** embedding vector; the source
-  chunk is always excluded. `rel_path` ranks against the **source document's own
-  chunk vectors** (aggregated); chunks belonging to that document are always
-  excluded. When `exclude_same_document=true` (default), all hits from the source
-  document are excluded regardless of which identifier was used.
-* Results are `Hit`s (§15.1, identical shape to `dir2mcp_search`), most-similar
-  first, truncated to `k` after filtering and dedup. The reranker (§8.4) does
-  **not** apply — there is no query text to rerank against; ordering is pure vector
-  similarity.
+* `chunk_id` ranks by similarity to **that chunk's** embedding vector. The source
+  chunk is **always** excluded; `exclude_same_document` then widens that exclusion:
+  when **true** (default) every chunk of the source chunk's document is also
+  excluded (results are "other documents like this"); when **false** the source
+  document's *other* chunks MAY appear (only the source chunk itself stays
+  excluded).
+* `rel_path` ranks against the **source document's own chunk vectors**
+  (aggregated). The source document's chunks are **always** excluded — a document
+  is never "related to itself", so `exclude_same_document` does not loosen this and
+  is a no-op for a `rel_path` request.
+* Results are `Hit`s (§15.1, identical shape to `dir2mcp_search`), ordered by
+  descending similarity and truncated to `k` after filtering and dedup. Ties are
+  broken by **ascending `chunk_id`** so repeated calls and independent
+  implementations produce the same order. The reranker (§8.4) does **not** apply —
+  there is no query text to rerank against; ordering is pure vector similarity.
 * `index_used` reports the axis actually searched. `indexing_complete` reflects
   partial-index state exactly as `dir2mcp_search` does — a query-by-example over a
   still-building index returns what is embedded so far.
