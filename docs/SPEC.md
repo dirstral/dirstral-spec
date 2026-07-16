@@ -1654,12 +1654,17 @@ behavior — attempt any language).
   can route a language their default model handles poorly to a model that covers
   it. A mapped name that is absent or not STT-capable is `CONFIG_INVALID`
   (static validation). An empty/unset map is today's single-provider behavior.
-* **Honest-coverage floor.** When the resolved source language is **outside the
-  selected model's declared `stt_languages`** (a **non-empty** set is declared and
-  the language is not in it) **and** no `language_providers` route covers it, the
-  daemon MUST NOT silently emit degraded output as if it were fine. Its response is
-  governed by **`media.stt.on_uncovered_language`** (`warn | skip`, default
-  `warn`):
+* **Honest-coverage floor.** The floor is evaluated against the **finally-selected**
+  STT model for the item — the `language_providers` route target when one matches
+  the resolved source language, else the default STT provider (see the routing
+  bullet). When the resolved source language is **outside that selected model's
+  declared `stt_languages`** (a **non-empty** set is declared and the language is
+  not in it), the daemon MUST NOT silently emit degraded output as if it were fine.
+  (A `language_providers` entry only proves the route target is STT-capable, not
+  that it covers the language: routing to a model that *also* does not declare the
+  language still trips the floor — routing is not an escape hatch from honest
+  coverage.) Its response is governed by
+  **`media.stt.on_uncovered_language`** (`warn | skip`, default `warn`):
   * **`warn`** (default, **fail-open**) — **proceed but record honest coverage**:
     emit a warning and note the (language, model, `covered=false`) fact on the
     transcript `meta_json`, so an operator sees "transcribed in a language this
