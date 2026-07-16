@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.36.0`  
+**Spec version:** `0.37.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -303,9 +303,9 @@ file, right now". `file_skip.data` MUST include:
 * `doc_type`
 * `reason` — a value from the `skip_reasons` enum (§15.2): `unsupported_format`,
   `binary_ignored`, `archive`, `ignore_rule`, `secret_excluded`, `path_excluded`,
-  `size_cap`. New reasons are added only by a minor version bump; a client MAY
-  receive an unrecognized value from a newer server and SHOULD render it
-  verbatim rather than error.
+  `size_cap`, `language_uncovered`. New reasons are added only by a minor version
+  bump; a client MAY receive an unrecognized value from a newer server and SHOULD
+  render it verbatim rather than error.
 
 A skipped document MUST NOT also produce a `file_error`, and vice versa: the two
 events partition the never-indexed set. The count of `file_skip` events emitted
@@ -1657,17 +1657,26 @@ behavior — attempt any language).
 * **Honest-coverage floor.** When the resolved source language is **outside the
   selected model's declared `stt_languages`** (a **non-empty** set is declared and
   the language is not in it) **and** no `language_providers` route covers it, the
-  daemon MUST
-  NOT silently emit degraded output as if it were fine. It MUST **proceed but
-  record honest coverage**: emit a warning and note the (language, model,
-  `covered=false`) fact on the transcript `meta_json`, so an operator can see
-  "transcribed in a language this model does not declare" instead of only a
-  downstream quality-gate drop. This is **fail-open** (transcription still runs;
-  the §8.6.6 quality gate remains the backstop for degenerate output) — a strict
-  *skip-instead-of-transcribe* mode and a `dir2mcp_stats` coverage aggregate are
-  a planned additive extension, not required here. When coverage is **unknown**
-  (no `stt_languages`, or an empty one) the floor does not apply — absence of a
-  declared set is not evidence of non-coverage.
+  daemon MUST NOT silently emit degraded output as if it were fine. Its response is
+  governed by **`media.stt.on_uncovered_language`** (`warn | skip`, default
+  `warn`):
+  * **`warn`** (default, **fail-open**) — **proceed but record honest coverage**:
+    emit a warning and note the (language, model, `covered=false`) fact on the
+    transcript `meta_json`, so an operator sees "transcribed in a language this
+    model does not declare" instead of only a downstream quality-gate drop.
+    Transcription still runs; the §8.6.6 quality gate remains the backstop for
+    degenerate output.
+  * **`skip`** (strict) — **do not transcribe** the item: record it as
+    `status=skipped` with `skip_reason="language_uncovered"` (§15.2), so the gap
+    surfaces as honest not-indexed coverage (the `skip_reasons` aggregate) rather
+    than as garbage the quality gate silently drops. No transcript representation
+    is produced. This is the deterministic choice for a corpus known to contain a
+    language no configured model covers.
+
+  When coverage is **unknown** (no `stt_languages`, or an empty one) the floor does
+  not apply under either mode — absence of a declared set is not evidence of
+  non-coverage. A `dir2mcp_stats` per-language coverage aggregate remains a planned
+  additive extension.
 
 ### 8.3 Note on TTS
 
@@ -3164,8 +3173,8 @@ through the OCR / transcript cache, never through a direct file read.
         "properties": {
           "reason": {
             "type": "string",
-            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap"],
-            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered"],
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
           },
           "count": {
             "type": "integer",
@@ -3616,6 +3625,10 @@ media:
     language_providers: {}    # NO default; map BCP-47 lang => STT provider profile name
                               #   (e.g. route a language the default model covers poorly
                               #    to one that covers it). Empty => single-provider behavior.
+    on_uncovered_language: warn  # warn|skip: response when the source language is outside
+                              #   the model's declared stt_languages and no route covers it.
+                              #   warn (default, fail-open) transcribes + records covered=false;
+                              #   skip records status=skipped (skip_reason=language_uncovered).
   translate:
     enabled: false            # opt-in; off by default (§8.6.2)
     target_langs: []          # NO default; enabling with [] is CONFIG_INVALID

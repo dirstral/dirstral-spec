@@ -86,7 +86,7 @@
             "properties": {
               "reason": {
                 "type": "string",
-                "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap"],
+                "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered"],
                 "description": "Stable, closed skip-reason enum for a given spec minor. New reasons are added only by a minor version bump (additive); a client MAY receive an unrecognized value from a newer server and SHOULD render it verbatim rather than error."
               },
               "count": {
