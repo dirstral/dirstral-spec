@@ -1,11 +1,11 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
-- **Source:** SPEC.md §15.2–§15.11 + `spec/tools/schemas/*.json`
+- **Source:** SPEC.md §15.2–§15.12 + `spec/tools/schemas/*.json`
 
 ## Scope
 
@@ -34,6 +34,7 @@ the conformance contract. Shared shapes — [df-005 `Span`](df-005-span.md) and
 | `dir2mcp_transcribe_and_ask` (§15.9) | `transcribe_and_ask.json` | recommended tool. |
 | `dir2mcp_ask_audio` (§15.10) | `ask_audio.json` | optional extension. |
 | `dir2mcp_open_media_clip` (§15.11) | `open_media_clip.json` | `CLIP_TOO_LARGE`/`MEDIA_CLIP_FAILED` (df-008). |
+| `dir2mcp_related` (§15.12) | `related.json` | Query-by-example; `hits[]` `$ref`s `Hit`. One of `chunk_id`/`rel_path` (`INVALID_FIELD` otherwise). Optional extension. |
 
 ### Single source of truth
 
@@ -76,6 +77,9 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
+- **0.5.0** — Added `related.json` (dir2mcp_related §15.12, dir2mcp #324): the
+  query-by-example 'more like this' tool, cataloged in the tool map; its `hits[]`
+  `$ref` `common.json#/definitions/Hit`, so no shared-shape change.
 - **0.4.0** — `stats.json` `skip_reasons[].reason` enum gains `language_uncovered`
   (additive; SPEC §8.2.1/§15.2, dir2mcp #566): media skipped under
   `media.stt.on_uncovered_language=skip` because its source language is outside
