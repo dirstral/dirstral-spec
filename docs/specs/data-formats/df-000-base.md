@@ -1,11 +1,11 @@
 # df-000: Base conventions & `format_version`
 
 - **ID:** df-000
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
-- **Source:** SPEC.md §0, §1; introduces `format_version` (dir2mcp #468), NEW
+- **Source:** SPEC.md §0, §1, §1.3; introduces `format_version` (dir2mcp #468), NEW
 
 ## Scope
 
@@ -22,9 +22,11 @@ Every self-describing payload dir2mcp writes at a boundary **MUST** carry a
 implementation always knows the shape it is reading and can adapt or reject:
 
 - **`connection.json`** (df-001) MUST include `format_version`.
-- **`stats` tool output** SHOULD include `format_version`; if it is absent, an
-  MCP client MAY fall back to the daemon's implemented spec version to branch on
-  payload evolution (e.g. the df-006 `Hit`/`Citation` changes).
+- **`stats` tool output** SHOULD include `format_version`. When it is absent, a
+  client MUST treat the payload as a pre-`format_version` (baseline) shape and
+  MUST NOT infer the payload shape from `protocol_version` — that is the pinned
+  MCP protocol generation, orthogonal to and unaffected by payload evolution
+  (e.g. a df-006 `Hit`/`Citation` change).
 - **SQLite** MUST set `PRAGMA user_version` to a monotonic schema version and
   check it on open: a database newer than the binary understands MUST be
   refused with a clear error, and a non-additive migration MUST be gated on the
@@ -37,8 +39,15 @@ implementation always knows the shape it is reading and can adapt or reject:
 
 A consumer that encounters a **major**-incompatible `format_version` MUST fail
 closed (reject), not silently mis-parse. Additive (minor/patch) changes MUST be
-backward-compatible: unknown fields are ignored, new optional fields are absent
-on older producers.
+backward-compatible — including under the closed (`additionalProperties: false`)
+tool-output schemas df-007 mandates. That rests on a producer invariant: a
+producer MUST NOT emit a field its **advertised** schema omits, so a new optional
+field lands in the schema (and a tool's advertised `outputSchema`) in the same
+spec version that first emits it. A conformant client validates against the
+server-advertised schema (equivalently, the schema for the payload's declared
+`format_version`), never a stale schema pinned out of band; tolerant readers
+ignore unknown fields. New optional fields are absent on older producers. See
+SPEC.md §1.3 for the normative statement.
 
 ## Terms (shared)
 
@@ -73,5 +82,16 @@ on older producers.
 
 ## Changelog
 
+- **0.2.0** — The `format_version` contract is now mirrored authoritatively in
+  SPEC.md §1.3 (with the four boundaries wired into §4.3 connection.json, §5.6
+  the `PRAGMA user_version` fence, §11.2 the `initialize` protocolVersion pin,
+  and §15.6 + `stats.json` the optional stats field), so implementations have an
+  authoritative surface to conform to while this Draft is not yet Stable. Two
+  clarifications vs 0.1.0: (a) absence of `format_version` means a pre-field
+  baseline shape — a client MUST NOT infer the shape from `protocol_version`
+  (pinned, orthogonal to payload evolution); (b) additive backward-compat under
+  the closed df-007 tool schemas rests on a producer invariant (emit only what
+  the advertised schema declares; new optional fields land in the schema in the
+  same version that emits them), not on lenient consumers.
 - **0.1.0** — Initial. Established `format_version` (dir2mcp #468, folding in
   #404 and #405); migrated shared terms and invariants from SPEC.md §1.

@@ -13,6 +13,11 @@
         "root": { "type": "string" },
         "state_dir": { "type": "string" },
         "protocol_version": { "type": "string" },
+        "format_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "description": "Optional (SHOULD, df-000): payload-shape semver (MAJOR.MINOR.PATCH) signalling which spec generation produced this output. Absent on older producers; a client MUST treat absence as a pre-format_version baseline shape and MUST NOT infer the shape from protocol_version (the pinned MCP protocol version, orthogonal to payload evolution). Independent of the spec document's version."
+        },
         "doc_counts": {
           "type": "object",
           "additionalProperties": { "type": "integer" }

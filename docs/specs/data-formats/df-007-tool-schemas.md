@@ -1,7 +1,7 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -76,6 +76,9 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
+- **0.3.0** — `stats.json` now declares the optional top-level `format_version`
+  string (the df-000 cross-version signal; SHOULD, additive), matching the prose
+  contract in this document and SPEC §1.3/§15.6 (dir2mcp #468).
 - **0.1.0** — Cataloged the `spec/tools/schemas/*.json` files and the tool map;
   stated the single-source-of-truth + conformance contract; recorded the
   `common.json` `Hit`/`Citation` reconciliation (dir2mcp #423).
