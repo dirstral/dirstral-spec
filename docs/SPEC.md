@@ -1640,11 +1640,13 @@ behavior — attempt any language).
   resolved language is recorded on the `transcript` representation's `meta_json`
   (§5.2) for observability regardless of the rules below.
 * **Declared coverage (optional).** An STT-capable provider profile MAY declare
-  `stt_languages` — a set of BCP-47 tags it is known to transcribe well. Unset =
-  **open/unknown**: no coverage assertion is made and selection proceeds as today.
-  A declared set is a *positive* assertion only (a language in the set is
-  covered); it never expands to imply exclusion beyond the honest-coverage rule
-  below.
+  `stt_languages` — a **non-empty** set of BCP-47 tags it is known to transcribe
+  well. **Unset _or_ empty (`[]`) = open/unknown**: no coverage assertion is made
+  and selection proceeds as today — an empty list is treated as "no declaration",
+  **never** as "covers zero languages" (which would pointlessly floor every
+  language). A declared (non-empty) set is a *positive* assertion only (a language
+  in the set is covered); it never expands to imply exclusion beyond the
+  honest-coverage rule below.
 * **Per-language routing (optional).** `media.stt.language_providers` maps a
   BCP-47 tag → the **name of an STT-capable provider profile** (§8.1.2/§8.1.3).
   When the resolved source language matches a key, that profile transcribes the
@@ -1653,8 +1655,9 @@ behavior — attempt any language).
   it. A mapped name that is absent or not STT-capable is `CONFIG_INVALID`
   (static validation). An empty/unset map is today's single-provider behavior.
 * **Honest-coverage floor.** When the resolved source language is **outside the
-  selected model's declared `stt_languages`** (a set is declared and the language
-  is not in it) **and** no `language_providers` route covers it, the daemon MUST
+  selected model's declared `stt_languages`** (a **non-empty** set is declared and
+  the language is not in it) **and** no `language_providers` route covers it, the
+  daemon MUST
   NOT silently emit degraded output as if it were fine. It MUST **proceed but
   record honest coverage**: emit a warning and note the (language, model,
   `covered=false`) fact on the transcript `meta_json`, so an operator can see
@@ -1663,8 +1666,8 @@ behavior — attempt any language).
   the §8.6.6 quality gate remains the backstop for degenerate output) — a strict
   *skip-instead-of-transcribe* mode and a `dir2mcp_stats` coverage aggregate are
   a planned additive extension, not required here. When coverage is **unknown**
-  (no `stt_languages` declared) the floor does not apply — absence of a declared
-  set is not evidence of non-coverage.
+  (no `stt_languages`, or an empty one) the floor does not apply — absence of a
+  declared set is not evidence of non-coverage.
 
 ### 8.3 Note on TTS
 
@@ -3581,7 +3584,7 @@ stt:
     api_key: ${MISTRAL_API_KEY}
     model: voxtral-mini-latest
     timestamps: true
-    # stt_languages: []     # optional declared coverage (BCP-47); omit => open/unknown (§8.2.1)
+    # stt_languages: [ru, en]  # optional declared coverage (BCP-47); omit or [] => open/unknown (§8.2.1)
   elevenlabs:
     api_key: ${ELEVENLABS_API_KEY}
     model: scribe_v1
