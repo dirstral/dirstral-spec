@@ -1,7 +1,7 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -76,6 +76,16 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
+- **0.4.0** — `stats.json` `skip_reasons[].reason` enum gains `language_uncovered`
+  (additive; SPEC §8.2.1/§15.2, dir2mcp #566): media skipped under
+  `media.stt.on_uncovered_language=skip` because its source language is outside
+  the STT model's declared coverage. This is a forward-extensible enum: a
+  conformant client validates against the **server-advertised** schema (which
+  carries the new value, per SPEC §1.3) and, per the enum's own rule, SHOULD render
+  an unrecognized `reason` verbatim rather than reject — so a client on this spec
+  or newer accepts it. Strict-validating `reason` against a stale, out-of-band copy
+  of an older closed enum is the non-conformant case the render-verbatim rule
+  exists to prevent.
 - **0.3.0** — `stats.json` now declares the optional top-level `format_version`
   string (the df-000 cross-version signal; SHOULD, additive), matching the prose
   contract in this document and SPEC §1.3/§15.6 (dir2mcp #468).
