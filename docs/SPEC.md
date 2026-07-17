@@ -2097,7 +2097,11 @@ languages in one document**.
     behavior; the honest-coverage warning for skipped tracks stays).
   * **`all`** — transcribe **every** audio track.
   * an explicit **list of 0-based indices** (e.g. `[0, 2]`) — transcribe exactly
-    those tracks; an index past the track count is `CONFIG_INVALID`.
+    those tracks. A **duplicate** index or one **past the track count** is
+    `CONFIG_INVALID`. The list is a **set**, not an ordering: selected tracks are
+    always processed in **container stream order** regardless of how the list is
+    written, so `[2, 0]` and `[0, 2]` produce identical representations and
+    citations.
   Default `first` keeps single-track corpora (the overwhelming majority) unchanged
   in behavior **and cost**; multi-track transcription is opt-in.
 
@@ -2107,15 +2111,21 @@ languages in one document**.
   re-derives on upgrade. Each **additional** track **N ≥ 1** is a **distinct**
   transcript representation with a `@t<N>` qualifier on the rep_type:
   `transcript@t<N>` for the track's source transcript and `transcript@t<N>-<lang>`
-  for its translations. The `@t` qualifier cannot collide with a BCP-47 language
-  suffix (§8.6.2 language tags are letters; `@`/digits are not), so the track and
-  language dimensions compose without ambiguity. A track's transcript is a normal
-  §8.6.1 time-spanned transcript in every other respect.
+  for its translations. The **`@` delimiter** is what keeps the two dimensions
+  unambiguous: the language suffix (§8.6.2 `TranscriptLangSuffix`) is a `-`-prefixed
+  tag that never contains `@`, so the rep-key grammar
+  `transcript[@t<N>][-<lang>]` parses the track qualifier and the language suffix
+  independently (a BCP-47 tag MAY itself contain digits, e.g. `es-419` — the split
+  is on `@`, not on character class). A track's transcript is a normal §8.6.1
+  time-spanned transcript in every other respect.
 
-* **Track metadata & language.** Each track's transcript `meta_json` records its
-  `track` (0-based index) and, when the container provides them (e.g. `ffprobe`
-  stream tags), the track's declared `track_language` (BCP-47) and optional
-  `track_label` (e.g. "commentary"). The declared track language participates in
+* **Track metadata & language.** An **additional** track (N ≥ 1) records its
+  `track` (0-based index) in `meta_json`; **track 0 omits `track`** (absence ⇒
+  track 0), so a legacy single-track transcript's `meta_json` is unchanged and the
+  byte-for-byte compatibility above holds for the metadata too. When the container
+  provides them (e.g. `ffprobe` stream tags), any track's transcript also records
+  the declared `track_language` (BCP-47) and optional `track_label` (e.g.
+  "commentary"). The declared track language participates in
   §8.6.2 source-language resolution at **declared** precedence (pin > track tag >
   auto-detect), so a container that labels its dubbed tracks is transcribed in the
   right language without per-track pins. Translation (§8.6.2) and the quality gate
