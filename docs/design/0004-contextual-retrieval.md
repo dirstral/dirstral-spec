@@ -46,6 +46,30 @@ When enabled it encodes the context **generator identity** (provider, model, and
 prompt-template version), so a generator or prompt change re-embeds rather than
 silently mixing differently-contextualized vectors.
 
+### 2a. The identity encodes the **effective** mode, not the requested one
+
+The identity field is the **effective** contextualization at build time, never the
+mere config intent:
+
+- **Capability fallback → `off`.** If `retrieval.contextual.enabled: true` but **no
+  chat provider is available**, the corpus embeds raw and its identity MUST record
+  `…|off`. Recording `…|on` for raw vectors would make the corpus look
+  contextual-compatible the moment a provider is later added, silently mixing raw
+  and contextualized inputs in one index. (Equivalently, an operator MAY choose to
+  reject startup instead of fail-open; the default is fail-open-to-`off` per §6.)
+
+- **Per-chunk fallback is durably tracked, not silent.** Even with contextualization
+  effectively `on`, a **single chunk's** context generation MAY fail (§4) and that
+  chunk embeds raw. A nullable context string alone cannot distinguish
+  "disabled" / "generated" / "failed", so each chunk persists an explicit
+  **`embedding_mode` ∈ {`disabled`, `contextualized`, `fallback`}** (§3). A
+  `fallback` chunk is **retried** on the next scan while contextualization stays on
+  (self-heal toward full coverage), and is counted in honest coverage (§7 item 5) —
+  never a permanent, invisible hole. A raw `fallback` vector is in the **same
+  model/space** as its neighbours (the query is uncontextualized regardless), so it
+  degrades that one chunk's recall, not corpus-level comparability — but it is
+  tracked and healed rather than assumed uniform.
+
 This is the load-bearing design decision; everything else is mechanism.
 
 ## 3. Data model — embed text vs. cited text
@@ -68,11 +92,19 @@ by the same derivation-identity scheme transcripts/OCR/translation already use, 
 - an operator can inspect/audit the generated context without it polluting the
   cited answer.
 
-Storage options (to settle in the spec PR): a `chunk_context` column on `chunks`
-(NULL when disabled) vs. a sidecar cache keyed by chunk content-hash. The column is
-simpler for the embed worker; the sidecar keeps `chunks` lean. **Recommendation:** a
-nullable `chunk_context` column plus the content-addressed cache for the *generation*
-step, so the embed worker reads context locally without a provider round-trip.
+Storage (to settle in the spec PR):
+
+- A nullable **`chunk_context`** column on `chunks` holds the generated context (the
+  embed worker reads it locally without a provider round-trip; the
+  content-addressed cache backs the *generation* step for reuse across scans).
+- A durable **`embedding_mode`** column on `chunks` — `disabled` (feature off),
+  `contextualized` (context generated + embedded), or `fallback` (generation failed,
+  embedded raw). This is the disambiguation `chunk_context IS NULL` cannot give:
+  `NULL` context could mean any of the three. `embedding_mode` is what the re-embed
+  gate reads to (a) **retry** `fallback` chunks while contextualization is on, and
+  (b) drive the honest coverage count (§7 item 5). It is **not** part of the embed
+  identity (it is per-chunk state within one contextual corpus, not a corpus-lifetime
+  binding).
 
 ## 4. Generation — cost and the prompt-cache trick
 
@@ -87,8 +119,10 @@ paid once per document, not once per chunk.
 - Generation is **bounded** (a tight `max_tokens`, like the transcript-translation
   cap #500) — the context is meant to be one or two sentences.
 - Generation is **fail-open per chunk**: if the generator errors for a chunk, that
-  chunk embeds **without** context (and records that it did), rather than failing
-  ingest. Coverage is honest (§8.2.1-style), not silent.
+  chunk embeds **without** context and is recorded `embedding_mode = fallback`
+  (§2a/§3), rather than failing ingest. A `fallback` chunk is **retried** on the
+  next scan (self-heal) and counted in honest coverage (§7 item 5 / §8.2.1-style) — never a
+  silent, permanent hole.
 - The prompt template is **versioned** (folded into the identity, §2) and
   **general** — no domain terms; the operator MAY override it (§6).
 
@@ -120,8 +154,11 @@ retrieval:
 ```
 
 Capability-driven (like OCR/STT): with a chat provider present and
-`enabled: true`, contextualization activates; with no chat provider it fails open
-(disabled + a warning), never a hard error.
+`enabled: true`, contextualization activates; with **no** chat provider it fails
+open — the corpus embeds raw and records the **effective `…|off`** identity (§2a)
+plus a warning, never a hard error and never a raw corpus wearing an `…|on`
+identity. (An operator MAY set this to reject-at-startup instead; fail-open-to-`off`
+is the default.)
 
 ## 7. Spec surface for the follow-up spec PR
 
@@ -135,9 +172,11 @@ Capability-driven (like OCR/STT): with a chat provider present and
    derivation identity (generator provider/model/prompt_version); re-derive on
    change.
 4. **§16** — the `retrieval.contextual` config block.
-5. Optional: surface a `contextualized` boolean on the stats/coverage side so an
-   operator can see how many chunks carry context vs. fell open (a later, additive
-   stats field — spec-first like watch_overflows / skip_reasons).
+5. **Honest coverage (§7 item 5).** Surface the per-chunk `embedding_mode`
+   breakdown — how many chunks are `contextualized` vs. `fallback` — as a later,
+   additive `dir2mcp_stats` field (spec-first like watch_overflows / skip_reasons),
+   so an operator can see contextual coverage and how many chunks are pending retry
+   rather than assuming uniformity.
 
 No new **tool** and no **served-schema** change: `Hit`/`Citation`/`Span` are
 unchanged (the context is never on the wire). This keeps the conformance surface
