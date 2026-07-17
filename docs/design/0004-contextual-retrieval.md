@@ -42,8 +42,10 @@ provider|base_url|text_model|code_model|text_dim|code_dim|multimodal|late_chunki
 `contextual` is `off` when disabled (byte-identical migration: a pre-feature
 identity gains `|off`, so no existing corpus spuriously reindexes — the same
 backward-compatible append the base_url/multimodal/late_chunking migrations use).
-When enabled it encodes the context **generator identity** (provider, model, and a
-prompt-template version), so a generator or prompt change re-embeds rather than
+When enabled it encodes the context **generator identity** — provider, model, and
+the **effective prompt** (`prompt_version` names the built-in template; an operator
+`prompt` override is **hashed** into the identity, since a version tag alone cannot
+detect an edited override) — so any generator or prompt change re-embeds rather than
 silently mixing differently-contextualized vectors.
 
 ### 2a. The identity encodes the **effective** mode, not the requested one
@@ -149,8 +151,10 @@ retrieval:
     model: ""                 # optional model override
     max_tokens: 128           # tight cap; context is 1–2 sentences
     bm25: false               # also contextualize the lexical (FTS) index (separate from embeddings)
-    prompt_version: v1        # template version; part of the embed identity (§2) — a change re-embeds
-    # prompt: ""              # optional operator override of the (general, domain-free) default template
+    prompt_version: v1        # names the built-in template; part of the embed identity (§2)
+    # prompt: ""              # optional override of the (general, domain-free) template; the EFFECTIVE
+                              #   prompt is hashed into the embed identity, so an edited override
+                              #   re-embeds even without bumping prompt_version
 ```
 
 Capability-driven (like OCR/STT): with a chat provider present and
