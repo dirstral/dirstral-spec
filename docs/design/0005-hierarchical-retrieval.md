@@ -37,10 +37,22 @@ Therefore:
   their doc's chunks (same embed model), so they are directly comparable — no
   §8.1.4 field, no chunk re-embed on toggle.
 - **A `summary` IS a derived representation** (§5.2, §8.6.7), like `transcript` /
-  `extracted_markdown` / `annotation_text`. It carries a **derivation identity**
-  (the summary **generator** provider/model/prompt_version) and **re-derives** only
-  when the source content or that generator identity changes — the standard
-  provenance machinery, not a new mechanism.
+  `extracted_markdown` / `annotation_text`. It carries a **derivation identity** and
+  **re-derives** (text **and** child linkage, §4) whenever any of its inputs change:
+  1. the **source content** it summarizes (the covered chunks/segments);
+  2. the **generator identity** — provider, model, and the **effective prompt**.
+     `prompt_version` names the built-in template; an operator `prompt` **override**
+     is **hashed into the identity** (a version tag alone cannot detect an
+     edited override), so any change to the effective prompt re-derives;
+  3. for a **section** summary, the **windowing inputs** — `level`,
+     `section_units` / `section_seconds`, and the identity of the underlying
+     chunking / transcript segmentation that defines the fine units. Changing
+     `section_units` (say 8→16) re-windows the sections, so the summary **text** and
+     its **child span-range linkage** (§4) both re-derive; a stale linkage is
+     invalidated, not just stale text. (A **document**-level summary has no
+     windowing input — inputs 1–2 only.)
+  This is the standard §8.6.7 provenance machinery with the section-windowing inputs
+  folded in — not a new mechanism.
 
 ## 3. Citation faithfulness — summaries retrieve, chunks cite
 
@@ -132,16 +144,21 @@ retrieval:
     section_seconds: 120      # media: N seconds of adjacent segments per event summary
     provider: ""              # optional generator profile; empty => configured chat/annotator
     max_tokens: 512
-    prompt_version: v1        # generator derivation identity (§2/§8.6.7); a change re-derives summaries
-    # prompt: ""              # optional operator override of the (general, domain-free) template
+    prompt_version: v1        # names the built-in template; part of the summary derivation identity (§2)
+    # prompt: ""              # optional override of the (general, domain-free) template; the EFFECTIVE
+                              #   prompt is hashed into the derivation identity, so an edited override
+                              #   re-derives summaries even without bumping prompt_version
 ```
 
 ## 10. Spec surface for the follow-up spec PR
 
 1. **§5.2** — add `summary` to the `rep_type` enum + its parent→child span-range
    linkage and the tiling-without-overlap rule (§4).
-2. **§8.6.7** — the `summary` derivation identity (generator provider/model/
-   prompt_version); re-derive on change; **not** an embed-identity field (§2).
+2. **§8.6.7** — the `summary` derivation identity: source content + generator
+   (provider/model/**effective prompt**, override hashed) + (section only) the
+   windowing inputs (`level`/`section_units`/`section_seconds` + fine-unit
+   chunking/segmentation identity). Re-derive **text and child linkage** on change;
+   **not** an embed-identity field (§2).
 3. **§9** — the coarse-to-fine retrieval flow: expand summary hits to children,
    dedup, rerank, return fine chunks (§5); citation faithfulness (§3).
 4. **§16** — the `retrieval.hierarchical` config block.
