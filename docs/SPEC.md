@@ -2131,6 +2131,18 @@ languages in one document**.
   right language without per-track pins. Translation (§8.6.2) and the quality gate
   (§8.6.6) apply **per track** independently.
 
+* **Track-scoped failures.** A per-track transcription error or a §8.6.6
+  quality-gate rejection is **scoped to that track**: only the failing track's
+  transcript representation is dropped (and recorded as honest coverage, §8.6.6),
+  and the sibling tracks' transcripts are **retained**. The §8.6.6 per-document
+  `status=error` rule is evaluated over the **selected track set**, not any single
+  track: the document is `error` **only if every** selected track failed (the
+  single-track case is the degenerate instance — one track, so its failure is the
+  document's), and `ready` when **at least one** selected track produced a valid
+  transcript. This preserves the zero-representation⇒`error` contract (§8.6.7 /
+  dir2mcp #398/#413) while reading it as "zero *successful* tracks", so a single
+  degenerate dubbed track never discards a good original.
+
 * **Determinism.** Tracks are processed in **container stream order**, and the
   `@t<N>` index is the stream's 0-based audio index, so representation keys and
   citations are stable across re-indexing.
