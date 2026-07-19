@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.38.0`  
+**Spec version:** `0.39.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2083,6 +2083,75 @@ languages in one document**.
 * **Determinism.** Asset processing order within a pass MUST be deterministic so
   manifests and progress are reproducible across runs of an unchanged corpus.
 
+#### 8.6.12 Multi-track audio (per-track transcription)
+
+> **Status: Planned.** A media file MAY carry **multiple audio tracks** (streams)
+> — e.g. an original plus dubbed languages, or a clean feed plus commentary. The
+> baseline transcribes only the **first** track and (§8.6.6-style honest coverage)
+> **warns** that others exist (dir2mcp #567/#596). This section makes the
+> additional tracks addressable so each can be transcribed, translated, and cited
+> independently. It is **additive** and lands in a follow-up dir2mcp code PR.
+
+* **Track selection** is governed by **`media.stt.tracks`** (default **`first`**):
+  * **`first`** — transcribe only the container's first audio stream (today's
+    behavior; the honest-coverage warning for skipped tracks stays).
+  * **`all`** — transcribe **every** audio track.
+  * an explicit **list of 0-based indices** (e.g. `[0, 2]`) — transcribe exactly
+    those tracks. A **duplicate** index or one **past the track count** is
+    `CONFIG_INVALID`. The list is a **set**, not an ordering: selected tracks are
+    always processed in **container stream order** regardless of how the list is
+    written, so `[2, 0]` and `[0, 2]` produce identical representations and
+    citations.
+  Default `first` keeps single-track corpora (the overwhelming majority) unchanged
+  in behavior **and cost**; multi-track transcription is opt-in.
+
+* **Per-track representation keying.** Track **0** (the first audio stream) keeps
+  the **bare** `transcript` rep_type (and `transcript-<lang>` translations, §8.6.2),
+  so an existing single-track corpus is **byte-for-byte unchanged** and never
+  re-derives on upgrade. Each **additional** track **N ≥ 1** is a **distinct**
+  transcript representation with a `@t<N>` qualifier on the rep_type:
+  `transcript@t<N>` for the track's source transcript and `transcript@t<N>-<lang>`
+  for its translations. The **`@` delimiter** is what keeps the two dimensions
+  unambiguous: the language suffix (§8.6.2 `TranscriptLangSuffix`) is a `-`-prefixed
+  tag that never contains `@`, so the rep-key grammar
+  `transcript[@t<N>][-<lang>]` parses the track qualifier and the language suffix
+  independently (a BCP-47 tag MAY itself contain digits, e.g. `es-419` — the split
+  is on `@`, not on character class). A track's transcript is a normal §8.6.1
+  time-spanned transcript in every other respect.
+
+* **Track metadata & language.** An **additional** track (N ≥ 1) records its
+  `track` (0-based index) in `meta_json`; **track 0 omits `track`** (absence ⇒
+  track 0), so a legacy single-track transcript's `meta_json` is unchanged and the
+  byte-for-byte compatibility above holds for the metadata too. When the container
+  provides them (e.g. `ffprobe` stream tags), any track's transcript also records
+  the declared `track_language` (BCP-47) and optional `track_label` (e.g.
+  "commentary"). The declared track language participates in
+  §8.6.2 source-language resolution at **declared** precedence (pin > track tag >
+  auto-detect), so a container that labels its dubbed tracks is transcribed in the
+  right language without per-track pins. Translation (§8.6.2) and the quality gate
+  (§8.6.6) apply **per track** independently.
+
+* **Track-scoped failures.** A per-track transcription error or a §8.6.6
+  quality-gate rejection is **scoped to that track**: only the failing track's
+  transcript representation is dropped (and recorded as honest coverage, §8.6.6),
+  and the sibling tracks' transcripts are **retained**. The §8.6.6 per-document
+  `status=error` rule is evaluated over the **selected track set**, not any single
+  track: the document is `error` **only if every** selected track failed (the
+  single-track case is the degenerate instance — one track, so its failure is the
+  document's), and `ready` when **at least one** selected track produced a valid
+  transcript. This preserves the zero-representation⇒`error` contract (§8.6.7 /
+  dir2mcp #398/#413) while reading it as "zero *successful* tracks", so a single
+  degenerate dubbed track never discards a good original.
+
+* **Determinism.** Tracks are processed in **container stream order**, and the
+  `@t<N>` index is the stream's 0-based audio index, so representation keys and
+  citations are stable across re-indexing.
+
+* **Relation to variant selection (§8.6.5).** Tracks are **within** a single media
+  rendition; variant selection chooses **which rendition** (file) to transcribe.
+  The two are orthogonal: variant selection picks the canonical file, then
+  `media.stt.tracks` selects tracks within it.
+
 ### 8.7 Distributed embedding (coordinator + workers)
 
 > **Status: Planned.** This subsection defines the **optional** contract for
@@ -3683,6 +3752,9 @@ media:
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;
                               #   skip records status=skipped (skip_reason=language_uncovered).
+    tracks: first             # first|all|[indices]: which audio tracks to transcribe (§8.6.12).
+                              #   first (default) = today's behavior; all = every audio track;
+                              #   [0,2] = those 0-based tracks. Additional tracks -> transcript@t<N>.
   translate:
     enabled: false            # opt-in; off by default (§8.6.2)
     target_langs: []          # NO default; enabling with [] is CONFIG_INVALID
