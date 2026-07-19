@@ -3,7 +3,7 @@
 **Status:** Proposed (targets spec `0.40.0`)
 **Author:** dirstral maintainers
 **Related:** SPEC §7.4 (chunking), §8.1.4 (embed identity), §8.6.7 (representation
-provenance / re-derivation), §9 (retrieval), §16 (configuration); dir2mcp #330,
+provenance / re-derivation), §9 (retrieval), §16 (configuration); dir2mcp #330 and
 #395; Design [0001](0001-multi-provider.md) (provider model)
 
 ## 1. Summary
@@ -35,7 +35,7 @@ MUST refuse to mix vector spaces.
 **Mechanism:** fold a contextualization token into the **embed identity** (§8.1.4)
 as a **9th field**, adjacent to `late_chunking`:
 
-```
+```text
 provider|base_url|text_model|code_model|text_dim|code_dim|multimodal|late_chunking|contextual
 ```
 
@@ -87,10 +87,13 @@ The context string itself is a **derived, cached** artifact (§8.6.7 machinery),
 **not** a new `rep_type` and **not** part of `chunks.text`. It is content-addressed
 by the same derivation-identity scheme transcripts/OCR/translation already use, so:
 
-- it is generated **once** per (chunk, generator-identity) and reused across
-  re-scans;
-- it **re-derives** only when the source chunk content or the context-generator
-  identity changes (§8.6.7);
+- it is generated **once** per (chunk content, **parent-document snapshot**,
+  generator-identity) and reused across re-scans;
+- it **re-derives** when **any** of those change — the chunk content, the
+  **parent document** (a title edit or a change to a neighbouring section alters
+  the document-aware context even when the chunk's own bytes are unchanged, so the
+  parent-document content-hash is part of the cache key, not just the chunk's), or
+  the context-generator identity (§8.6.7);
 - an operator can inspect/audit the generated context without it polluting the
   cited answer.
 
