@@ -1,0 +1,105 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://spec.dirstral.com/tools/schemas/related.json",
+    "title": "dir2mcp_related",
+    "description": "Nearest-neighbour segments for a given chunk or document ('more like this'), reusing the vector index.",
+    "definitions": {
+        "Span": {
+            "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Span"
+        },
+        "Hit": {
+            "$ref": "https://spec.dirstral.com/tools/schemas/common.json#/definitions/Hit"
+        }
+    },
+    "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Exactly ONE of chunk_id / rel_path identifies the source segment. Supplying neither or both is INVALID_FIELD.",
+        "oneOf": [
+            { "required": ["chunk_id"], "not": { "required": ["rel_path"] } },
+            { "required": ["rel_path"], "not": { "required": ["chunk_id"] } }
+        ],
+        "properties": {
+            "chunk_id": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The source segment: neighbours are ranked by similarity to this chunk's embedding vector. The source chunk itself is always excluded from hits."
+            },
+            "rel_path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The source document (corpus-relative, normalized '/'): neighbours are ranked against the document's own chunk vectors. Chunks belonging to this document are always excluded from hits."
+            },
+            "k": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "default": 15
+            },
+            "index": {
+                "type": "string",
+                "enum": ["auto", "text", "code", "both"],
+                "default": "auto",
+                "description": "Which logical vector axis to search (SPEC §6.1). 'auto' matches the source segment's own index_kind."
+            },
+            "exclude_same_document": {
+                "type": "boolean",
+                "default": true,
+                "description": "For a chunk_id request: when true (default) all chunks of the source chunk's document are excluded ('other documents like this'); when false the source document's OTHER chunks may appear (the source chunk itself is always excluded). No-op for a rel_path request — a document's own chunks are always excluded (a document is never related to itself)."
+            },
+            "path_prefix": {
+                "type": "string"
+            },
+            "file_glob": {
+                "type": "string"
+            },
+            "doc_types": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "languages": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Optional (SPEC §9.5): restrict hits to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering."
+            },
+            "date_from": {
+                "type": "string",
+                "description": "Optional (SPEC §9.6): RFC 3339 timestamp or bare YYYY-MM-DD; exclude hits from documents dated before this (inclusive). Absent = open lower bound."
+            },
+            "date_to": {
+                "type": "string",
+                "description": "Optional (SPEC §9.6): RFC 3339 timestamp or bare YYYY-MM-DD; exclude hits from documents dated after this (inclusive). Absent = open upper bound."
+            }
+        }
+    },
+    "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "source_chunk_id": {
+                "type": "integer",
+                "description": "Echo of the resolved source chunk_id when the request supplied chunk_id; omitted for a rel_path request."
+            },
+            "source_rel_path": {
+                "type": "string",
+                "description": "Echo of the resolved source document rel_path (present for a rel_path request, and also for a chunk_id request as the source chunk's document)."
+            },
+            "k": {
+                "type": "integer"
+            },
+            "index_used": {
+                "type": "string",
+                "enum": ["text", "code", "both"]
+            },
+            "hits": {
+                "type": "array",
+                "description": "Nearest-neighbour segments, ordered by descending similarity (ties broken by ascending chunk_id for determinism), with the source excluded (and same-document hits excluded per exclude_same_document). Same Hit shape as dir2mcp_search.",
+                "items": { "$ref": "#/definitions/Hit" }
+            },
+            "indexing_complete": {
+                "type": "boolean"
+            }
+        },
+        "required": ["source_rel_path", "k", "index_used", "hits", "indexing_complete"]
+    }
+}

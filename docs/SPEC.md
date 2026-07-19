@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.37.0`  
+**Spec version:** `0.38.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3448,6 +3448,55 @@ Tool result `content[]` MUST include an `audio`- or `video`-typed item carrying
 the clip (base64 `data` + `mimeType`) when `return=inline`; for
 `return=reference` the `content[]` carries a text item with the `uri` and a
 `resource_link` where supported.
+
+### 15.12 `dir2mcp_related` (optional extension)
+
+> **Status: Planned.** "More like this": given an existing chunk or document,
+> return the nearest-neighbour **segments** (dir2mcp #324), so a client can explore
+> similar content the way `dir2mcp_search` explores by query. It **reuses** the
+> vector index, dedup, and the §9.5/§9.6 filters — it is a query-by-example over
+> the same retrieval surface, not a new index. It is **additive** and lands in a
+> follow-up dir2mcp code PR.
+
+**Description:** rank indexed segments by embedding similarity to a source
+segment, excluding the source itself.
+
+**Input schema** (`related.json`): exactly **one** of `chunk_id` / `rel_path`
+identifies the source (neither or both → `INVALID_FIELD`); optional `k` (default
+**15**, max **50**), `index` (`auto | text | code | both`, default `auto` — `auto`
+matches the source's own `index_kind`), `exclude_same_document` (default **true**;
+so results are "other documents like this"), and the same `path_prefix` /
+`file_glob` / `doc_types` / `languages` / `date_from` / `date_to` filters as
+`dir2mcp_search` (§15.2, §9.5, §9.6).
+
+**Behavior:**
+
+* `chunk_id` ranks by similarity to **that chunk's** embedding vector. The source
+  chunk is **always** excluded; `exclude_same_document` then widens that exclusion:
+  when **true** (default) every chunk of the source chunk's document is also
+  excluded (results are "other documents like this"); when **false** the source
+  document's *other* chunks MAY appear (only the source chunk itself stays
+  excluded).
+* `rel_path` ranks against the **source document's own chunk vectors**
+  (aggregated). The source document's chunks are **always** excluded — a document
+  is never "related to itself", so `exclude_same_document` does not loosen this and
+  is a no-op for a `rel_path` request.
+* Results are `Hit`s (§15.1, identical shape to `dir2mcp_search`), ordered by
+  descending similarity and truncated to `k` after filtering and dedup. Ties are
+  broken by **ascending `chunk_id`** so repeated calls and independent
+  implementations produce the same order. The reranker (§8.4) does **not** apply —
+  there is no query text to rerank against; ordering is pure vector similarity.
+* `index_used` reports the axis actually searched. `indexing_complete` reflects
+  partial-index state exactly as `dir2mcp_search` does — a query-by-example over a
+  still-building index returns what is embedded so far.
+* An unknown `chunk_id`, or a `rel_path` that resolves to no indexed chunk, is
+  `INVALID_FIELD` (not an empty result — the source could not be located). A valid
+  source with no neighbours (e.g. an otherwise-empty index) returns an empty
+  `hits` array, not an error.
+
+**Output schema** (`related.json`): `source_rel_path`, `k`, `index_used`,
+`hits[]`, `indexing_complete` (all required); `source_chunk_id` echoed for a
+`chunk_id` request.
 
 ---
 
