@@ -94,7 +94,10 @@ What falls out for free:
 ## 4. v1 — a dedicated annotation sidecar (proposed)
 
 A sibling file, e.g. `game7.annotations.json` (exact suffix TBD), shaped
-roughly as:
+roughly as below — a draft (non-normative) JSON Schema for this format
+lives alongside this note at
+[`0004-annotation-sidecar.schema.json`](0004-annotation-sidecar.schema.json);
+the normative copy moves under `spec/` with the v1 spec deltas:
 
 ```json
 {
