@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.40.0`  
+**Spec version:** `0.41.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -90,6 +90,8 @@ Current high-level status:
   - `transcript` (STT output for audio)
   - `annotation_json` (structured JSON result)
   - `annotation_text` (flattened `key: value` text derived from annotation_json)
+  - `summary` (model-generated coarse view over a document or a window of
+    adjacent fine units, for coarse-to-fine retrieval; §5.2, §9.7)
 - **Chunk**: span of a representation used for embedding and retrieval.
 - **Span**: provenance coordinates for citations: line range, page number, or time range.
 
@@ -549,7 +551,7 @@ The exact SQL types may vary; semantics must match.
 
 * `rep_id` (PK)
 * `doc_id` (FK)
-* `rep_type` (`raw_text|extracted_markdown|transcript|annotation_text|annotation_json`)
+* `rep_type` (`raw_text|extracted_markdown|transcript|annotation_text|annotation_json|summary`)
 * `rep_hash` (stable; changes when rep changes)
 * `created_unix`
 * `meta_json` (must include provider/model for OCR/transcription/annotations when applicable)
@@ -592,6 +594,92 @@ A **diarized** transcript (§8.6.8) additionally records:
   the transcript (e.g. `["S1", "S2"]`), each optionally paired with a
   human-readable `label`. The per-segment attribution lives on the segment span's
   `extra_json.speaker` (§5.4).
+
+**Summary meta_json requirements (hierarchical retrieval, §9.7)**
+
+A `summary` representation is a **model-generated coarse view** (`index_kind=text`)
+embedded and BM25-indexed alongside the fine chunks of the same document, in the
+**same** embedding space (**not** a change to the embed identity, §8.1.4 — it is an
+**additive** representation). It is **opt-in** (off by default, §16.2) and
+**domain-general**. Its `meta_json` MUST record:
+
+* `summary_level`: `document` (one summary over the whole document) or `section`
+  (a summary over a deterministic window of N adjacent fine units — text chunks,
+  or transcript segments / media clips for time media, §8.6.1).
+* `provider`, `model`, optional `model_version`: the **generator identity** — the
+  chat/annotator generator (§8.1.3) that produced the prose. Part of the
+  derivation identity (§8.6.7).
+* `prompt_version`: the built-in summary-prompt template tag (e.g. `v1`).
+* `prompt_hash`: optional — present when an operator `prompt` **override** (§16.2)
+  is configured; a stable hash of the **effective** prompt. It is part of the
+  derivation identity (§8.6.7) so an edited override re-derives even without a
+  `prompt_version` bump.
+* `coverage`: the **parent→child linkage** — the exact fine chunks this summary
+  covers, so a summary hit expands to precisely its children (§9.7) **without a
+  separate join table**. It MUST name **one** source representation and a range
+  within it:
+  * `source_rep_id`: the `rep_id` of the **single** representation whose chunks this
+    summary summarizes (e.g. a document's `extracted_markdown`, or its
+    `transcript`). A summary covers **exactly one** representation, **never a mix** —
+    a document with several representations (`raw_text`, `transcript`,
+    `annotation_text`, …) gets a **distinct** summary per summarized representation.
+    Which representations are summarized is configured by `source_reps` (§16.2),
+    defaulting to the document's **primary retrievable representation** (one per
+    document); so expansion can never pull in chunks the summary never saw.
+    **Same-document invariant.** `source_rep_id` MUST reference a representation whose
+    `doc_id` equals the summary's own `doc_id`: a summary summarizes representations of
+    **its own document only**, and never covers content from another document.
+    Expansion therefore stays within one document, and the summary's `doc_id` is the
+    authoritative provenance for every fine chunk it routes to.
+  * `range`: the fine-unit range within `source_rep_id`, one of:
+    * `{ "kind": "document" }` — the whole representation; expansion is every
+      (non-deleted) chunk of `source_rep_id`. Used by `summary_level=document`.
+    * `{ "kind": "ordinals", "start": <int>, "end": <int> }` — an **inclusive**
+      chunk `ordinal` range (§5.3) of `source_rep_id` (text `section` summaries). A
+      chunk is selected iff `start <= ordinal <= end`.
+    * `{ "kind": "time", "start_ms": <int>, "end_ms": <int> }` — an **inclusive**
+      time range over the representation's transcript segments / clips (media
+      `section`/event summaries, §8.6.1).
+  `start`/`end` and `start_ms`/`end_ms` are **integers** (chunk ordinals;
+  milliseconds) and MUST satisfy `start <= end` / `start_ms <= end_ms`. Expansion
+  (§9.7) resolves a summary to the fine units of `source_rep_id` that fall in `range`
+  by a **deterministic key**, not a vector-space match:
+  * **ordinal** ranges select chunks by the inclusive predicate above.
+  * **time** ranges select a transcript segment / clip by **interval overlap**: its
+    `[seg_start_ms, seg_end_ms]` (§5.4) is selected iff
+    `seg_start_ms <= end_ms AND seg_end_ms >= start_ms`. Overlap (rather than strict
+    containment) is required so the summary gathers **every** fine unit its window
+    touches, including one that straddles an endpoint — coarse-to-fine must not drop
+    evidence the summary was built from.
+  Because `section` windows are constructed from **whole adjacent fine units** (a
+  segment is never split across a window boundary, §8.6.1), overlap and containment
+  coincide at those boundaries, so every fine chunk still maps to **exactly one**
+  section summary (the tiling rule below).
+* For a `section` summary, the **windowing inputs** — `section_units` (text) or
+  `section_seconds` (media), and the identity of the underlying chunking /
+  transcript segmentation that defines the fine units. Part of the derivation
+  identity (§8.6.7): a windowing change re-derives the summary **text and its child
+  linkage** (a stale linkage is invalidated, not merely stale text). A `document`
+  summary has no windowing input.
+
+`section` summaries over the **same** `source_rep_id` MUST **tile without overlap**
+so every fine chunk of that representation maps to **exactly one** section summary
+(dedup correctness, §9.7). Windows are deterministic (like §8.1.7 / §8.6.1
+windowing) so summary coverage is stable across re-index.
+
+**Embedding axis.** A `summary` is `index_kind=text` and is embedded / BM25-indexed
+on the **text** logical axis (§6.1), so it participates in `index=text` and
+`index=both` searches; an `index=code` query (§9.1) sees no summaries and degrades to
+flat retrieval. Expansion is by `coverage` **identity**, not vector space, so a
+summary over a **code**-indexed representation still resolves to that
+representation's `code` chunks — which then rerank normally (§9.7). A summary is
+therefore never required to be in the same axis as the chunks it expands to; the
+**coarse match** happens on the text axis, the **expansion** crosses to the covered
+chunks by identity.
+
+A `summary` is **model-generated prose, never source text**: it MUST NOT be surfaced
+as a `Citation.snippet` or an answer quote (§9.7); citation faithfulness is preserved
+because the cited span always belongs to the underlying fine chunk.
 
 **Detected-language metadata (any representation)**
 
@@ -2017,6 +2105,33 @@ stable across re-indexing.
   (a) **retry** `fallback` chunks while contextualization is on and (b) drive the
   honest-coverage count (§8.1.8); it is per-chunk state, **not** part of the embed
   identity (§8.1.4).
+* **`summary` representations (hierarchical retrieval, §5.2, §9.7)** are derived
+  and carry their own derivation identity, distinct from the fields above. A
+  summary's derivation identity is:
+  1. the **source content** it summarizes — the covered fine chunks / transcript
+     segments of `coverage.source_rep_id` within its `coverage` range (§5.2). If the
+     covered representation is itself re-derived (e.g. re-OCR / re-transcription) or
+     re-chunked, its content changes and the summary re-derives with it;
+  2. the **generator identity** — `provider`, `model` (+ optional `model_version`)
+     and the **effective prompt**. `prompt_version` names the built-in template; an
+     operator `prompt` **override** (§16.2) is **hashed** (`prompt_hash`, §5.2) into
+     the identity, because a version tag alone cannot detect an edited override —
+     any change to the effective prompt re-derives;
+  3. for a **section** summary only, the **windowing inputs** — `summary_level`,
+     `section_units` / `section_seconds`, and the identity of the underlying
+     chunking / transcript segmentation that defines the fine units.
+  On any change, the summary MUST be **re-derived** — both its **text and its child
+  linkage** (`coverage`) — and re-embedded; a stale linkage is **invalidated**, not
+  merely stale text. A **document**-level summary has no windowing input (inputs 1–2
+  only). This is the standard per-representation provenance rule above with the
+  section-windowing inputs folded in — **not** a new mechanism, and **not** an
+  embed-identity (§8.1.4) field: a `summary` is an **additive** vector in the same
+  space as its document's chunks, so toggling hierarchical retrieval (§16.2) is an
+  index **add/remove**, never a corpus-wide re-embed. Summary generation is
+  **fail-open per document/section** (§9.7): a unit whose summary fails simply has
+  none, falls back to flat retrieval for that unit, is recorded as honest coverage
+  (§9.7), and is retried on the next scan — a failed summary never blocks ingest of
+  the underlying chunks.
 
 #### 8.6.8 Speaker diarization (optional)
 
@@ -2661,6 +2776,85 @@ and existing callers that never send them observe no change (dir2mcp #326).
   only in-window hits, and a filtered query MAY return fewer than `k`.
 * **No match is not an error.** A window that excludes every hit returns an empty
   result set, not an error, exactly as the language filter (§9.5).
+
+### 9.7 Hierarchical (coarse-to-fine) retrieval (optional)
+
+> **Status: Planned.** This subsection defines an **optional**, **off-by-default**,
+> **domain-general** retrieval flow (dir2mcp #329) built on the `summary`
+> representation (§5.2) and its derivation identity (§8.6.7). It is the RAPTOR /
+> parent-document technique: **summaries retrieve, chunks cite.** Enabled via
+> `retrieval.hierarchical` (§16.2). When disabled — the default, or for any
+> document without a summary — retrieval behaves **exactly** as flat retrieval
+> (§9.1); the feature only **adds** coarse vectors and an expand step, it never
+> changes the flat path. Implementation lands in a follow-up dir2mcp code PR once
+> this spec change is merged.
+
+**Motivation.** For long documents and long media the answer often needs document-
+or section-level context that no single fine chunk carries. A coarse `summary`
+matches the query at the document/section level; retrieval then drills into the
+**fine evidence beneath it** so the answer is still grounded in real source spans.
+
+**Flow (unified index, coarse-to-fine expand).** Hierarchical retrieval reuses the
+**single** vector + BM25 index (no separate summary store) — `summary` vectors live
+on the **text** logical axis (§5.2, §6.1), so the coarse match runs inside the
+existing text search; expansion then crosses to the covered chunks by identity
+(§5.2), whatever their axis:
+
+1. **Retrieve** the top candidates across **both** `summary` and chunk vectors in
+   one search (as today), routed and fused per §9.1.
+2. **Expand** each `summary` hit to its child fine chunks — the chunks of its
+   `coverage.source_rep_id` whose `ordinal` (or segment `time` span) falls within
+   the `coverage` range (§5.2), a deterministic key rather than a vector match — and
+   add them to the candidate pool. A chunk hit is kept as-is. Because a summary
+   covers exactly one representation, expansion never reaches chunks the summary did
+   not summarize.
+3. **Dedup** (a fine chunk reached both directly and via its summary appears once)
+   and **rerank** (§9.1.1) the merged pool, then truncate to `k`. Because
+   `section` summaries **tile without overlap** (§5.2), a fine chunk maps to exactly
+   one section summary, so expansion cannot double-count.
+4. **Return `Hit`s — fine chunks only** by default. A `summary` is a **routing
+   device**, not an answer: a summary hit whose children are all filtered out
+   contributes nothing to the result.
+
+**Citation faithfulness (invariant).** A summary **drives retrieval** but is
+**never** the thing a citation points at. The `Hit` / `Citation` / `Span`
+(§9.2, §15.1.1, §15.1.2; df-005/df-006) shapes are **unchanged**, and a `summary`
+MUST NOT appear as a `Citation.snippet` or an answer quote — the citation always
+carries the underlying fine chunk's real `Span` into the source. Hierarchical
+retrieval changes *which fine chunks surface*, never *what a citation points at*, so
+the conformance surface (served schemas, tools) is **untouched**. A future tool that
+wants to *return* a summary MUST label it explicitly as `rep_type: summary`, never as
+a source quote (out of scope here).
+
+**Generation, cost, and fail-open.** Summaries are generated by the configured
+chat/annotator generator (§8.1.3), bounded (`max_tokens`, §16.2), and cached
+content-addressed by their derivation identity (§8.6.7) so they re-derive only on
+change. The **O(documents + sections)** bound is on **model-generation calls** (and
+thus model cost) — one call per document summary and one per section window — versus
+0004's O(chunks) per-chunk generation. It is **not** a bound on total indexing work:
+coverage resolution and prompt construction still **traverse the fine chunks**
+beneath each summary (to assemble the covered text and record the `coverage` range),
+so per-chunk I/O over the corpus is unchanged; only the number of expensive
+generator calls is reduced. Generation is
+**fail-open per document/section** (§8.6.7): a failed unit simply has no summary and
+falls back to flat retrieval for that unit; the miss is recorded as honest coverage
+and retried on the next scan.
+
+**Interaction with existing surfaces.** Chunking (§7.4) is unchanged — summaries are
+an additional representation, not a change to how chunks are cut. For media (§8.6),
+`section` summaries over adjacent transcript segments / clips are the "event
+summary" case; they use `time` coverage and coexist with per-track transcripts
+(§8.6.12) — a summary is over a track's segments. In `dir2mcp_related` (§15.12) a
+`chunk_id` still targets a **fine** chunk; summaries are internal routing and are not
+addressable as a source.
+
+**Honest coverage (deferred, additive).** Per-document summary state
+(`present` / `fallback` / `disabled`) and a corpus-level document-summary coverage
+count are surfaced as a **later additive** `dir2mcp_stats.indexing` field
+(§15.6) — spec-first like `watch_overflows` / `skip_reasons`. It is **not** part of
+this change and does **not** alter any served schema now; it is reserved as a
+forward-additive field so an operator can see how much of the corpus is
+hierarchically indexed vs. flat.
 
 ---
 
@@ -3960,6 +4154,49 @@ retrieval:
     prompt_version: v1      # names the built-in (general, domain-free) template; part of the embed identity (§8.1.4)
     # prompt: ""            # optional override of the built-in template; the EFFECTIVE prompt is HASHED into
                             #   the embed identity, so an edited override re-embeds even without bumping prompt_version
+  # Hierarchical / multi-resolution retrieval (§9.7; Status: Planned).
+  # Opt-in, off by default, domain-general. When disabled, retrieval is flat (§9.1)
+  # and no summary vectors exist. Enabling ADDS `summary` representations (§5.2) —
+  # an additive vector in the same space as the document's chunks, NOT an embed-
+  # identity change (§8.1.4); toggling is an index add/remove, never a re-embed.
+  hierarchical:
+    enabled: false            # opt-in; off by default (flat retrieval unchanged)
+    source_reps: auto         # WHICH fine representations of each document are
+                              #   summarized. `auto` (DEFAULT) = the document's
+                              #   PRIMARY retrievable text representation — the single
+                              #   text-axis (§6.1) representation that carries the
+                              #   document's fine chunks used by search/citations
+                              #   (§9.1): `transcript` for time media, else the
+                              #   extractor output (`extracted_markdown`), else
+                              #   `raw_text`. Exactly ONE representation per document,
+                              #   so `source_rep_id` (§5.2) is unambiguous.
+                              # An explicit list of rep_types (e.g.
+                              #   `[extracted_markdown, transcript]`) summarizes EACH
+                              #   named representation that exists on the document and
+                              #   is chunked/embedded, producing a DISTINCT summary
+                              #   per representation (§5.2 `source_rep_id`). Only text-
+                              #   axis, chunked representations are eligible; `summary`
+                              #   itself and non-chunked `annotation_json` are never
+                              #   eligible. Every summary covers a representation of
+                              #   its OWN document (the same-document invariant, §5.2).
+    levels: [document]        # document | section (or both). document = one summary
+                              #   per document; section = windowed summaries over N
+                              #   adjacent fine units (text chunks / media segments).
+    section_units: 8          # section summary window: N adjacent text chunks per
+                              #   summary. Part of the summary derivation identity
+                              #   (§8.6.7); a change re-windows + re-derives sections.
+    section_seconds: 120      # media: N seconds of adjacent segments per event
+                              #   summary (§8.6.1). Derivation-identity input (§8.6.7).
+    provider: ""              # optional generator profile; empty => the configured
+                              #   chat/annotator generator (§8.1.3).
+    max_tokens: 512           # per-summary generation bound (§9.7).
+    prompt_version: v1        # names the built-in (general, domain-free) template;
+                              #   part of the summary derivation identity (§8.6.7).
+    # prompt: ""              # optional override of the built-in template. The
+                              #   EFFECTIVE prompt is HASHED into the derivation
+                              #   identity (prompt_hash, §5.2/§8.6.7), so an edited
+                              #   override re-derives summaries even without bumping
+                              #   prompt_version.
 
 x402:
   # `mode` is the primary, authoritative field controlling whether

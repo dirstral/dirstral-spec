@@ -1,7 +1,7 @@
 # df-000: Base conventions & `format_version`
 
 - **ID:** df-000
-- **Version:** 0.2.0
+- **Version:** 0.2.1
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -59,7 +59,8 @@ SPEC.md §1.3 for the normative statement.
 - **Document** — an ingestible unit (a file or an archive member).
 - **Representation (rep)** — a text view derived from a document: `raw_text`,
   `extracted_markdown` (extractor output; formerly `ocr_markdown`), `transcript`
-  (STT), `annotation_json`, `annotation_text`.
+  (STT), `annotation_json`, `annotation_text`, `summary` (defined normatively in
+  SPEC §5.2/§9.7; enumerated in df-003 §5.2).
 - **Chunk** — a span of a representation used for embedding and retrieval.
 - **Span** — provenance coordinates for citations; see [df-005](df-005-span.md).
 
@@ -82,6 +83,9 @@ SPEC.md §1.3 for the normative statement.
 
 ## Changelog
 
+- **0.2.1** — Added the `summary` representation to the rep glossary (hierarchical
+  retrieval; df-003 §5.2, SPEC §9.7). Glossary-only clarification; unblocks
+  dir2mcp #329.
 - **0.2.0** — The `format_version` contract is now mirrored authoritatively in
   SPEC.md §1.3 (with the four boundaries wired into §4.3 connection.json, §5.6
   the `PRAGMA user_version` fence, §11.2 the `initialize` protocolVersion pin,

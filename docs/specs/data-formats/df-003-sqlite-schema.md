@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -40,7 +40,7 @@ ANN label (bs-008); the `spans` row is the at-rest form of the
 
 - `rep_id` (PK)
 - `doc_id` (FK)
-- `rep_type` (`raw_text | extracted_markdown | transcript | annotation_text | annotation_json`)
+- `rep_type` (`raw_text | extracted_markdown | transcript | annotation_text | annotation_json | summary`)
 - `rep_hash` (stable; changes when the rep changes)
 - `created_unix`
 - `meta_json` (MUST include provider/model for OCR/transcription/annotation when applicable)
@@ -59,6 +59,18 @@ A **translated** transcript also records `source_language`, `translate_provider`
 identity), and optional `speakers` (the distinct speaker ids, each optionally
 with a `label`; per-segment attribution lives on the span's
 `extra_json.speaker`).
+
+**Summary `meta_json`** — the `summary` `rep_type` and the full `meta_json`
+contract (`summary_level`, generator identity, `prompt_version` / optional
+`prompt_hash`, the `coverage` parent→child linkage — `source_rep_id` + an inclusive
+`document` / `ordinals` / `time` range — the same-document invariant, the time-range
+overlap predicate, the tile-without-overlap rule, and the text-axis / identity-based
+expansion) are defined **normatively in SPEC §5.2** ("Summary meta_json
+requirements") and SPEC §9.7 (hierarchical retrieval); the derivation identity is
+SPEC §8.6.7. SPEC.md is authoritative — this Draft schema doc records only that a
+`summary` row is a normal `representations` row whose `meta_json` follows that
+contract; it does **not** restate the rules. A `summary` is an **additive**
+`index_kind=text` representation, **not** an embed-identity change (SPEC §8.1.4).
 
 **Detected-language metadata (any representation).** Any representation MAY record
 the natural language of its content in `meta_json`, independent of rep type, to
@@ -199,6 +211,13 @@ bounding box and **SHOULD** carry the section breadcrumb:
 
 ## Changelog
 
+- **0.4.0** — Added the `summary` value to the `representations.rep_type` enum for
+  hierarchical / multi-resolution retrieval (dir2mcp #329). The `summary`
+  `meta_json` contract, its `coverage` linkage, and the derivation identity are
+  defined **normatively in SPEC §5.2/§9.7/§8.6.7**; this doc points to them rather
+  than restating (SPEC.md is authoritative, this doc is Draft). A `summary` is an
+  additive `index_kind=text` representation, off by default, and **not** an
+  embed-identity change (SPEC §8.1.4).
 - **0.3.0** — Added the additive `chunks.chunk_context` (nullable) and
   `chunks.embedding_mode` (`disabled|contextualized|fallback`) columns and the
   `embed_contextual` persisted `settings` key for contextual retrieval (SPEC
