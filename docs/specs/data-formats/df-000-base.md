@@ -59,8 +59,8 @@ SPEC.md §1.3 for the normative statement.
 - **Document** — an ingestible unit (a file or an archive member).
 - **Representation (rep)** — a text view derived from a document: `raw_text`,
   `extracted_markdown` (extractor output; formerly `ocr_markdown`), `transcript`
-  (STT), `annotation_json`, `annotation_text`, `summary` (model-generated coarse
-  view for hierarchical retrieval; df-003 §5.2, SPEC §9.7).
+  (STT), `annotation_json`, `annotation_text`, `summary` (defined normatively in
+  SPEC §5.2/§9.7; enumerated in df-003 §5.2).
 - **Chunk** — a span of a representation used for embedding and retrieval.
 - **Span** — provenance coordinates for citations; see [df-005](df-005-span.md).
 

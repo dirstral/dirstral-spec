@@ -60,36 +60,17 @@ identity), and optional `speakers` (the distinct speaker ids, each optionally
 with a `label`; per-segment attribution lives on the span's
 `extra_json.speaker`).
 
-**Summary `meta_json`** (hierarchical retrieval; SPEC §5.2/§9.7, td-003 §8.6.7). A
-`summary` representation is a model-generated coarse view (`index_kind=text`)
-embedded and BM25-indexed **alongside** the fine chunks of the same document, in the
-**same** embedding space — an **additive** representation, **not** an embed-identity
-change (bs-008 §8.1.4). Opt-in and off by default. Its `meta_json` records
-`summary_level` (`document` | `section`), `provider` / `model` / optional
-`model_version` (the chat/annotator generator identity), `prompt_version` (built-in
-template tag), optional `prompt_hash` (stable hash of the **effective** prompt when
-an operator `prompt` override is set — part of the derivation identity so an edited
-override re-derives), and `coverage` — the parent→child linkage. `coverage` MUST
-name **exactly one** source representation and a range within it:
-`source_rep_id` (the `rep_id` whose chunks this summary summarizes — a summary
-covers **one** representation, never a mix, so a multi-representation document gets a
-distinct summary per summarized representation) plus a `range` that is **inclusive**
-on both bounds — `{ "kind": "document" }` (every non-deleted chunk of
-`source_rep_id`), `{ "kind": "ordinals", "start", "end" }` (a chunk-`ordinal` range,
-§5.3), or `{ "kind": "time", "start_ms", "end_ms" }` (transcript segments / clips).
-For a `section` summary `meta_json` also records the windowing inputs
-(`section_units` **or** `section_seconds` + the underlying chunking/segmentation
-identity). Expansion (SPEC §9.7) resolves a summary to the chunks of
-`source_rep_id` whose `ordinal`/`time` falls in `range` — a **deterministic key**,
-not a vector match — so `section` summaries over the same `source_rep_id` MUST
-**tile without overlap** (each fine chunk maps to exactly one). A `summary` is
-`index_kind=text` and lives on the **text** logical axis (SPEC §6.1): the coarse
-match runs in text search while expansion crosses to the covered chunks by identity,
-so a summary over a `code`-indexed representation still resolves to its `code`
-chunks. The summary derivation identity (covered `source_rep_id` content +
-generator/effective-prompt + section windowing inputs) re-derives **text and child
-linkage** on change (td-003 §8.6.7). A `summary` is model-generated prose, **never**
-a citation snippet (SPEC §9.7).
+**Summary `meta_json`** — the `summary` `rep_type` and the full `meta_json`
+contract (`summary_level`, generator identity, `prompt_version` / optional
+`prompt_hash`, the `coverage` parent→child linkage — `source_rep_id` + an inclusive
+`document` / `ordinals` / `time` range — the same-document invariant, the time-range
+overlap predicate, the tile-without-overlap rule, and the text-axis / identity-based
+expansion) are defined **normatively in SPEC §5.2** ("Summary meta_json
+requirements") and SPEC §9.7 (hierarchical retrieval); the derivation identity is
+SPEC §8.6.7. SPEC.md is authoritative — this Draft schema doc records only that a
+`summary` row is a normal `representations` row whose `meta_json` follows that
+contract; it does **not** restate the rules. A `summary` is an **additive**
+`index_kind=text` representation, **not** an embed-identity change (SPEC §8.1.4).
 
 **Detected-language metadata (any representation).** Any representation MAY record
 the natural language of its content in `meta_json`, independent of rep type, to
@@ -230,15 +211,13 @@ bounding box and **SHOULD** carry the section breadcrumb:
 
 ## Changelog
 
-- **0.4.0** — Added the `summary` `rep_type` and its `meta_json` (hierarchical /
-  multi-resolution retrieval, SPEC §5.2/§9.7, td-003 §8.6.7): `summary_level`,
-  generator identity (`provider`/`model`/`model_version`), `prompt_version` +
-  optional `prompt_hash`, and the `coverage` parent→child linkage
-  (`source_rep_id` + an inclusive `document`/`ordinals`/`time` range that names the
-  single covered representation), plus the section-windowing derivation inputs and
-  the tile-without-overlap rule. A summary is text-axis (§6.1) with identity-based
-  expansion, so it works over `code`-indexed representations too. Additive and off
-  by default; not an embed-identity change (bs-008 §8.1.4). Unblocks dir2mcp #329.
+- **0.4.0** — Added the `summary` value to the `representations.rep_type` enum for
+  hierarchical / multi-resolution retrieval (dir2mcp #329). The `summary`
+  `meta_json` contract, its `coverage` linkage, and the derivation identity are
+  defined **normatively in SPEC §5.2/§9.7/§8.6.7**; this doc points to them rather
+  than restating (SPEC.md is authoritative, this doc is Draft). A `summary` is an
+  additive `index_kind=text` representation, off by default, and **not** an
+  embed-identity change (SPEC §8.1.4).
 - **0.3.0** — Added the additive `chunks.chunk_context` (nullable) and
   `chunks.embedding_mode` (`disabled|contextualized|fallback`) columns and the
   `embed_contextual` persisted `settings` key for contextual retrieval (SPEC
