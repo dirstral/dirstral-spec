@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -93,6 +93,15 @@ both are matchable per-language values (bs-003).
 - `index_kind` (`text | code`) — routes to `vectors_text` or `vectors_code`
 - `embedding_status` (`ok | pending | error`)
 - `embedding_error` (nullable)
+- `chunk_context` (nullable) — the generated document-aware context string for
+  contextual retrieval (SPEC §8.1.8); prepended to the **embed** input only
+  (`context + "\n\n" + text`), **never** to `text`. NULL when contextual
+  retrieval is off, or when the chunk fell back to raw embedding.
+- `embedding_mode` (`disabled | contextualized | fallback`) — per-chunk
+  contextualization state (SPEC §8.1.8). Disambiguates a NULL `chunk_context`
+  (feature off vs. context generated vs. generation failed → embedded raw). The
+  re-embed gate reads it to retry `fallback` chunks while contextualization is on,
+  and to drive honest coverage. **Not** part of the embed identity (SPEC §8.1.4).
 - `deleted` (boolean; tombstone)
 
 > `embedding_status` is the retrieval-eligibility gate: a chunk with status
@@ -100,6 +109,14 @@ both are matchable per-language values (bs-003).
 > (dir2mcp #443), and the embed worker's transient-vs-permanent classification
 > governs whether a failed chunk stays `pending` or becomes `error`
 > (dir2mcp #412).
+
+> `chunk_context` and `embedding_mode` are **additive** columns for contextual
+> retrieval (SPEC §8.1.8; dir2mcp #330). A pre-feature index has neither; on load
+> such a corpus is treated as `embedding_mode = disabled` with NULL
+> `chunk_context`, and its embed identity (SPEC §8.1.4) carries `…|off` — no
+> reindex. `text` (the persisted, displayed, and **cited** chunk text) is
+> **never** the contextualized text: the context lives only in `chunk_context`
+> and in the transient embed input, preserving citation faithfulness (#403).
 
 ### 5.4 `spans` (provenance for citations)
 
@@ -157,12 +174,24 @@ bounding box and **SHOULD** carry the section breadcrumb:
   non-meaningful/default endpoints)
 - `embed_text_model`, `embed_text_dim`
 - `embed_code_model`, `embed_code_dim`
+- `embed_contextual` — the `contextual` component of the embed identity (SPEC
+  §8.1.4 / §8.1.8): `off` when contextual retrieval is disabled or falls open to
+  off, else the context-generator identity (`provider|model|effective-prompt`,
+  operator override hashed). Absent on a pre-feature index ⇒ treated as `off`.
 - `ocr_model`
 - `stt_provider`, `stt_model`
 - `chat_model`
 
 ## Changelog
 
+- **0.3.0** — Added the additive `chunks.chunk_context` (nullable) and
+  `chunks.embedding_mode` (`disabled|contextualized|fallback`) columns and the
+  `embed_contextual` persisted `settings` key for contextual retrieval (SPEC
+  §8.1.8 / §8.1.4; dir2mcp #330). `chunk_context`/embed input never enter `text`
+  (citation faithfulness, #443/#403); `embedding_mode` is per-chunk state, not
+  part of the embed identity. Backward-compatible: a pre-feature index is treated
+  as `embedding_mode = disabled` / `embed_contextual = off` and never reindexes.
+  Unblocks dir2mcp #330.
 - **0.2.0** — Added the `embed_provider` and `embed_base_url` persisted
   `settings` keys mirroring the embed-identity amendment in SPEC §8.1.4 /
   td-001 §8.1.4 and the §6.4 / bs-008 tuple. `embed_base_url` is normalized per

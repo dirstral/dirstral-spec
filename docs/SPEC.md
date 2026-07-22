@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.39.0`  
+**Spec version:** `0.40.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -472,6 +472,14 @@ after heavy churn. It is omitted when the server is not running the watcher (e.g
 a one-shot index) or on platforms without overflow reporting; consumers MUST treat
 its absence as "unknown / not applicable", not zero.
 
+A per-chunk **`embedding_mode` coverage breakdown** for contextual retrieval
+(§8.1.8) — how many chunks are `contextualized` vs. `fallback` vs. pending retry —
+is a **planned additive** `indexing` field (spec-first, like `watch_overflows`
+above and the `skip_reasons` aggregate, §15.2), letting an operator see contextual
+coverage instead of assuming uniformity. It is **not** part of this revision's
+served schema: the `indexing` object above is unchanged, and a corpus with
+contextual retrieval off never carries it.
+
 When indexing stats are unavailable (e.g., the ListFiles-only fallback path where no live
 `IndexingState` is present), the fields `representations`, `chunks_total`, and `embedded_ok`
 are set to `-1` to signal "not derivable". A value of `-1` is **not** an error; consumers
@@ -631,7 +639,15 @@ matchable per-language values (§9.5).
 * `index_kind` (`text|code`)  # routes to vectors_text or vectors_code
 * `embedding_status` (`ok|pending|error`)
 * `embedding_error` (nullable)
+* `chunk_context` (nullable)  # the generated document-aware context (§8.1.8); prepended to the EMBED input only, never to `text`. NULL when contextual retrieval is off or the chunk fell back to raw.
+* `embedding_mode` (`disabled|contextualized|fallback`)  # per-chunk contextualization state (§8.1.8). Disambiguates a NULL `chunk_context`: feature off vs. context generated vs. generation failed (embedded raw). Not part of the embed identity (§8.1.4).
 * `deleted` (boolean; tombstone)
+
+> `chunk_context` and `embedding_mode` are **additive** columns for contextual
+> retrieval (§8.1.8). A pre-feature index has neither; on load such a corpus is
+> treated as `embedding_mode = disabled` with a NULL `chunk_context`, and its
+> embed identity (§8.1.4) carries `…|off` — no reindex. `text` (the persisted,
+> displayed, and **cited** chunk text) is **never** the contextualized text.
 
 ### 5.4 `spans` (provenance for citations)
 
@@ -691,6 +707,7 @@ breadcrumb:
   * `embed_provider`, `embed_base_url`   # embed_base_url = normalized per §8.1.4; "" is a valid value (pre-existing indexes and non-meaningful/default endpoints)
   * `embed_text_model`, `embed_text_dim`
   * `embed_code_model`, `embed_code_dim`
+  * `embed_contextual`   # the contextual component of the embed identity (§8.1.4/§8.1.8): `off` when disabled/fallback-to-off, else the generator identity (provider|model|effective-prompt, override hashed). Absent on a pre-feature index ⇒ treated as `off`.
   * `ocr_model`
   * `stt_provider`, `stt_model`
   * `chat_model`
@@ -777,8 +794,10 @@ external store they are two collections/namespaces (§6.3).
 ### 6.4 Embed identity binds every backend
 
 The corpus-lifetime **embed identity** — `provider | base_url | text_model |
-code_model | text_dim | code_dim | multimodal` (§8.1.4; `base_url` **normalized**
-per §8.1.4, empty for providers where the endpoint is not meaningful) — binds the
+code_model | text_dim | code_dim | multimodal | contextual` (§8.1.4; `base_url`
+**normalized** per §8.1.4, empty for providers where the endpoint is not
+meaningful; `contextual` is `off` unless contextual retrieval (§8.1.8) is
+effectively enabled) — binds the
 index **regardless of backend**. On load, if the configured embed identity differs
 from the one recorded for the index (embedded snapshot or external collection
 metadata), the server MUST refuse to mix vector spaces: it either errors
@@ -1238,6 +1257,15 @@ page-separated text (e.g. Mistral OCR), page-aware behavior applies:
   * segment by time if available
   * store `time` spans
 
+**Chunk text vs. embed input.** A chunk's stored `text` (§5.3) is the unit both
+**embedded** and **cited**. These are the same bytes **except** under contextual
+retrieval (§8.1.8, opt-in): there the text sent to the embedder is
+`context + "\n\n" + chunk`, while the stored, displayed, and cited `text` stays
+the **raw** chunk unchanged (citation faithfulness, dir2mcp #403). The
+contextualization does not change chunk boundaries, spans, or `text_hash`-keyed
+skip semantics (§7.6) for the chunk itself; it changes only the embed input and
+is bound to the corpus via the embed identity (§8.1.4).
+
 ### 7.6 Incremental indexing
 
 * Document-level:
@@ -1495,7 +1523,26 @@ For each capability, with `<cap>.provider`:
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
-Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** **and the contextual-retrieval mode (8.1.8)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+
+**The identity tuple (ordered).** The full pipe-delimited identity is:
+
+```text
+provider|base_url|text_model|code_model|text_dim|code_dim|multimodal|contextual
+```
+
+`contextual` (8.1.8) is the terminal field. New fields are **appended**, never inserted, so every extension is a backward-compatible migration (below).
+
+**Why `contextual` is part of the identity.** Contextual retrieval (8.1.8) prepends an LLM-generated, document-aware context string to the text that is **embedded**, which changes the embedded vector for every chunk. It is therefore a corpus-lifetime, reindex-bound choice exactly like the embed model or the multimodal mode: toggling it, or changing the **generator or prompt** that produces the context, MUST re-embed the corpus. Folding it into the identity is the correctness mechanism — a query-time identity mismatch MUST refuse to mix vector spaces (the "MUST refuse" rule above), so contextualized and raw vectors can never silently coexist in one index.
+
+**`contextual` value and backward-compatible append.** The `contextual` component is the literal `off` when contextual retrieval is disabled, and otherwise encodes the context **generator identity** (below). An index built **before** this rule — whose recorded identity ends at `…|multimodal` — is treated as having `contextual == off`: the append is **byte-identical** for a corpus that is not using the feature (`…|multimodal` ⇒ `…|multimodal|off`), so **no existing corpus spuriously reindexes**. This is exactly the backward-compatible append the `base_url` (§8.1.4) and `multimodal` (8.1.7) migrations use — a new terminal field defaulting to the pre-feature behavior.
+
+**The identity encodes the *effective* mode, and the generator.** The recorded value is the **effective** contextualization at build time, never the mere config intent (8.1.8):
+
+* **Disabled or capability-fallback → `off`.** If `retrieval.contextual.enabled` is `false`, or it is `true` but **no chat provider is available** (fail-open, §16 / 8.1.8), the corpus embeds raw and its identity MUST record `…|off`. Recording `…|on` for raw vectors would make the corpus look contextual-compatible the moment a provider is later added, silently mixing raw and contextualized inputs in one index.
+* **Enabled → the generator identity.** When contextualization is effectively on, `contextual` encodes the context **generator identity**: `provider | model | effective-prompt`. `prompt_version` names the built-in template; an operator **`prompt` override is HASHED** into this component (a version tag alone cannot detect an edited override), so any generator or prompt change re-embeds rather than silently mixing differently-contextualized vectors.
+
+The **per-chunk** `embedding_mode` (§5.3, 8.1.8) is **not** part of this identity: it is per-chunk state within one contextual corpus, not a corpus-lifetime binding.
 
 **Why `base_url` is part of the identity.** Two profiles with the same `kind` and model name pointed at **different** endpoints (e.g. two `kind: openai` self-hosted vLLM/Ollama deployments, or a proxy vs. the hosted API) serve **different** vector spaces. Without `base_url` in the identity they collapse to one identity and their vectors can silently mix in a single index — a violation of the "MUST refuse to mix vector spaces" rule above. Including the endpoint closes that gap.
 
@@ -1614,6 +1661,74 @@ chunks before embedding, each chunk sized to fit one embed request:
 
 The §8.1.2 capability matrix is unchanged: multimodality is a property of
 the chosen embed model, not a new capability cell.
+
+#### 8.1.8 Contextual retrieval (optional)
+
+Contextual retrieval (Anthropic, 2024) prepends a short, **LLM-generated,
+document-aware** context string ("From the Q3 2026 earnings call, discussing ad
+revenue…") to the text that is **embedded**, so an otherwise-ambiguous chunk
+carries the context a query needs to match it. It is **opt-in, off by default,
+and domain-general** (no built-in prompts or corpus assumptions), configured
+under `retrieval.contextual` (§16.2). Design rationale and phasing:
+[Design 0004](design/0004-contextual-retrieval.md).
+
+**Embed-input transform.** When contextualization is effectively on for a chunk,
+the text sent to the **embedder** (and, if `retrieval.contextual.bm25` is set, to
+the BM25/FTS index) is:
+
+```text
+context + "\n\n" + chunk
+```
+
+The context string is generated by the configured **chat** provider (8.1.3),
+bounded by a tight `max_tokens` (the context is one or two sentences).
+
+**Citation faithfulness (INVARIANT).** The contextualized text is used **only**
+as embed (and optional BM25) input. The **persisted, displayed, and cited** chunk
+text — `chunks.text` (§5.3), search `snippet`s, `open_file` output (§15.4), and
+every `Citation` quote (§8.6.1/§5.4) — remains the **raw** chunk, byte-for-byte
+unchanged from the non-contextual path. The generated context MUST NOT appear in
+any answer quote, snippet, or `open_file` result (citation faithfulness,
+dir2mcp #403). It is a transient embed-time transform, **not** a `rep_type` and
+**not** part of `chunks.text`; it is persisted separately in `chunk_context`
+(§5.3) for audit/reuse only.
+
+**Reindex-bound identity.** Contextualization changes the embedded vector, so it
+is folded into the corpus-lifetime **embed identity** (§8.1.4) as the terminal
+`contextual` field. Toggling the feature, or changing the generator provider /
+model / effective prompt, MUST re-embed the corpus; a query-time identity
+mismatch MUST refuse to mix vector spaces (§8.1.4). BM25 text is **not** part of
+the embed identity (it does not change vectors), so toggling `contextual.bm25`
+rebuilds the FTS index only, not the embeddings.
+
+**Fail-open per chunk + honest coverage.** Context generation is **fail-open per
+chunk**: if the generator errors for a single chunk, that chunk embeds **without**
+context (raw) rather than failing ingest, and its per-chunk `embedding_mode`
+(§5.3) records `fallback`. A raw `fallback` vector is in the **same
+model/space** as its contextualized neighbours (the query is uncontextualized
+regardless), so it degrades only that one chunk's recall, not corpus-level
+comparability. Each chunk persists an explicit `embedding_mode`:
+
+* **`disabled`** — the feature is off (or fell open to `off`, §8.1.4); the chunk
+  embeds raw and `chunk_context` is NULL.
+* **`contextualized`** — a context was generated and prepended to the embed input.
+* **`fallback`** — context generation failed; the chunk embedded raw.
+
+A `fallback` chunk is **retried** on the next scan while contextualization stays
+on (self-heal toward full coverage) and is **counted in honest coverage** — never
+a silent, permanent hole. Surfacing the per-chunk `embedding_mode` breakdown
+(`contextualized` vs. `fallback` vs. pending retry) in `dir2mcp_stats` is a
+**planned additive extension** (§15.6), not part of this revision's served schema.
+
+**Capability-driven activation (fail-open).** Like OCR/STT, contextualization is
+capability-driven: with a chat provider present and `enabled: true` it activates;
+with **no** chat provider it **fails open** — the corpus embeds raw, records the
+**effective `…|off`** embed identity (§8.1.4) plus a warning, and never a hard
+error and never a raw corpus wearing an `…|on` identity. An operator MAY instead
+choose reject-at-startup; fail-open-to-`off` is the default.
+
+The §8.1.2 capability matrix is unchanged: the context generator reuses the
+existing **chat** capability binding (8.1.3), not a new capability cell.
 
 ### 8.2 STT providers
 
@@ -1871,6 +1986,27 @@ stable across re-indexing.
   STT provider/model derivation identity and MUST NOT be invalidated by an STT
   model change. (A change to the sidecar file itself still re-ingests via the
   mtime gate, §8.6.4.)
+* **Contextual-retrieval context is a derived, content-addressed artifact**
+  (§8.1.8). The per-chunk `chunk_context` string (§5.3) is generated by the chat
+  provider and is content-addressed by the same derivation-identity machinery as
+  transcripts/OCR/translation, so it is generated **once** and reused across
+  re-scans. Its cache key is **(chunk content, parent-document snapshot,
+  context-generator identity)**, where:
+  * the **context-generator identity** is `{provider, model, prompt_version}`
+    with an operator `prompt` override **hashed** in (mirroring how that identity
+    is folded into the embed identity, §8.1.4); and
+  * the **parent-document content-hash** is part of the key, **not** only the
+    chunk's own bytes: the context is *document-aware*, so a title edit or a
+    change to a neighbouring section alters the context even when the chunk's own
+    bytes are unchanged, and MUST re-derive.
+
+  On **any** change to those inputs the context is **re-derived**, and — because a
+  changed context changes the embed input — the chunk is **re-embedded**. This is
+  the same runtime re-derivation rule as above, scoped to the context artifact.
+  The durable per-chunk `embedding_mode` (§5.3) is what the re-embed gate reads to
+  (a) **retry** `fallback` chunks while contextualization is on and (b) drive the
+  honest-coverage count (§8.1.8); it is per-chunk state, **not** part of the embed
+  identity (§8.1.4).
 
 #### 8.6.8 Speaker diarization (optional)
 
@@ -3796,6 +3932,24 @@ rerank:
   cohere:
     api_key: ${COHERE_API_KEY}   # presence of this credential auto-enables reranking
     model: rerank-v3.5
+
+retrieval:
+  # Contextual retrieval (§8.1.8): prepend an LLM-generated, document-aware
+  # context to each chunk's EMBED input (cited text stays raw — #403).
+  # Opt-in, off by default, domain-general. Reindex-bound: enabling it, or
+  # changing provider/model/effective-prompt, is part of the embed identity
+  # (§8.1.4) and forces a re-embed. Capability-driven like OCR/STT — needs a
+  # chat provider; with none present it fails open (embeds raw, records the
+  # effective `…|off` identity + a warning).
+  contextual:
+    enabled: false          # opt-in; off by default (identity component stays `…|off`)
+    provider: ""            # optional chat provider profile; empty => the configured chat provider (8.1.3)
+    model: ""               # optional model override; empty => that provider's chat model
+    max_tokens: 128         # tight cap; the context is 1-2 sentences
+    bm25: false             # also contextualize the lexical (FTS) index; NOT part of the embed identity (§8.1.8) — toggling rebuilds FTS only
+    prompt_version: v1      # names the built-in (general, domain-free) template; part of the embed identity (§8.1.4)
+    # prompt: ""            # optional override of the built-in template; the EFFECTIVE prompt is HASHED into
+                            #   the embed identity, so an edited override re-embeds even without bumping prompt_version
 
 x402:
   # `mode` is the primary, authoritative field controlling whether
