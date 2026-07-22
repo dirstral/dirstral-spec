@@ -111,12 +111,26 @@ both are matchable per-language values (bs-003).
 > (dir2mcp #412).
 
 > `chunk_context` and `embedding_mode` are **additive** columns for contextual
-> retrieval (SPEC §8.1.8; dir2mcp #330). A pre-feature index has neither; on load
-> such a corpus is treated as `embedding_mode = disabled` with NULL
-> `chunk_context`, and its embed identity (SPEC §8.1.4) carries `…|off` — no
-> reindex. `text` (the persisted, displayed, and **cited** chunk text) is
-> **never** the contextualized text: the context lives only in `chunk_context`
-> and in the transient embed input, preserving citation faithfulness (#403).
+> retrieval (SPEC §8.1.8; dir2mcp #330). `text` (the persisted, displayed, and
+> **cited** chunk text) is **never** the contextualized text: the context lives
+> only in `chunk_context` and in the transient embed input, preserving citation
+> faithfulness (#403).
+>
+> **Migration (in-place, no re-embed).** These columns bump this document's schema
+> version, and adding them advances the on-disk schema/`index_format_version` fence
+> (§5.5 / [df-000](df-000-base.md)). Because they are purely additive and
+> back-compatible, an implementation MUST perform this as an **in-place additive
+> migration**, in order: (1) **accept** a database at the immediately-prior schema
+> version — it MUST NOT reject it with `INDEX_VERSION_MISMATCH`
+> ([df-008](df-008-error-taxonomy.md)); (2) **add** the nullable `chunk_context`
+> and `embedding_mode` columns and the `embed_contextual` `settings` key (§5.5),
+> **backfilling** the pre-feature defaults (`chunk_context = NULL`,
+> `embedding_mode = disabled`, `embed_contextual = off`); (3) **advance** the
+> `index_format_version` / `PRAGMA user_version` fence to the new value; and
+> (4) **preserve all existing vectors** — the embed identity now reads `…|off`
+> (SPEC §8.1.4), which compares equal to what the corpus already recorded, so
+> nothing re-embeds. `INDEX_VERSION_MISMATCH` is reserved for a version the
+> implementation has **no** migration path for, not for this additive step.
 
 ### 5.4 `spans` (provenance for citations)
 
@@ -189,9 +203,13 @@ bounding box and **SHOULD** carry the section breadcrumb:
   `embed_contextual` persisted `settings` key for contextual retrieval (SPEC
   §8.1.8 / §8.1.4; dir2mcp #330). `chunk_context`/embed input never enter `text`
   (citation faithfulness, #443/#403); `embedding_mode` is per-chunk state, not
-  part of the embed identity. Backward-compatible: a pre-feature index is treated
-  as `embedding_mode = disabled` / `embed_contextual = off` and never reindexes.
-  Unblocks dir2mcp #330.
+  part of the embed identity. Backward-compatible additive migration: a
+  pre-feature index accepts the new nullable columns / `embed_contextual` key,
+  backfills their pre-feature defaults (`embedding_mode = disabled`,
+  `chunk_context = NULL`, `embed_contextual = off`) in place, advances the schema
+  fence without an `INDEX_VERSION_MISMATCH` rejection, and **preserves existing
+  vectors** — the embed identity still compares equal (`…|off`), so nothing
+  re-embeds. Unblocks dir2mcp #330.
 - **0.2.0** — Added the `embed_provider` and `embed_base_url` persisted
   `settings` keys mirroring the embed-identity amendment in SPEC §8.1.4 /
   td-001 §8.1.4 and the §6.4 / bs-008 tuple. `embed_base_url` is normalized per

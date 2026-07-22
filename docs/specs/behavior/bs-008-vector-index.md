@@ -128,9 +128,10 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
 - **0.3.0** — Appended `contextual` as the terminal field of the corpus-lifetime
   embed identity tuple in §6.4, for contextual retrieval (SPEC §8.1.8; dir2mcp
-  #330). A pre-feature index whose identity ends at `…|multimodal` is treated as
-  `…|multimodal|off`, a byte-identical migration that reindexes nothing (the same
-  append the `base_url`/`multimodal` fields use). Ordering, the enabled generator
+  #330). A pre-feature index whose identity ends at `…|multimodal` is canonicalized
+  to `…|multimodal|off`, which compares equal to a fresh contextual-off build, so
+  the migration reindexes nothing (the same no-reindex append the
+  `base_url`/`multimodal` fields use). Ordering, the enabled generator
   identity, and the effective-mode rule are authoritative in td-001 §8.1.4 / SPEC
   §8.1.4.
 - **0.2.0** — Added the normalized `base_url` component to the corpus-lifetime

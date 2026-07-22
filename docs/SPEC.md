@@ -707,7 +707,7 @@ breadcrumb:
   * `embed_provider`, `embed_base_url`   # embed_base_url = normalized per §8.1.4; "" is a valid value (pre-existing indexes and non-meaningful/default endpoints)
   * `embed_text_model`, `embed_text_dim`
   * `embed_code_model`, `embed_code_dim`
-  * `embed_contextual`   # the contextual component of the embed identity (§8.1.4/§8.1.8): `off` when disabled/fallback-to-off, else the generator identity (provider|model|effective-prompt, override hashed). Absent on a pre-feature index ⇒ treated as `off`.
+  * `embed_contextual`   # the contextual component of the embed identity (§8.1.4/§8.1.8): `off` when disabled/fallback-to-off, else `ctx:<hash>` over the canonical generator identity (provider+normalized endpoint, model, max_tokens, prompt_version, effective prompt). Absent on a pre-feature index ⇒ treated as `off`.
   * `ocr_model`
   * `stt_provider`, `stt_model`
   * `chat_model`
@@ -1535,12 +1535,18 @@ provider|base_url|text_model|code_model|text_dim|code_dim|multimodal|contextual
 
 **Why `contextual` is part of the identity.** Contextual retrieval (8.1.8) prepends an LLM-generated, document-aware context string to the text that is **embedded**, which changes the embedded vector for every chunk. It is therefore a corpus-lifetime, reindex-bound choice exactly like the embed model or the multimodal mode: toggling it, or changing the **generator or prompt** that produces the context, MUST re-embed the corpus. Folding it into the identity is the correctness mechanism — a query-time identity mismatch MUST refuse to mix vector spaces (the "MUST refuse" rule above), so contextualized and raw vectors can never silently coexist in one index.
 
-**`contextual` value and backward-compatible append.** The `contextual` component is the literal `off` when contextual retrieval is disabled, and otherwise encodes the context **generator identity** (below). An index built **before** this rule — whose recorded identity ends at `…|multimodal` — is treated as having `contextual == off`: the append is **byte-identical** for a corpus that is not using the feature (`…|multimodal` ⇒ `…|multimodal|off`), so **no existing corpus spuriously reindexes**. This is exactly the backward-compatible append the `base_url` (§8.1.4) and `multimodal` (8.1.7) migrations use — a new terminal field defaulting to the pre-feature behavior.
+**`contextual` value and backward-compatible append.** The `contextual` component is the literal `off` when contextual retrieval is disabled, and otherwise a single opaque generator-identity token (below). New fields are **appended**, so this is a **deterministic, no-reindex migration**: an index built **before** this rule — whose recorded identity ends at `…|multimodal` — is canonicalized to `…|multimodal|off`, which is exactly the identity a fresh build with contextual disabled computes. The migrated and freshly-computed identities therefore **compare equal**, so **no existing corpus spuriously reindexes**. (The migrated *string* is not literally identical to the old one — it gains the `|off` component — but the index/vector contents are untouched and the identity comparison still matches.) This is exactly the backward-compatible append the `base_url` (§8.1.4) and `multimodal` (8.1.7) migrations use — a new terminal field defaulting to the pre-feature behavior.
 
 **The identity encodes the *effective* mode, and the generator.** The recorded value is the **effective** contextualization at build time, never the mere config intent (8.1.8):
 
 * **Disabled or capability-fallback → `off`.** If `retrieval.contextual.enabled` is `false`, or it is `true` but **no chat provider is available** (fail-open, §16 / 8.1.8), the corpus embeds raw and its identity MUST record `…|off`. Recording `…|on` for raw vectors would make the corpus look contextual-compatible the moment a provider is later added, silently mixing raw and contextualized inputs in one index.
-* **Enabled → the generator identity.** When contextualization is effectively on, `contextual` encodes the context **generator identity**: `provider | model | effective-prompt`. `prompt_version` names the built-in template; an operator **`prompt` override is HASHED** into this component (a version tag alone cannot detect an edited override), so any generator or prompt change re-embeds rather than silently mixing differently-contextualized vectors.
+* **Enabled → a canonical, collision-free generator-identity token.** When contextualization is effectively on, `contextual` is `ctx:<hash>` — a **hash** over a canonical serialization of **every input that can change the generated context string**, so it never mixes vectors produced by different generators, and so the nested identity cannot collide with the outer `|` delimiter (the hash is a single opaque token; no escaping problem). The hashed input set MUST cover, at minimum:
+  * the generator **provider** identity, including its **normalized endpoint** (the same `base_url` normalization as the embed identity, §8.1.4) — a different endpoint serving the same model name is a different generator;
+  * the generator **model**;
+  * the generation **bound** `max_tokens` (a different cap can yield a different context);
+  * the **`prompt_version`** (built-in template name) **and** the **effective prompt text** — an operator `prompt` override is folded in via its content, so an edited override re-embeds even without bumping `prompt_version` (a version tag alone cannot detect an edited override).
+
+  Any change to these inputs changes `<hash>` and therefore re-embeds, rather than silently reusing vectors built from a different generator. The hash function is the corpus's standard content-hash (§7.6); the serialization MUST be deterministic (stable field order, explicit separators).
 
 The **per-chunk** `embedding_mode` (§5.3, 8.1.8) is **not** part of this identity: it is per-chunk state within one contextual corpus, not a corpus-lifetime binding.
 
@@ -1695,9 +1701,12 @@ dir2mcp #403). It is a transient embed-time transform, **not** a `rep_type` and
 
 **Reindex-bound identity.** Contextualization changes the embedded vector, so it
 is folded into the corpus-lifetime **embed identity** (§8.1.4) as the terminal
-`contextual` field. Toggling the feature, or changing the generator provider /
-model / effective prompt, MUST re-embed the corpus; a query-time identity
-mismatch MUST refuse to mix vector spaces (§8.1.4). BM25 text is **not** part of
+`contextual` field — an `off`/`ctx:<hash>` token, where the hash covers **every**
+generator input that can change the context (provider + normalized endpoint,
+model, `max_tokens`, `prompt_version`, and the effective prompt text; §8.1.4).
+Toggling the feature, or changing any of those generator inputs, MUST re-embed
+the corpus; a query-time identity mismatch MUST refuse to mix vector spaces
+(§8.1.4). BM25 text is **not** part of
 the embed identity (it does not change vectors), so toggling `contextual.bm25`
 rebuilds the FTS index only, not the embeddings.
 
@@ -1992,9 +2001,10 @@ stable across re-indexing.
   transcripts/OCR/translation, so it is generated **once** and reused across
   re-scans. Its cache key is **(chunk content, parent-document snapshot,
   context-generator identity)**, where:
-  * the **context-generator identity** is `{provider, model, prompt_version}`
-    with an operator `prompt` override **hashed** in (mirroring how that identity
-    is folded into the embed identity, §8.1.4); and
+  * the **context-generator identity** covers every input that can change the
+    context — `{provider (+ normalized endpoint), model, max_tokens,
+    prompt_version, effective prompt}` — canonically serialized and hashed (the
+    same `ctx:<hash>` token folded into the embed identity, §8.1.4); and
   * the **parent-document content-hash** is part of the key, **not** only the
     chunk's own bytes: the context is *document-aware*, so a title edit or a
     change to a neighbouring section alters the context even when the chunk's own

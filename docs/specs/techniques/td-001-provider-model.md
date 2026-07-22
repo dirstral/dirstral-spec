@@ -139,13 +139,19 @@ vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reinde
 New fields are **appended**, never inserted, so every extension is a
 backward-compatible migration. `contextual` is the terminal field: it is `off`
 when contextual retrieval (SPEC §8.1.8) is disabled or falls open to `off`, and
-otherwise encodes the context **generator identity** (provider | model |
-effective-prompt, with an operator prompt override **hashed** in). An index built
-before this rule — whose identity ends at `…|multimodal` — is treated as
-`contextual == off`, so the append is **byte-identical** for a non-contextual
-corpus and **no existing corpus spuriously reindexes** (the same append the
-`base_url`/`multimodal` migrations use). The per-chunk `embedding_mode` (df-003
-§5.3) is **not** part of this identity.
+otherwise `ctx:<hash>` — a single opaque token hashing a canonical serialization
+of **every** context-generation input (generator provider **+ normalized
+endpoint**, model, `max_tokens`, `prompt_version`, and the effective prompt text;
+an operator prompt override is folded in via its content). The hash makes the
+nested identity collision-free against the outer `|` delimiter and ensures a
+change to **any** generator input re-embeds rather than reusing vectors built
+from a different generator. An index built before this rule — whose identity ends
+at `…|multimodal` — is canonicalized to `…|multimodal|off`, which is exactly what
+a fresh contextual-off build computes, so the identities **compare equal** and
+**no existing corpus spuriously reindexes** (the migrated string gains the `|off`
+component, but the vectors and the comparison outcome are unchanged — the same
+no-reindex append the `base_url`/`multimodal` migrations use). The per-chunk
+`embedding_mode` (df-003 §5.3) is **not** part of this identity.
 
 **Why `base_url` is part of the identity.** Two profiles with the same `kind` and
 model name pointed at **different** endpoints (e.g. two `kind: openai` self-hosted
@@ -391,10 +397,11 @@ it MUST NOT make ingestion fail.
 
 - **0.4.0** — §8.1.4: appended `contextual` as the terminal embed-identity field
   for contextual retrieval (SPEC §8.1.8; dir2mcp #330). Documented the ordered
-  identity tuple, the byte-identical backward-compatible append (`…|multimodal`
-  ⇒ `…|multimodal|off`, no spurious reindex), and that the enabled value encodes
-  the context generator identity (provider|model|effective-prompt, override
-  hashed). Mirrors the §6.4 tuple in bs-008 and the SPEC §8.1.4 amendment.
+  identity tuple, the deterministic no-reindex append (`…|multimodal` ⇒
+  `…|multimodal|off`, which compares equal to a fresh contextual-off build), and
+  that the enabled value is a `ctx:<hash>` token over the full generator identity
+  (provider+endpoint, model, max_tokens, prompt_version, effective prompt).
+  Mirrors the §6.4 tuple in bs-008 and the SPEC §8.1.4 amendment.
 - **0.3.0** — §8.1.2: clarified that document/image extraction-engine selection
   is a td-004 §B.1 routing decision, not a capability cell here; the `mistral`
   extraction engine binds the `ocr` capability (§8.1.3). No matrix cell added.
