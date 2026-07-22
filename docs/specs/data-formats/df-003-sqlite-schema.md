@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -93,6 +93,15 @@ both are matchable per-language values (bs-003).
 - `index_kind` (`text | code`) — routes to `vectors_text` or `vectors_code`
 - `embedding_status` (`ok | pending | error`)
 - `embedding_error` (nullable)
+- `chunk_context` (nullable) — the generated document-aware context string for
+  contextual retrieval (SPEC §8.1.8); prepended to the **embed** input only
+  (`context + "\n\n" + text`), **never** to `text`. NULL when contextual
+  retrieval is off, or when the chunk fell back to raw embedding.
+- `embedding_mode` (`disabled | contextualized | fallback`) — per-chunk
+  contextualization state (SPEC §8.1.8). Disambiguates a NULL `chunk_context`
+  (feature off vs. context generated vs. generation failed → embedded raw). The
+  re-embed gate reads it to retry `fallback` chunks while contextualization is on,
+  and to drive honest coverage. **Not** part of the embed identity (SPEC §8.1.4).
 - `deleted` (boolean; tombstone)
 
 > `embedding_status` is the retrieval-eligibility gate: a chunk with status
@@ -100,6 +109,28 @@ both are matchable per-language values (bs-003).
 > (dir2mcp #443), and the embed worker's transient-vs-permanent classification
 > governs whether a failed chunk stays `pending` or becomes `error`
 > (dir2mcp #412).
+
+> `chunk_context` and `embedding_mode` are **additive** columns for contextual
+> retrieval (SPEC §8.1.8; dir2mcp #330). `text` (the persisted, displayed, and
+> **cited** chunk text) is **never** the contextualized text: the context lives
+> only in `chunk_context` and in the transient embed input, preserving citation
+> faithfulness (#403).
+>
+> **Migration (in-place, no re-embed).** These columns bump this document's schema
+> version, and adding them advances the on-disk schema/`index_format_version` fence
+> (§5.5 / [df-000](df-000-base.md)). Because they are purely additive and
+> back-compatible, an implementation MUST perform this as an **in-place additive
+> migration**, in order: (1) **accept** a database at the immediately-prior schema
+> version — it MUST NOT reject it with `INDEX_VERSION_MISMATCH`
+> ([df-008](df-008-error-taxonomy.md)); (2) **add** the nullable `chunk_context`
+> and `embedding_mode` columns and the `embed_contextual` `settings` key (§5.5),
+> **backfilling** the pre-feature defaults (`chunk_context = NULL`,
+> `embedding_mode = disabled`, `embed_contextual = off`); (3) **advance** the
+> `index_format_version` / `PRAGMA user_version` fence to the new value; and
+> (4) **preserve all existing vectors** — the embed identity now reads `…|off`
+> (SPEC §8.1.4), which compares equal to what the corpus already recorded, so
+> nothing re-embeds. `INDEX_VERSION_MISMATCH` is reserved for a version the
+> implementation has **no** migration path for, not for this additive step.
 
 ### 5.4 `spans` (provenance for citations)
 
@@ -157,12 +188,29 @@ bounding box and **SHOULD** carry the section breadcrumb:
   non-meaningful/default endpoints)
 - `embed_text_model`, `embed_text_dim`
 - `embed_code_model`, `embed_code_dim`
+- `embed_contextual` — the `contextual` component of the embed identity (SPEC
+  §8.1.4 / §8.1.8): `off` when contextual retrieval is disabled or falls open to
+  off, else `ctx:<hash>` over the canonical generator identity (provider +
+  normalized endpoint, model, max_tokens, prompt_version, effective prompt).
+  Absent on a pre-feature index ⇒ treated as `off`.
 - `ocr_model`
 - `stt_provider`, `stt_model`
 - `chat_model`
 
 ## Changelog
 
+- **0.3.0** — Added the additive `chunks.chunk_context` (nullable) and
+  `chunks.embedding_mode` (`disabled|contextualized|fallback`) columns and the
+  `embed_contextual` persisted `settings` key for contextual retrieval (SPEC
+  §8.1.8 / §8.1.4; dir2mcp #330). `chunk_context`/embed input never enter `text`
+  (citation faithfulness, #443/#403); `embedding_mode` is per-chunk state, not
+  part of the embed identity. Backward-compatible additive migration: a
+  pre-feature index accepts the new nullable columns / `embed_contextual` key,
+  backfills their pre-feature defaults (`embedding_mode = disabled`,
+  `chunk_context = NULL`, `embed_contextual = off`) in place, advances the schema
+  fence without an `INDEX_VERSION_MISMATCH` rejection, and **preserves existing
+  vectors** — the embed identity still compares equal (`…|off`), so nothing
+  re-embeds. Unblocks dir2mcp #330.
 - **0.2.0** — Added the `embed_provider` and `embed_base_url` persisted
   `settings` keys mirroring the embed-identity amendment in SPEC §8.1.4 /
   td-001 §8.1.4 and the §6.4 / bs-008 tuple. `embed_base_url` is normalized per

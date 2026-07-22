@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -129,9 +129,29 @@ the index at first build and recorded in the config snapshot. On load, if the
 configured embed identity differs from the index's, the server MUST refuse to mix
 vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex.
 `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim`
-— **and the multimodal mode (td-002)** — are therefore deploy-time,
-reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are
-runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+— **and the multimodal mode (td-002)** **and the contextual-retrieval mode
+(SPEC §8.1.8)** — are therefore deploy-time, reindex-bound choices;
+`chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role
+(8.1.5) is **not** part of this identity.
+
+**The identity tuple (ordered).** The full pipe-delimited identity is
+`provider | base_url | text_model | code_model | text_dim | code_dim | multimodal | contextual`.
+New fields are **appended**, never inserted, so every extension is a
+backward-compatible migration. `contextual` is the terminal field: it is `off`
+when contextual retrieval (SPEC §8.1.8) is disabled or falls open to `off`, and
+otherwise `ctx:<hash>` — a single opaque token hashing a canonical serialization
+of **every** context-generation input (generator provider **+ normalized
+endpoint**, model, `max_tokens`, `prompt_version`, and the effective prompt text;
+an operator prompt override is folded in via its content). The hash makes the
+nested identity collision-free against the outer `|` delimiter and ensures a
+change to **any** generator input re-embeds rather than reusing vectors built
+from a different generator. An index built before this rule — whose identity ends
+at `…|multimodal` — is canonicalized to `…|multimodal|off`, which is exactly what
+a fresh contextual-off build computes, so the identities **compare equal** and
+**no existing corpus spuriously reindexes** (the migrated string gains the `|off`
+component, but the vectors and the comparison outcome are unchanged — the same
+no-reindex append the `base_url`/`multimodal` migrations use). The per-chunk
+`embedding_mode` (df-003 §5.3) is **not** part of this identity.
 
 **Why `base_url` is part of the identity.** Two profiles with the same `kind` and
 model name pointed at **different** endpoints (e.g. two `kind: openai` self-hosted
@@ -375,6 +395,13 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.4.0** — §8.1.4: appended `contextual` as the terminal embed-identity field
+  for contextual retrieval (SPEC §8.1.8; dir2mcp #330). Documented the ordered
+  identity tuple, the deterministic no-reindex append (`…|multimodal` ⇒
+  `…|multimodal|off`, which compares equal to a fresh contextual-off build), and
+  that the enabled value is a `ctx:<hash>` token over the full generator identity
+  (provider+endpoint, model, max_tokens, prompt_version, effective prompt).
+  Mirrors the §6.4 tuple in bs-008 and the SPEC §8.1.4 amendment.
 - **0.3.0** — §8.1.2: clarified that document/image extraction-engine selection
   is a td-004 §B.1 routing decision, not a capability cell here; the `mistral`
   extraction engine binds the `ocr` capability (§8.1.3). No matrix cell added.
