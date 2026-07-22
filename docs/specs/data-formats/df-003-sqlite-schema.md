@@ -190,8 +190,9 @@ bounding box and **SHOULD** carry the section breadcrumb:
 - `embed_code_model`, `embed_code_dim`
 - `embed_contextual` — the `contextual` component of the embed identity (SPEC
   §8.1.4 / §8.1.8): `off` when contextual retrieval is disabled or falls open to
-  off, else the context-generator identity (`provider|model|effective-prompt`,
-  operator override hashed). Absent on a pre-feature index ⇒ treated as `off`.
+  off, else `ctx:<hash>` over the canonical generator identity (provider +
+  normalized endpoint, model, max_tokens, prompt_version, effective prompt).
+  Absent on a pre-feature index ⇒ treated as `off`.
 - `ocr_model`
 - `stt_provider`, `stt_model`
 - `chat_model`
