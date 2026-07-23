@@ -1,7 +1,7 @@
 # td-005: Distributed embedding (coordinator + workers)
 
 - **ID:** td-005
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -79,7 +79,8 @@ execute it without coordinator-relayed payload bytes:
   `page`/`time`/`region`) so the worker can fetch and window the exact media bytes
   via CorpusFS range reads ([bs-002](../behavior/bs-002-ingestion-pipeline.md));
 * the **embed identity** ([td-001](td-001-provider-model.md)) the job was enqueued under
-  (`provider | text_model | code_model | text_dim | code_dim | multimodal`), so a
+  (the full ordered tuple `provider | base_url | text_model | code_model |
+  text_dim | code_dim | multimodal | late_chunking | contextual`), so a
   worker can **reject** a job whose embed identity does not match its configured
   provider rather than silently writing vectors from the wrong space.
 
@@ -104,7 +105,9 @@ bytes without the coordinator becoming a data-plane bottleneck.
   job for it can be claimed.
 * **Embed identity is enforced per job.** The embed identity
   ([td-001](td-001-provider-model.md)) is part of the job (see *Job description* above).
-  A worker whose configured embed provider/model/dim/multimodal does not match the
+  A worker whose configured embed identity — provider, endpoint, models,
+  dimensions, multimodal mode, late-chunking mode, contextual mode — does not
+  match the
   job's embed identity MUST fail the job (returning it for redelivery or
   dead-lettering) rather than write a vector — this preserves the corpus-lifetime
   single-space invariant ([bs-008](../behavior/bs-008-vector-index.md),
@@ -158,6 +161,13 @@ bytes without the coordinator becoming a data-plane bottleneck.
 
 ## Changelog
 
+- **0.2.0** — Brought the job's embed-identity tuple up to date: it is the full
+  ordered 9-field identity (`provider | base_url | text_model | code_model |
+  text_dim | code_dim | multimodal | late_chunking | contextual`), not the stale
+  6-field form migrated from SPEC.md §8.7. The per-job enforcement rule now names
+  the same components, so a worker running a different `ingest.late_chunking` or
+  contextual setting rejects the job instead of writing vectors from another
+  space (SPEC §8.1.4 / td-001; dir2mcp #332/#446).
 - **0.1.0** — Migrated from SPEC.md §8.7 (verbatim normative content; prose lightly
   tightened, no requirements dropped). Cross-references rewired to stable doc IDs
   per the mapping: §1→df-000, §5→df-003 (including chunk `embedding_status`
