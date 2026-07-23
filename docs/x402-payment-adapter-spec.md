@@ -156,7 +156,7 @@ This adapter does not define:
 > shipped implementation (`x402Version: 2`, the current latest x402 version) and
 > the `X402Version` recorded in SPEC.md §18.
 
-> **Note:** this document is paired with the global MCP [SPEC.md](../SPEC.md). whenever the
+> **Note:** this document is paired with the global MCP [SPEC.md](SPEC.md). whenever the
 > protocol version, message formats, field definitions, or error codes evolve you must keep
 > both documents in sync. reviewers should use the following checklist when making changes:
 >

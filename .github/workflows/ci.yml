@@ -32,4 +32,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Markdown link sanity
         run: |
-          ! rg -n "\]\(\.\./SPEC.md\)" docs spec || (echo "Use local relative links from repo root layout" && exit 1)
+          # grep, not rg: ripgrep is not on the runner image, so `! rg ...`
+          # returned 127 -> inverted to success and this gate never ran.
+          if grep -rn --include='*.md' -F '](../SPEC.md)' docs spec; then
+            echo "::error::Use local relative links from repo root layout: SPEC.md lives at docs/SPEC.md, so '../SPEC.md' from docs/ does not resolve."
+            exit 1
+          fi
