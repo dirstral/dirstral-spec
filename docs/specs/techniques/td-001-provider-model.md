@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -129,29 +129,59 @@ the index at first build and recorded in the config snapshot. On load, if the
 configured embed identity differs from the index's, the server MUST refuse to mix
 vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex.
 `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim`
-— **and the multimodal mode (td-002)** **and the contextual-retrieval mode
+— **and the multimodal mode (td-002)**, **the late-chunking mode
+(`ingest.late_chunking`)** **and the contextual-retrieval mode
 (SPEC §8.1.8)** — are therefore deploy-time, reindex-bound choices;
 `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role
 (8.1.5) is **not** part of this identity.
 
 **The identity tuple (ordered).** The full pipe-delimited identity is
-`provider | base_url | text_model | code_model | text_dim | code_dim | multimodal | contextual`.
+`provider | base_url | text_model | code_model | text_dim | code_dim | multimodal | late_chunking | contextual`.
 New fields are **appended**, never inserted, so every extension is a
-backward-compatible migration. `contextual` is the terminal field: it is `off`
-when contextual retrieval (SPEC §8.1.8) is disabled or falls open to `off`, and
+backward-compatible migration. `contextual` is the terminal field; `late_chunking`
+sits between `multimodal` and `contextual`.
+
+`late_chunking` is the literal `on`/`off` rendering of `ingest.late_chunking`
+(SPEC §8.1.4, §16; dir2mcp #332/#446). Late chunking embeds the whole document
+through a long-context model and pools each chunk's token vectors, so its chunk
+vectors are **not** comparable to chunk-then-embed vectors from the same
+provider/model — toggling the mode MUST re-derive rather than mix vector spaces.
+It is the one component derived from a **config** key rather than a provider
+attribute, and it is deliberately conservative: it records the configured flag,
+not the runtime token-embedding capability, so it re-derives even where the
+graceful chunk-then-embed fallback means no vector changed. A named token
+(`on`/`off`) rather than a bare boolean leaves room for future pooling modes
+without a further field migration.
+
+`contextual` is `off` when contextual retrieval (SPEC §8.1.8) is disabled or
+falls open to `off`, and
 otherwise `ctx:<hash>` — a single opaque token hashing a canonical serialization
 of **every** context-generation input (generator provider **+ normalized
 endpoint**, model, `max_tokens`, `prompt_version`, and the effective prompt text;
 an operator prompt override is folded in via its content). The hash makes the
 nested identity collision-free against the outer `|` delimiter and ensures a
 change to **any** generator input re-embeds rather than reusing vectors built
-from a different generator. An index built before this rule — whose identity ends
-at `…|multimodal` — is canonicalized to `…|multimodal|off`, which is exactly what
-a fresh contextual-off build computes, so the identities **compare equal** and
-**no existing corpus spuriously reindexes** (the migrated string gains the `|off`
-component, but the vectors and the comparison outcome are unchanged — the same
-no-reindex append the `base_url`/`multimodal` migrations use). The per-chunk
-`embedding_mode` (df-003 §5.3) is **not** part of this identity.
+from a different generator. The per-chunk `embedding_mode` (df-003 §5.3) is
+**not** part of this identity.
+
+**Migration ladder.** A recorded identity MUST be canonicalized to the current
+9-field form, by field count, before comparison; every pre-`base_url` form also
+gains an empty `base_url` inserted at position 2 (SPEC §8.1.4):
+
+| Recorded fields | Canonicalization |
+|---|---|
+| 3 (pre-8.1.6) | insert empty `base_url`, append `0`, `0`, `off`, `off`, `off` |
+| 5 (pre-td-002) | insert empty `base_url`, append `off`, `off`, `off` |
+| 6 (pre-late-chunking) | insert empty `base_url`, append `off`, `off` |
+| 7 (pre-`base_url`) | insert empty `base_url`, append `off` |
+| 8 (pre-contextual) | append `off` |
+| 9 | unchanged |
+
+Each canonicalized value is exactly what a fresh build with the newer features
+disabled computes, so the identities **compare equal** and **no existing corpus
+spuriously reindexes** (the migrated string gains components, but the vectors and
+the comparison outcome are unchanged). An empty recorded identity (fresh index)
+always passes; an unrecognized field count is left unchanged and fails loudly.
 
 **Why `base_url` is part of the identity.** Two profiles with the same `kind` and
 model name pointed at **different** endpoints (e.g. two `kind: openai` self-hosted
@@ -395,6 +425,15 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.5.0** — §8.1.4: recorded `late_chunking` as the 8th embed-identity field,
+  between `multimodal` and `contextual` (SPEC §8.1.4; dir2mcp #332/#446). The
+  reference implementation has recorded it since #446 but it was never specified,
+  so the documented tuple and the shipped one had diverged on the 8th slot.
+  Documents why the mode is corpus-lifetime (context-pooled vectors are not
+  comparable to chunk-then-embed vectors), that it uniquely derives from a config
+  key, the conservative config-not-capability gate, the `on`/`off` named token,
+  and the full field-count migration ladder (3/5/6/7/8 ⇒ 9). Mirrors the §6.4
+  tuple in bs-008.
 - **0.4.0** — §8.1.4: appended `contextual` as the terminal embed-identity field
   for contextual retrieval (SPEC §8.1.8; dir2mcp #330). Documented the ordered
   identity tuple, the deterministic no-reindex append (`…|multimodal` ⇒

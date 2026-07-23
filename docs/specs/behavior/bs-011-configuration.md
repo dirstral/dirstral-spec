@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -160,6 +160,12 @@ ingest:
     mode: deep         # off|shallow|deep
   follow_symlinks: false
   max_file_mb: 20
+  # Late chunking (opt-in, off by default): embed the whole document through a
+  # long-context model, then apply chunk boundaries and pool each chunk's token
+  # vectors. Requires an embedder exposing token-level embeddings; one that
+  # cannot falls back to chunk-then-embed. Part of the corpus-lifetime embed
+  # identity (td-001 §8.1.4) — toggling it is reindex-bound.
+  late_chunking: false
 
 chunking:
   max_chars: 2500
@@ -313,6 +319,10 @@ security:
 
 ## Changelog
 
+- **0.3.0** — ingest: added `ingest.late_chunking` (opt-in, off by default) to
+  the §16.2 template. It is a component of the corpus-lifetime embed identity
+  (td-001 §8.1.4; dir2mcp #332/#446), so toggling it is reindex-bound rather than
+  a runtime knob.
 - **0.2.0** — ingest: documented extractor=auto as best-available-per-format
   (td-004 §B.1) and added `ingest.on_unsupported: lenient|strict` (td-004 §B.2).
 - **0.1.0** — Migrated from SPEC.md §16 (Configuration — single file), including

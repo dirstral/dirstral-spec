@@ -1,7 +1,7 @@
 # bs-008: Vector index backends & embed identity
 
 - **ID:** bs-008
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -83,11 +83,14 @@ two collections/namespaces (§6.3).
 ### 6.4 Embed identity binds every backend
 
 The corpus-lifetime **embed identity** — `provider | base_url | text_model |
-code_model | text_dim | code_dim | multimodal | contextual` (td-001; `base_url`
+code_model | text_dim | code_dim | multimodal | late_chunking | contextual`
+(td-001; `base_url`
 **normalized** per td-001 §8.1.4, empty for providers where the endpoint is not
-meaningful and for pre-existing indexes; `contextual` is `off` unless contextual
-retrieval (SPEC §8.1.8) is effectively enabled, and a pre-feature index whose
-identity ends at `…|multimodal` is treated as `…|multimodal|off`) — binds the
+meaningful and for pre-existing indexes; `late_chunking` is the `on`/`off`
+rendering of `ingest.late_chunking`; `contextual` is `off` unless contextual
+retrieval (SPEC §8.1.8) is effectively enabled, and a recorded identity from an
+earlier form is canonicalized to the 9-field form by field count — the migration
+ladder is authoritative in td-001 §8.1.4 / SPEC §8.1.4) — binds the
 index **regardless of backend**. On load, if
 the configured embed identity differs from the one recorded for the index
 (embedded snapshot or external collection metadata), the server MUST refuse to mix
@@ -126,6 +129,14 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
 ## Changelog
 
+- **0.4.0** — Recorded `late_chunking` in the §6.4 embed-identity tuple, between
+  `multimodal` and `contextual` (SPEC §8.1.4; dir2mcp #332/#446). The reference
+  implementation has recorded the field since #446 but it was never specified, so
+  the documented 8-field tuple and the shipped one disagreed on the 8th slot; the
+  normative tuple is now 9 fields. Toggling `ingest.late_chunking` changes the
+  vector space (context-pooled vs. chunk-then-embed), so it is reindex-bound like
+  every other component. Canonicalization by field count (3/5/6/7/8 ⇒ 9) and the
+  component semantics are authoritative in td-001 §8.1.4 / SPEC §8.1.4.
 - **0.3.0** — Appended `contextual` as the terminal field of the corpus-lifetime
   embed identity tuple in §6.4, for contextual retrieval (SPEC §8.1.8; dir2mcp
   #330). A pre-feature index whose identity ends at `…|multimodal` is canonicalized

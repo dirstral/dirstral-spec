@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.41.0`  
+**Spec version:** `0.42.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -882,10 +882,11 @@ external store they are two collections/namespaces (§6.3).
 ### 6.4 Embed identity binds every backend
 
 The corpus-lifetime **embed identity** — `provider | base_url | text_model |
-code_model | text_dim | code_dim | multimodal | contextual` (§8.1.4; `base_url`
-**normalized** per §8.1.4, empty for providers where the endpoint is not
-meaningful; `contextual` is `off` unless contextual retrieval (§8.1.8) is
-effectively enabled) — binds the
+code_model | text_dim | code_dim | multimodal | late_chunking | contextual`
+(§8.1.4; `base_url` **normalized** per §8.1.4, empty for providers where the
+endpoint is not meaningful; `late_chunking` is `off` unless
+`ingest.late_chunking` is enabled; `contextual` is `off` unless contextual
+retrieval (§8.1.8) is effectively enabled) — binds the
 index **regardless of backend**. On load, if the configured embed identity differs
 from the one recorded for the index (embedded snapshot or external collection
 metadata), the server MUST refuse to mix vector spaces: it either errors
@@ -1611,19 +1612,26 @@ For each capability, with `<cap>.provider`:
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
-Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)** **and the contextual-retrieval mode (8.1.8)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)**, **the late-chunking mode (`ingest.late_chunking`, §16)** **and the contextual-retrieval mode (8.1.8)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
 
 **The identity tuple (ordered).** The full pipe-delimited identity is:
 
 ```text
-provider|base_url|text_model|code_model|text_dim|code_dim|multimodal|contextual
+provider|base_url|text_model|code_model|text_dim|code_dim|multimodal|late_chunking|contextual
 ```
 
-`contextual` (8.1.8) is the terminal field. New fields are **appended**, never inserted, so every extension is a backward-compatible migration (below).
+`contextual` (8.1.8) is the terminal field; `late_chunking` sits between `multimodal` (8.1.7) and `contextual`. New fields are **appended**, never inserted, so every extension is a backward-compatible migration (below).
+
+**Why `late_chunking` is part of the identity.** Late chunking (`ingest.late_chunking`, §16) embeds the **whole document** through a long-context model to obtain contextually-enriched **token** embeddings, then applies the chunk boundaries and pools the token vectors within each chunk's span. The resulting **context-pooled** chunk vectors are **not** comparable to the chunk-then-embed vectors the same provider and model produce with the mode off. A corpus partly built with the mode on and partly with it off — or a heterogeneous worker pool (8.7.3) running different settings — would therefore silently mix two vector spaces. Toggling `ingest.late_chunking` MUST re-derive (reindex / `CONFIG_INVALID`) rather than mix, and implementations MUST fold the mode into the identity. Two properties of this component are deliberate:
+
+* **It derives from a *config* key, not a provider attribute.** Unlike every other component, `late_chunking` is not read off the resolved embed profile; it is the resolved value of `ingest.late_chunking`. The identity is a statement about the vectors in the index, and this is a pipeline knob that changes those vectors, so it belongs here even though it is not a provider property.
+* **The gate is conservative: it records the configured mode, not the runtime capability.** Late chunking requires the active embedder to expose token-level/long-context embeddings; an embedder that cannot MUST gracefully fall back to chunk-then-embed rather than fail. The recorded component nevertheless reflects the **config flag**, so toggling the flag re-derives even in a deployment where the fallback means no vector actually changed. This is the safe direction — it MAY cost one avoidable reindex, but it can never let pooled and unpooled vectors share an index. (This is the one component that records intent rather than effective mode; `contextual` (8.1.8) records the **effective** mode, because there the fallback is observable per chunk and its identity token also names the generator.)
+
+The value is the literal `on` when late chunking is enabled and `off` otherwise — a **named token**, not a bare boolean, so future pooling modes can be added without another identity-field migration.
 
 **Why `contextual` is part of the identity.** Contextual retrieval (8.1.8) prepends an LLM-generated, document-aware context string to the text that is **embedded**, which changes the embedded vector for every chunk. It is therefore a corpus-lifetime, reindex-bound choice exactly like the embed model or the multimodal mode: toggling it, or changing the **generator or prompt** that produces the context, MUST re-embed the corpus. Folding it into the identity is the correctness mechanism — a query-time identity mismatch MUST refuse to mix vector spaces (the "MUST refuse" rule above), so contextualized and raw vectors can never silently coexist in one index.
 
-**`contextual` value and backward-compatible append.** The `contextual` component is the literal `off` when contextual retrieval is disabled, and otherwise a single opaque generator-identity token (below). New fields are **appended**, so this is a **deterministic, no-reindex migration**: an index built **before** this rule — whose recorded identity ends at `…|multimodal` — is canonicalized to `…|multimodal|off`, which is exactly the identity a fresh build with contextual disabled computes. The migrated and freshly-computed identities therefore **compare equal**, so **no existing corpus spuriously reindexes**. (The migrated *string* is not literally identical to the old one — it gains the `|off` component — but the index/vector contents are untouched and the identity comparison still matches.) This is exactly the backward-compatible append the `base_url` (§8.1.4) and `multimodal` (8.1.7) migrations use — a new terminal field defaulting to the pre-feature behavior.
+**`contextual` value.** The `contextual` component is the literal `off` when contextual retrieval is disabled, and otherwise a single opaque generator-identity token (below).
 
 **The identity encodes the *effective* mode, and the generator.** The recorded value is the **effective** contextualization at build time, never the mere config intent (8.1.8):
 
@@ -1646,6 +1654,21 @@ The **per-chunk** `embedding_mode` (§5.3, 8.1.8) is **not** part of this identi
 3. **URL canonicalization** (applied before comparison, for the non-empty case): lowercase the scheme and host; remove the default port (`80` for `http`, `443` for `https`); strip trailing slash(es) and collapse duplicate slashes in the path; **preserve** the remaining path (e.g. `/v1`, which can select a different API mount); drop any userinfo, query, and fragment; apply canonical percent-/IDN-encoding. The result is compared exactly (path remains case-sensitive after host lowercasing).
 
 **`""` is a valid identity component.** The empty string is a first-class, legitimate value of the `base_url` component, not a sentinel for "unknown". Consequently an index built **before** this rule — which recorded no `base_url` — is treated as having `base_url == ""` and remains **valid** on reload against any provider whose normalized `base_url` is also `""` (all built-in/hosted-default deployments, per rules 1–2). Only a corpus whose embed endpoint is a **non-canonical / custom** `base_url` sees a one-time `CONFIG_INVALID`/reindex on first reload after this change — the correct, bounded safety action, since those are exactly the corpora previously at risk of silent cross-endpoint mixing.
+
+**Backward-compatible append and the migration ladder (normative).** New fields are **appended**, so every extension of the identity is a **deterministic, no-reindex migration**. An implementation MUST canonicalize a recorded identity to the current 9-field form **before** comparing it with the configured one, keyed on the recorded **field count**. Field counting is unambiguous: no component may contain the `|` delimiter (a `base_url` enters in normalized form, which drops query/fragment and percent-encodes the path; `contextual` is a single opaque token). Every pre-`base_url` form additionally gains an **empty** `base_url` inserted at position 2, because an index built before that rule recorded no endpoint, which is identity-equal to any profile whose `base_url` normalizes to `""` (all built-in/hosted-default deployments). The ladder is:
+
+* **3 fields** — `provider|text_model|code_model` (pre-8.1.6: no dimensions, no multimodal, no late chunking, no contextual): insert an empty `base_url`, then append `|0|0|off|off|off`.
+* **5 fields** — `…|text_dim|code_dim` (pre-8.1.7): insert an empty `base_url`, then append `|off|off|off`.
+* **6 fields** — `…|multimodal` (pre-late-chunking): insert an empty `base_url`, then append `|off|off`.
+* **7 fields** — `…|multimodal|late_chunking` (pre-`base_url`): insert an empty `base_url`, then append `|off`.
+* **8 fields** — `…|multimodal|late_chunking` (pre-contextual — the form recorded by shipped implementations today): append `|off`.
+* **9 fields** — already current: unchanged.
+
+An **empty** recorded identity (fresh index) always passes. An unrecognized field count MUST be left unchanged, so it fails the comparison loudly rather than being coerced into a false match.
+
+Every canonicalized identity **compares equal** to the identity a fresh build with the newer features disabled computes, so **no existing corpus spuriously reindexes**. (The canonicalized *string* is not literally identical to the recorded one — it gains components — but the index and its vectors are untouched and the comparison still matches.)
+
+**Rule going forward: append, never insert.** A new identity component MUST be added as a new **terminal** field whose pre-feature value is the token that means "feature disabled", so the ladder above extends by one row and every older recording still canonicalizes to a matching value. `late_chunking` is the single, one-time exception, and it is a **reconciliation, not a precedent**: the reference implementation has recorded it as the terminal component since dir2mcp #332/#446, before `contextual` was specified, and it was never written down here. This edition records it in the position it already occupies in the wild — 8th, between `multimodal` and `contextual` — so the normative tuple matches the identities already on disk. Because **no** index has ever recorded a `contextual` component, this is observationally still an append of `contextual` after an already-existing field, not an insertion into any recorded identity.
 
 #### 8.1.5 Asymmetric embeddings (input role)
 
@@ -2466,8 +2489,9 @@ execute it without coordinator-relayed payload bytes:
   a media chunk (§8.1.7), the `rel_path`/media ref plus the chunk's span
   (§5.4 `page`/`time`/`region`) so the worker can fetch and window the exact media
   bytes via CorpusFS range reads (§7.10);
-* the **embed identity** (§8.1.4) the job was enqueued under
-  (`provider | text_model | code_model | text_dim | code_dim | multimodal`), so a
+* the **embed identity** (§8.1.4) the job was enqueued under (the full ordered
+  tuple `provider | base_url | text_model | code_model | text_dim | code_dim |
+  multimodal | late_chunking | contextual`), so a
   worker can **reject** a job whose embed identity does not match its configured
   provider rather than silently writing vectors from the wrong space.
 
@@ -2489,7 +2513,8 @@ bottleneck.
   acceptable. The only ordering constraint is causal: a chunk MUST exist in the
   store (enqueued by the coordinator) before a job for it can be claimed.
 * **Embed identity is enforced per job.** The embed identity (§8.1.4) is part of
-  the job (§8.7.2). A worker whose configured embed provider/model/dim/multimodal
+  the job (§8.7.2). A worker whose configured embed identity — provider, endpoint,
+  models, dimensions, multimodal mode, late-chunking mode, contextual mode —
   does not match the job's embed identity MUST fail the job (returning it for
   redelivery or dead-lettering) rather than write a vector — this preserves the
   corpus-lifetime single-space invariant (§6.4, §8.1.4) across a heterogeneous
@@ -4056,6 +4081,13 @@ ingest:
     mode: deep         # off|shallow|deep
   follow_symlinks: false
   max_file_mb: 20
+  # Late chunking (opt-in, off by default): embed the WHOLE document through a
+  # long-context model to get token-level embeddings, then apply the chunk
+  # boundaries and pool each chunk's token vectors, so every chunk vector carries
+  # document context. Requires an embedder that exposes token-level/long-context
+  # embeddings; one that cannot falls back to chunk-then-embed. It is a component
+  # of the corpus-lifetime embed identity (§8.1.4) — toggling it is reindex-bound.
+  late_chunking: false
 
 chunking:
   max_chars: 2500
