@@ -101,12 +101,14 @@ a follow-up), after transcript handling:
   players by name); each chunk carries exactly one `time` span. No new
   persisted span kind (§5.4). The response's `start_s`/`end_s` (seconds,
   floats) are converted to the integer-millisecond `time` span by rounding
-  **outward** — `start_ms = floor(start_s * 1000)`, `end_ms = ceil(end_s *
-  1000)` — so the persisted span never excludes a boundary the recognizer
-  included, and an instantaneous annotation (`end_s == start_s`) still yields
-  a non-empty `[start_ms, end_ms]` after rounding when the value is not an
-  exact millisecond. A reversed span (`end_s < start_s`) is rejected as a
-  malformed record before persistence (§5).
+  each to the **nearest** millisecond — `start_ms = round(start_s * 1000)`,
+  `end_ms = round(end_s * 1000)` (millisecond resolution is far finer than a
+  video frame, so nearest-rounding never moves a boundary by a
+  perceptible amount). An annotation that is **malformed** — empty or
+  whitespace-only `text`, or a reversed span (`end_s < start_s`, i.e.
+  `end_ms < start_ms` after rounding) — is **dropped** (not persisted); the
+  remaining annotations of the same document proceed. A zero-length span
+  (`end_ms == start_ms`) is kept and denotes an instantaneous event.
 - Backend failure handling mirrors STT: per-document error recording, no
   partial silent success.
 

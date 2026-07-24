@@ -61,7 +61,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "description": "One recognized statement with a time span. The span maps directly to a persisted `time` citation, so it MUST satisfy 0 <= start_s <= end_s. A zero-length span (end_s == start_s) is permitted and denotes an instantaneous event (e.g. a single pitch-release frame). JSON Schema (2020-12) cannot express the cross-field `end_s >= start_s` bound portably, so the ingestion side rejects a reversed span as a malformed record (design 0004 §5); the per-field `minimum: 0` below is the portion the schema can enforce.",
+        "description": "One recognized statement with a time span. The span maps directly to a persisted `time` citation, so it MUST satisfy 0 <= start_s <= end_s. A zero-length span (end_s == start_s) is permitted and denotes an instantaneous event (e.g. a single pitch-release frame). JSON Schema (2020-12) cannot express the cross-field `end_s >= start_s` bound portably, so the ingestion side DROPS a reversed span as a malformed annotation — the rest of the document's annotations proceed (design 0004 §5); the per-field `minimum: 0` below is the portion the schema can enforce.",
         "required": [
           "start_s",
           "end_s",
