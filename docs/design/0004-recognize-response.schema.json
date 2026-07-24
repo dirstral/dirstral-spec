@@ -61,6 +61,7 @@
       "type": "array",
       "items": {
         "type": "object",
+        "description": "One recognized statement with a time span. The span maps directly to a persisted `time` citation, so it MUST satisfy 0 <= start_s <= end_s. A zero-length span (end_s == start_s) is permitted and denotes an instantaneous event (e.g. a single pitch-release frame). JSON Schema (2020-12) cannot express the cross-field `end_s >= start_s` bound portably, so the ingestion side rejects a reversed span as a malformed record (design 0004 §5); the per-field `minimum: 0` below is the portion the schema can enforce.",
         "required": [
           "start_s",
           "end_s",
@@ -70,11 +71,13 @@
         "properties": {
           "start_s": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Span start in seconds (float)."
           },
           "end_s": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Span end in seconds (float). MUST be >= start_s; a reversed span is rejected at ingestion (see the item description)."
           },
           "event": {
             "type": "string",
@@ -89,7 +92,9 @@
           },
           "text": {
             "type": "string",
-            "description": "The human-readable statement. This is what gets chunked and indexed, so retrieval quality is bounded by its quality."
+            "minLength": 1,
+            "pattern": "\\S",
+            "description": "The human-readable statement. This is what gets chunked and indexed, so retrieval quality is bounded by its quality. MUST be non-empty and not whitespace-only (minLength + the `\\S` pattern), so a blank statement can never enter the index as a non-searchable chunk."
           },
           "confidence": {
             "type": "number",

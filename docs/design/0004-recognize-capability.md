@@ -50,7 +50,7 @@ Recognition belongs in the same pattern.
 Per the Design-0001 per-capability provider-selector pattern (as for
 `stt.provider`):
 
-```
+```text
 recognize.provider = off | serve      # default: off
 recognize.base_url = http://127.0.0.1:<port>   # required for `serve`
 recognize.serve_command = ...         # optional: dir2mcp launches the backend
@@ -98,8 +98,15 @@ a follow-up), after transcript handling:
   STT rules, applied to a new rep_type.
 - **Chunks:** one chunk per annotation; chunk text is the statement
   (`text` field, with entity labels inline so plain text search finds
-  players by name); each chunk carries exactly one `time` span
-  (start/end ms). No new persisted span kind (§5.4).
+  players by name); each chunk carries exactly one `time` span. No new
+  persisted span kind (§5.4). The response's `start_s`/`end_s` (seconds,
+  floats) are converted to the integer-millisecond `time` span by rounding
+  **outward** — `start_ms = floor(start_s * 1000)`, `end_ms = ceil(end_s *
+  1000)` — so the persisted span never excludes a boundary the recognizer
+  included, and an instantaneous annotation (`end_s == start_s`) still yields
+  a non-empty `[start_ms, end_ms]` after rounding when the value is not an
+  exact millisecond. A reversed span (`end_s < start_s`) is rejected as a
+  malformed record before persistence (§5).
 - Backend failure handling mirrors STT: per-document error recording, no
   partial silent success.
 
