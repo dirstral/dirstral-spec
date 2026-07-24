@@ -53,14 +53,23 @@ Per the Design-0001 per-capability provider-selector pattern (as for
 ```
 recognize.provider = off | serve      # default: off
 recognize.base_url = http://127.0.0.1:<port>   # required for `serve`
+recognize.serve_command = ...         # optional: dir2mcp launches the backend
 ```
 
 - **`off`** (default): no recognition; zero change for existing corpora.
-- **`serve`**: a locally managed/served recognizer process (the docling-serve
-  pattern). The reference backend is `dirstral-annotator serve` (lives in
-  the dir2mcp repo under `annotator/`), which cascades play-by-play,
-  scorebug OCR, jersey OCR, and face recognition and fuses them into
-  confidence-scored statements.
+- **`serve`**: a locally served recognizer process. The reference backend is
+  `dirstral-annotator serve` (lives in the dir2mcp repo under `annotator/`),
+  which cascades play-by-play, scorebug OCR, jersey OCR, and face
+  recognition and fuses them into confidence-scored statements. Two
+  lifecycle modes:
+  - **managed** — `recognize.serve_command` set: the daemon launches the
+    command itself (own process group), waits for `GET /health` (bounded),
+    and terminates the tree on shutdown. `dir2mcp up` is the only process
+    the operator runs; a backend that exits early or never turns healthy
+    fails startup loudly.
+  - **connect-only** — no command: the daemon connects to an
+    operator-started backend, probing `/health` once at startup (warning
+    when unreachable; per-document ingest errors remain the hard signal).
 - **Future providers:** hosted recognition APIs (e.g. face-collection
   services, video-capable multimodal chat models) slot in as additional
   provider values without contract changes — the capability, not the
@@ -159,8 +168,5 @@ loop:
   specifying any concrete one is future work.
 - **Modality coverage** — v1 recognizes `video` only; standalone images and
   audio (diarization-style) are natural follow-ups.
-- **Process management** — whether dir2mcp probes/launches the served
-  backend (full docling parity) or only connects to an operator-started one
-  (v1 connects only).
 - The **eval harness** (ground-truth scoring against public play-by-play
   data) stays outside the core, shipped with the reference backend.
