@@ -63,15 +63,12 @@ input-validation, and provider codes in df-008 apply across all tools.
   `date_from` > `date_to` is `INVALID_FIELD`; a window matching nothing is an
   empty result, not an error.
 - `time_from_ms` / `time_to_ms` — optional (§9.8): restrict hits to an
-  **intra-document media time window** (offsets *within* a document's timeline,
-  §5.4 — orthogonal to the `date_*` document-date window). Non-negative integer
-  **millisecond** offsets, same units as a `time` span / `open_media_clip`. When
-  either is present, **only** hits with a `time` span are eligible (a corpus
-  without time-spanned representations returns none); a hit is kept iff its span
-  **overlaps** the window (inclusive). Absent ⇒ open on that side. A non-integer
-  `< 0` value or `time_from_ms` > `time_to_ms` is `INVALID_FIELD`; a window
-  matching nothing is an empty result, not an error. "First half of a video" =
-  combine `time_to_ms` with `path_prefix`/`file_glob` scope.
+  **intra-document media time window** — non-negative integer **millisecond**
+  offsets *within* a document's timeline (§5.4), orthogonal to the `date_*`
+  document-date window. When either is present only `time`-spanned hits are
+  eligible and are kept iff their span **overlaps** the window (inclusive).
+  Absent ⇒ open on that side. `time_from_ms` > `time_to_ms` is `INVALID_FIELD`;
+  a window matching nothing is an empty result, not an error. Full contract: §9.8.
 
 **Behavior.** Output carries `query`, `k`, `index_used`, `hits[]`, and
 `indexing_complete` (the latter three plus `query` are required).
