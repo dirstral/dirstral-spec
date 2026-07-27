@@ -20,7 +20,9 @@
       "speaker": { "type": "string", "description": "Optional (SPEC §8.6.8): restrict time-spanned transcript hits to this speaker id." },
       "languages": { "type": "array", "items": { "type": "string" }, "description": "Optional (SPEC §9.5): restrict hits to representations recorded in any of these BCP-47 languages (case-insensitive primary-subtag match). Absent/empty = no filtering; unknown-language representations never match a specific filter." },
       "date_from": { "type": "string", "description": "Optional (SPEC §9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude hits from documents dated before this (inclusive; a bare date = start of that day UTC). Absent = open lower bound." },
-      "date_to": { "type": "string", "description": "Optional (SPEC §9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude hits from documents dated after this (inclusive; a bare date = end of that day UTC). Absent = open upper bound." }
+      "date_to": { "type": "string", "description": "Optional (SPEC §9.6): RFC 3339 timestamp or bare YYYY-MM-DD date; exclude hits from documents dated after this (inclusive; a bare date = end of that day UTC). Absent = open upper bound." },
+      "time_from_ms": { "type": "integer", "minimum": 0, "description": "Optional (SPEC §9.8): intra-document media time-window lower bound, in milliseconds within a document's timeline (§5.4). When set, only time-spanned hits are eligible and are kept iff their span overlaps [time_from_ms, time_to_ms] (inclusive). Absent = open lower bound. time_from_ms > time_to_ms is INVALID_FIELD." },
+      "time_to_ms": { "type": "integer", "minimum": 0, "description": "Optional (SPEC §9.8): intra-document media time-window upper bound, in milliseconds within a document's timeline (§5.4). Absent = open upper bound." }
     },
     "required": ["query"]
   },

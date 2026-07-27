@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.42.0`  
+**Spec version:** `0.43.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2791,7 +2791,8 @@ and existing callers that never send them observe no change (dir2mcp #326).
   every document carries, independent of representation type. (A future
   content-derived "recorded date" MAY refine this per representation; until then
   `mtime` is the anchor.) Media **time** spans (§5.4) are *intra-document offsets*,
-  not calendar dates, and are NOT used here.
+  not calendar dates, and are NOT used here — the intra-document media
+  time-window filter is a separate, orthogonal control (§9.8).
 * **Semantics.** The range is **inclusive** on both provided bounds: a hit is kept
   iff its document date is `>= date_from` (when given) **and** `<= date_to` (when
   given). It composes with the other filters (`path_prefix` / `file_glob` /
@@ -2880,6 +2881,50 @@ count are surfaced as a **later additive** `dir2mcp_stats.indexing` field
 this change and does **not** alter any served schema now; it is reserved as a
 forward-additive field so an operator can see how much of the corpus is
 hierarchically indexed vs. flat.
+
+### 9.8 Media time-window filter (optional)
+
+`dir2mcp_search` and `dir2mcp_ask` MAY accept optional `time_from_ms` and
+`time_to_ms` arguments that restrict results to an **intra-document time
+window** — an offset range **within** a media document's own timeline (§5.4),
+orthogonal to the calendar **document-date** window of §9.6. The filter is
+**additive and off by default**: an absent bound is an open range on that side,
+and existing callers that never send them observe no change.
+
+* **Value.** Each bound is a non-negative integer **millisecond** offset from the
+  start of the document's media timeline — the same units and origin as a `time`
+  span's `start_ms`/`end_ms` (§5.4) and as `open_file`/`open_media_clip`. A value
+  that is not an integer `>= 0`, or a `time_from_ms` strictly greater than
+  `time_to_ms`, is an `INVALID_FIELD` error (§14).
+* **Eligibility — time-spanned hits only.** When either bound is present, only
+  hits carrying a `time` span (§5.4) are eligible; a hit with any other span kind
+  (`line`, `page`, `region`) or none does **not** match. This mirrors the
+  `speaker` filter (§8.6.8): a corpus **without** time-spanned representations
+  (transcripts, media, `recognition`) returns **no** time-filtered hits.
+* **Semantics — overlap, inclusive.** A time-spanned hit is kept iff its span
+  **overlaps** the requested window: `span.start_ms <= time_to_ms` (when
+  `time_to_ms` is given) **and** `span.end_ms >= time_from_ms` (when `time_from_ms`
+  is given). Overlap — not containment — so a segment straddling a bound still
+  surfaces. It composes with every other filter (`path_prefix` / `file_glob` /
+  `doc_types` / `languages` / `speaker` / `date_from` / `date_to`) by
+  **conjunction**.
+* **Intra-document scope.** The window is an **absolute offset**, not relative to
+  any document's duration, and is applied identically to every candidate
+  document. A window such as "the first half of `interview.mp4`" is therefore
+  expressed by **combining** `time_to_ms` with a document scope (`path_prefix` /
+  `file_glob`) and computing the midpoint from that document's known duration
+  (available via `dir2mcp_stats` / the media document's metadata). The filter
+  itself remains general-purpose and carries no notion of chapters, halves,
+  innings, or other domain-specific segments.
+* **Pipeline placement.** Applied as a **candidate-selection** filter alongside
+  `path_prefix` / `file_glob` / `doc_types` / `date_from` / `date_to` (§9.1),
+  before dedup (§9.2), reranking (§9.1.1), and truncation to `k` — so `k` counts
+  only in-window hits and a filtered query MAY return fewer than `k`. It only
+  removes non-matching candidates; it never reorders results or changes result
+  structure (§9.2) or citation format (§9.3).
+* **No match is not an error.** A window that excludes every hit returns an empty
+  result set, not an error — exactly as the language (§9.5) and date (§9.6)
+  filters.
 
 ---
 
