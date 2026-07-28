@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -62,6 +62,13 @@ input-validation, and provider codes in df-008 apply across all tools.
   day; both bounds inclusive). Absent ⇒ open on that side. A malformed value or
   `date_from` > `date_to` is `INVALID_FIELD`; a window matching nothing is an
   empty result, not an error.
+- `time_from_ms` / `time_to_ms` — optional (§9.8): restrict hits to an
+  **intra-document media time window** — non-negative integer **millisecond**
+  offsets *within* a document's timeline (§5.4), orthogonal to the `date_*`
+  document-date window. When either is present only `time`-spanned hits are
+  eligible and are kept iff their span **overlaps** the window (inclusive).
+  Absent ⇒ open on that side. `time_from_ms` > `time_to_ms` is `INVALID_FIELD`;
+  a window matching nothing is an empty result, not an error. Full contract: §9.8.
 
 **Behavior.** Output carries `query`, `k`, `index_used`, `hits[]`, and
 `indexing_complete` (the latter three plus `query` are required).
@@ -92,6 +99,10 @@ result `content[]` MUST include at least one `text` item summarizing results
 - `date_from` / `date_to` — optional (§9.6): restrict retrieved **contexts** to a
   document date window matched against `documents.mtime_unix`, same value forms
   and semantics as `dir2mcp_search`.
+- `time_from_ms` / `time_to_ms` — optional (§9.8): restrict retrieved
+  **contexts** to an intra-document media time window (millisecond offsets within
+  a document's timeline, §5.4), same value forms and semantics as
+  `dir2mcp_search`.
 
 **Behavior.** Output carries `question`, `answer`, `citations[]`, `hits[]`, and
 `indexing_complete` (`question`, `citations`, `hits`, `indexing_complete` are
@@ -379,6 +390,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 ## Changelog
 
+- **0.6.0** — added the optional `time_from_ms`/`time_to_ms` **intra-document media time-window** filter to `dir2mcp_search`/`dir2mcp_ask` (SPEC §9.8): non-negative integer millisecond offsets within a document's timeline (§5.4), orthogonal to the `date_*` document-date window (§9.6). When either bound is present only `time`-spanned hits are eligible (mirroring `speaker`); a hit is kept iff its span overlaps the window (inclusive); additive/off-by-default; `INVALID_FIELD` on a negative or inverted range; empty (not error) on no match. Schemas: `search.json`/`ask.json` (df-007).
 - **0.5.0** — `dir2mcp_stats.indexing` MAY carry an optional additive `watch_overflows` integer (fsnotify kernel event-buffer overflow count; absence = unknown/NA, not zero). Schema: `stats.json` (df-007). dir2mcp #591.
 - **0.4.0** — added the optional `date_from`/`date_to` document date-window filter to `dir2mcp_search`/`dir2mcp_ask` (SPEC §9.6, dir2mcp #326): RFC 3339 or bare-date bounds matched against `documents.mtime_unix`, inclusive, additive/off-by-default, `INVALID_FIELD` on malformed/inverted range. Also corrected the ask-audio inherited-field list (was missing `languages`).
 - **0.1.0** — Migrated the **behavioral** semantics of all ten MCP tools from
