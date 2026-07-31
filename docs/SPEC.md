@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.43.0`  
+**Spec version:** `0.44.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2699,6 +2699,59 @@ If enabled:
 If disabled or `mode=search_only`:
 
 * return hits only.
+
+#### 9.4.1 Grounding: citations describe what the model saw
+
+A returned citation asserts that the cited span was available to the answering
+model. Retrieval MAY surface up to `k` hits while the prompt carries fewer (a
+context-character budget, a per-prompt document cap, or both), so the retrieved
+set and the in-context set differ and MUST NOT be conflated:
+
+* **`citations` MUST contain only contexts actually placed in the prompt.** A hit
+  that was retrieved but dropped before the prompt was assembled MUST NOT appear
+  in `citations`. It still appears in `hits`, which remains the full retrieved
+  set. The separation between the two fields is precisely what lets a consumer
+  distinguish *found* from *used*; collapsing them makes every answer report more
+  grounding than it has.
+* **Inline citation tags MUST resolve to that same in-context set.** A
+  `[rel_path]`-style tag naming a document the model was never given is
+  ungrounded by construction. It MUST NOT survive into the returned answer text:
+  the server MUST strip or otherwise neutralize it, and MUST NOT rely on the
+  model to emit only valid tags.
+* **An attribution footer MUST NOT widen the claim.** A server that appends a
+  trailing `Sources:` line (or equivalent) MUST draw only from the in-context
+  citation set. Presence in the prompt is not evidence that a document supported
+  the answer, so such a footer SHOULD be restricted to documents the answer
+  actually references rather than listing every context supplied.
+
+#### 9.4.2 Context sufficiency
+
+The text supplied to the model for a hit MUST be selected so that it contains the
+region its citation points at. A fixed head truncation of the chunk does not
+satisfy this: when the matched passage sits past the truncation point, the model
+never sees the text its own citation names, yet the citation invites the consumer
+to open that span and verify it. Implementations SHOULD send a match-centered
+window (or the entire chunk) and MUST NOT emit a citation whose span covers only
+text that was truncated away before the prompt was built.
+
+#### 9.4.3 Insufficient evidence
+
+A server MUST support a **relevance floor**: the minimum score a hit must reach
+to count as evidence, configured by `retrieval.min_score` (§16) and applied to
+each hit's final fused score, after reranking and any fusion (§9.1.1).
+
+* When no hit clears the floor, the server MUST NOT generate an answer from the
+  remaining hits. It MUST return an explicit insufficient-evidence answer with an
+  **empty `citations` array**. This is a normal result and not an error (§14);
+  `hits` MAY still carry the below-floor candidates so the caller can inspect
+  what was rejected.
+* The floor **MUST default to enabled.** A floor that ships disabled makes a
+  single weak lexical match indistinguishable from a well-grounded answer,
+  because both return fluent prose beside a populated `citations` array, and the
+  consumer has no signal to tell them apart.
+* Scores are not comparable across retrieval backends or rerankers, so this
+  document does **not** fix a numeric default. A server MUST document the default
+  it ships and MAY allow an operator to lower or explicitly disable it.
 
 ### 9.5 Per-language retrieval filter (optional)
 
