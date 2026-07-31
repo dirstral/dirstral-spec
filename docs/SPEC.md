@@ -2723,6 +2723,13 @@ set and the in-context set differ and MUST NOT be conflated:
   citation set. Presence in the prompt is not evidence that a document supported
   the answer, so such a footer SHOULD be restricted to documents the answer
   actually references rather than listing every context supplied.
+* **A model-generated footer MUST be sanitized too.** The rule above binds a
+  footer the *server* appends, but the model can emit its own `Sources:` block
+  naming documents it was never given, and a prose footer is not a `[rel_path]`
+  tag so the stripping rule above does not reach it. The answer post-processor
+  MUST therefore remove or rebuild any `Sources:` footer present in the model
+  output so that the emitted footer is derived from the in-context citation set,
+  never from model-authored text passed through unchecked.
 
 #### 9.4.2 Context sufficiency
 
@@ -2737,21 +2744,49 @@ text that was truncated away before the prompt was built.
 #### 9.4.3 Insufficient evidence
 
 A server MUST support a **relevance floor**: the minimum score a hit must reach
-to count as evidence, configured by `retrieval.min_score` (§16) and applied to
-each hit's final fused score, after reranking and any fusion (§9.1.1).
+to count as evidence, configured by `retrieval.min_score` (§16.2) and applied to
+each hit's final score, after reranking and any fusion (§9.1.1).
 
-* When no hit clears the floor, the server MUST NOT generate an answer from the
+**Eligible evidence set.** The floor selects an eligible set *before* the prompt
+is assembled, not merely as a gate on whether to answer at all:
+
+```
+eligible = [ h for h in final_hits if h.score >= retrieval.min_score ]
+if eligible is empty:  return insufficient-evidence answer, citations = []
+prompt_contexts = select_contexts(eligible)     # never from below-floor hits
+```
+
+* Prompt contexts, and therefore `citations` (§9.4.1), MUST be drawn only from
+  `eligible`. A below-floor hit MUST NOT reach the prompt merely because some
+  *other* hit cleared the floor: it was judged too weak to be evidence, and
+  citing it would reintroduce exactly the overstated grounding §9.4.1 forbids.
+* Below-floor candidates MAY still be returned in `hits`, which reports
+  retrieval rather than grounding, so a caller can inspect what was rejected.
+* When `eligible` is empty the server MUST NOT generate an answer from the
   remaining hits. It MUST return an explicit insufficient-evidence answer with an
-  **empty `citations` array**. This is a normal result and not an error (§14);
-  `hits` MAY still carry the below-floor candidates so the caller can inspect
-  what was rejected.
-* The floor **MUST default to enabled.** A floor that ships disabled makes a
-  single weak lexical match indistinguishable from a well-grounded answer,
-  because both return fluent prose beside a populated `citations` array, and the
-  consumer has no signal to tell them apart.
+  **empty `citations` array**. This is a normal result and not an error (§14).
+
+**Comparable scores.** §9.1.1 permits a reranker to overwrite `score` and permits
+un-reranked fused hits to be appended when the candidate pool is smaller than
+`k`, so a single result list MAY carry scores drawn from different scales. A
+server MUST apply the floor only across scores on **one comparable scale**: it
+MUST either normalize to a common scale before applying the floor, or maintain a
+separate threshold per scoring mode. Applying one threshold across mixed scales
+is non-conformant, because it silently admits weak hits on one scale while
+rejecting strong hits on another, and which happens depends on the configured
+reranker and pool size rather than on the corpus.
+
+**Configuration.** `retrieval.min_score` (§16.2) is a number.
+
+* The floor **MUST default to enabled**: omitting the key keeps it enabled at the
+  server's documented default. A floor that shipped disabled would make a single
+  weak lexical match indistinguishable from a well-grounded answer, because both
+  return fluent prose beside a populated `citations` array.
 * Scores are not comparable across retrieval backends or rerankers, so this
-  document does **not** fix a numeric default. A server MUST document the default
-  it ships and MAY allow an operator to lower or explicitly disable it.
+  document does **not** fix a numeric default. Each server MUST document the
+  default value it ships.
+* `0` is the explicit **disable** representation: it admits every hit and
+  restores pre-floor behaviour. A server MAY refuse to disable the floor.
 
 ### 9.5 Per-language retrieval filter (optional)
 
@@ -4268,6 +4303,15 @@ rerank:
     model: rerank-v3.5
 
 retrieval:
+  # Relevance floor (§9.4.3): the minimum final score a hit must reach to count
+  # as evidence. Hits below it are excluded from the prompt and from citations
+  # (they may still appear in `hits`); when NOTHING clears it, ask returns an
+  # insufficient-evidence answer with empty citations rather than generating.
+  # Ships ENABLED: omitting the key keeps it enabled at this server's documented
+  # default. `0` disables it explicitly. Apply only across one comparable score
+  # scale (§9.4.3).
+  min_score: 0.35                          # number; server-documented default, 0 = disabled
+
   # Contextual retrieval (§8.1.8): prepend an LLM-generated, document-aware
   # context to each chunk's EMBED input (cited text stays raw — #403).
   # Opt-in, off by default, domain-general. Reindex-bound: enabling it, or

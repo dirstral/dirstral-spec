@@ -106,12 +106,12 @@ result `content[]` MUST include at least one `text` item summarizing results
 
 **Behavior.** Output carries `question`, `answer`, `citations[]`, `hits[]`, and
 `indexing_complete` (`question`, `citations`, `hits`, `indexing_complete` are
-required). `citations[]` carries only the contexts actually placed in the prompt,
-never the full retrieved set (SPEC §9.4.1); `hits[]` remains the full retrieved
-set, so `citations[]` MAY be shorter than `hits[]` for the same call. When no hit
-clears the relevance floor the tool returns an insufficient-evidence `answer`
-with an **empty** `citations[]` and is **not** an error (SPEC §9.4.3). A
-`Citation` is lean — `chunk_id` + `rel_path` + `span` (df-006); the
+required). `citations[]` is the in-context set rather than the full retrieved
+set, so it MAY be shorter than `hits[]`; with `mode=answer`, a query where no hit
+clears the relevance floor returns an insufficient-evidence answer with an empty
+`citations[]` and is not an error. `mode=search_only` builds no prompt, so it
+returns retrieval results with no answer and an empty `citations[]`. Full
+normative contract: SPEC §9.4.1–§9.4.3. A `Citation` is lean — `chunk_id` + `rel_path` + `span` (df-006); the
 cited text is resolved via `dir2mcp_open_file` or the matching `hits[]` entry.
 The result `content[]` MUST include a `text` item containing the final answer
 (when `mode=answer` **and** answer generation is enabled) with inline citations.
@@ -395,7 +395,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 ## Changelog
 
-- **0.7.0**: tightened the `dir2mcp_ask` grounding contract (SPEC §9.4.1–§9.4.3, dir2mcp #403): `citations[]` is now normatively the **in-context** set rather than the retrieved set (so it MAY be shorter than `hits[]`), inline citation tags naming a document that never reached the prompt MUST be stripped, an appended `Sources:` footer MUST NOT range wider than that set, model-facing context MUST contain the region its citation names, and a relevance floor (`retrieval.min_score`) MUST ship **enabled**, returning an insufficient-evidence answer with an empty `citations[]` (a normal result, not an error) when nothing clears it.
+- **0.7.0**: tightened the `dir2mcp_ask` grounding contract (dir2mcp #403). `citations[]` is now the **in-context** set rather than the retrieved set, an evidence floor gates what may be cited, and `mode=search_only` is stated to return an empty `citations[]`. Normative rules live in SPEC §9.4.1–§9.4.3; this document only records the resulting `dir2mcp_ask` output shape.
 - **0.6.0** — added the optional `time_from_ms`/`time_to_ms` **intra-document media time-window** filter to `dir2mcp_search`/`dir2mcp_ask` (SPEC §9.8): non-negative integer millisecond offsets within a document's timeline (§5.4), orthogonal to the `date_*` document-date window (§9.6). When either bound is present only `time`-spanned hits are eligible (mirroring `speaker`); a hit is kept iff its span overlaps the window (inclusive); additive/off-by-default; `INVALID_FIELD` on a negative or inverted range; empty (not error) on no match. Schemas: `search.json`/`ask.json` (df-007).
 - **0.5.0** — `dir2mcp_stats.indexing` MAY carry an optional additive `watch_overflows` integer (fsnotify kernel event-buffer overflow count; absence = unknown/NA, not zero). Schema: `stats.json` (df-007). dir2mcp #591.
 - **0.4.0** — added the optional `date_from`/`date_to` document date-window filter to `dir2mcp_search`/`dir2mcp_ask` (SPEC §9.6, dir2mcp #326): RFC 3339 or bare-date bounds matched against `documents.mtime_unix`, inclusive, additive/off-by-default, `INVALID_FIELD` on malformed/inverted range. Also corrected the ask-audio inherited-field list (was missing `languages`).
