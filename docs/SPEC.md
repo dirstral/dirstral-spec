@@ -2747,12 +2747,38 @@ A server MUST support a **relevance floor**: the minimum score a hit must reach
 to count as evidence, configured by `retrieval.min_score` (§16.2) and applied to
 each hit's final score, after reranking and any fusion (§9.1.1).
 
+**A relative floor cannot express insufficiency.** §9.1.1 leaves scores on
+incommensurable scales (cosine is roughly `0..1`; an RRF fusion score has a
+theoretical maximum near `2/(rrfK+1)`; a reranker's scale is provider-specific),
+and the same corpus and configuration can emit different scales on consecutive
+queries when a hybrid path falls back to pure-vector hits. A natural response is
+to normalize each result set to `[0,1]` before comparing, which does make the
+floor scale-free.
+
+But a floor normalized **over the result set** is a *ranking* control, not an
+*evidence* control: the top-scoring hit maps to the maximum by construction, so
+some hit always clears any floor whenever the set is non-empty, and a degenerate
+all-equal set survives in full. Such a floor can prune weaker hits relative to
+the best one; it can never report that the best one is itself too weak.
+
+A server therefore MUST distinguish the two:
+
+* The **pruning floor** MAY be relative (normalized per result set). It selects
+  the eligible set below.
+* The **evidence threshold** that triggers abstention MUST be **absolute**:
+  evaluated against a signal whose meaning does not depend on the other hits in
+  the same response. It MAY be a raw-score threshold maintained per retrieval
+  mode, a calibrated probability, or any signal a server can document, but it
+  MUST NOT be a value normalized over the result set, because such a value
+  cannot take a low reading for a uniformly weak result set.
+
 **Eligible evidence set.** The floor selects an eligible set *before* the prompt
 is assembled, not merely as a gate on whether to answer at all:
 
 ```
-eligible = [ h for h in final_hits if h.score >= retrieval.min_score ]
-if eligible is empty:  return insufficient-evidence answer, citations = []
+eligible = [ h for h in final_hits if passes_pruning_floor(h) ]
+if eligible is empty or not clears_evidence_threshold(eligible):
+    return insufficient-evidence answer, citations = []
 prompt_contexts = select_contexts(eligible)     # never from below-floor hits
 ```
 
@@ -2762,9 +2788,14 @@ prompt_contexts = select_contexts(eligible)     # never from below-floor hits
   citing it would reintroduce exactly the overstated grounding §9.4.1 forbids.
 * Below-floor candidates MAY still be returned in `hits`, which reports
   retrieval rather than grounding, so a caller can inspect what was rejected.
-* When `eligible` is empty the server MUST NOT generate an answer from the
+* When `eligible` is empty, **or** when the eligible set does not clear the
+  absolute evidence threshold, the server MUST NOT generate an answer from the
   remaining hits. It MUST return an explicit insufficient-evidence answer with an
   **empty `citations` array**. This is a normal result and not an error (§14).
+* A caller MUST be able to tell abstention apart from an empty corpus result.
+  Both return no citations, so a server MUST distinguish them, either in the
+  answer text or in a structured field: "I found nothing" and "I found material
+  and judged it too weak" are different answers to the operator.
 
 **Comparable scores.** §9.1.1 permits a reranker to overwrite `score` and permits
 un-reranked fused hits to be appended when the candidate pool is smaller than
