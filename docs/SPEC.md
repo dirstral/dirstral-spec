@@ -2698,7 +2698,11 @@ If enabled:
 
 If disabled or `mode=search_only`:
 
-* return hits only.
+* return hits only, in the sense that no answer is generated. The response
+  **shape** is unchanged: `ask.json` marks `answer` and `citations` **required**,
+  so both are present and empty (`answer: ""`, `citations: []`) rather than
+  absent. §9.4.3's insufficient-evidence rules apply to `mode=answer` only,
+  because `search_only` never assembles a prompt to judge.
 
 #### 9.4.1 Grounding: citations describe what the model saw
 
@@ -2775,7 +2779,7 @@ A server therefore MUST distinguish the two:
 **Eligible evidence set.** The floor selects an eligible set *before* the prompt
 is assembled, not merely as a gate on whether to answer at all:
 
-```
+```text
 eligible = [ h for h in final_hits if passes_pruning_floor(h) ]
 if eligible is empty or not clears_evidence_threshold(eligible):
     return insufficient-evidence answer, citations = []
@@ -2788,9 +2792,9 @@ prompt_contexts = select_contexts(eligible)     # never from below-floor hits
   citing it would reintroduce exactly the overstated grounding §9.4.1 forbids.
 * Below-floor candidates MAY still be returned in `hits`, which reports
   retrieval rather than grounding, so a caller can inspect what was rejected.
-* When `eligible` is empty, **or** when the eligible set does not clear the
-  absolute evidence threshold, the server MUST NOT generate an answer from the
-  remaining hits. It MUST return an explicit insufficient-evidence answer with an
+* Under `mode=answer`, when `eligible` is empty, **or** when the eligible set
+  does not clear the absolute evidence threshold, the server MUST NOT generate an
+  answer from the remaining hits. It MUST return an explicit insufficient-evidence answer with an
   **empty `citations` array**. This is a normal result and not an error (§14).
 * A caller MUST be able to tell abstention apart from an empty corpus result.
   Both return no citations, so a server MUST distinguish them, either in the
@@ -2807,7 +2811,28 @@ is non-conformant, because it silently admits weak hits on one scale while
 rejecting strong hits on another, and which happens depends on the configured
 reranker and pool size rather than on the corpus.
 
-**Configuration.** `retrieval.min_score` (§16.2) is a number.
+**Eligibility is not sufficiency.** Clearing the pruning floor makes a hit
+*eligible* to be cited; it does not establish that the eligible set is strong
+enough to answer from. The two tests are independent and both MUST be applied:
+a set can be non-empty and still fail the evidence threshold, which is exactly
+the case a relative floor cannot detect.
+
+**The absolute threshold MUST be specified, not merely chosen.** A threshold
+nobody can reproduce is not a contract, so a server MUST document, for each
+retrieval mode it supports:
+
+* the **signal** it evaluates and the **scale** that signal is on;
+* the **threshold value** it ships, and whether an operator may change it;
+* how the signal is **aggregated** across the eligible set (for example the
+  top-ranked hit's signal, or a quantile), since "the set clears the threshold"
+  is otherwise ambiguous for a set larger than one.
+
+Because §9.1.1 allows scores from different scales in one response, a server that
+supports several retrieval modes MUST keep a threshold per mode rather than one
+global number, or normalize to a documented absolute scale shared by all modes.
+
+**Configuration.** `retrieval.min_score` (§16.2) configures the **pruning floor**
+only. It is a number.
 
 * The floor **MUST default to enabled**: omitting the key keeps it enabled at the
   server's documented default. A floor that shipped disabled would make a single

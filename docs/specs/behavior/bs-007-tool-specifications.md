@@ -105,12 +105,13 @@ result `content[]` MUST include at least one `text` item summarizing results
   `dir2mcp_search`.
 
 **Behavior.** Output carries `question`, `answer`, `citations[]`, `hits[]`, and
-`indexing_complete` (`question`, `citations`, `hits`, `indexing_complete` are
-required). `citations[]` is the in-context set rather than the full retrieved
+`indexing_complete` (all five are **required** by `ask.json`, `answer` included,
+so it is present and empty rather than absent when nothing is generated). `citations[]` is the in-context set rather than the full retrieved
 set, so it MAY be shorter than `hits[]`; with `mode=answer`, a query where no hit
 clears the relevance floor returns an insufficient-evidence answer with an empty
 `citations[]` and is not an error. `mode=search_only` builds no prompt, so it
-returns retrieval results with no answer and an empty `citations[]`. Full
+returns retrieval results with `answer: ""` and `citations: []`, and the
+insufficient-evidence rules do not apply to it. Full
 normative contract: SPEC §9.4.1–§9.4.3. A `Citation` is lean — `chunk_id` + `rel_path` + `span` (df-006); the
 cited text is resolved via `dir2mcp_open_file` or the matching `hits[]` entry.
 The result `content[]` MUST include a `text` item containing the final answer
