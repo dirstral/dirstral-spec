@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.43.0`  
+**Spec version:** `0.44.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2698,7 +2698,151 @@ If enabled:
 
 If disabled or `mode=search_only`:
 
-* return hits only.
+* return hits only, in the sense that no answer is generated. The response
+  **shape** is unchanged: `ask.json` marks `answer` and `citations` **required**,
+  so both are present and empty (`answer: ""`, `citations: []`) rather than
+  absent. §9.4.3's insufficient-evidence rules apply to `mode=answer` only,
+  because `search_only` never assembles a prompt to judge.
+
+#### 9.4.1 Grounding: citations describe what the model saw
+
+A returned citation asserts that the cited span was available to the answering
+model. Retrieval MAY surface up to `k` hits while the prompt carries fewer (a
+context-character budget, a per-prompt document cap, or both), so the retrieved
+set and the in-context set differ and MUST NOT be conflated:
+
+* **`citations` MUST contain only contexts actually placed in the prompt.** A hit
+  that was retrieved but dropped before the prompt was assembled MUST NOT appear
+  in `citations`. It still appears in `hits`, which remains the full retrieved
+  set. The separation between the two fields is precisely what lets a consumer
+  distinguish *found* from *used*; collapsing them makes every answer report more
+  grounding than it has.
+* **Inline citation tags MUST resolve to that same in-context set.** A
+  `[rel_path]`-style tag naming a document the model was never given is
+  ungrounded by construction. It MUST NOT survive into the returned answer text:
+  the server MUST strip or otherwise neutralize it, and MUST NOT rely on the
+  model to emit only valid tags.
+* **An attribution footer MUST NOT widen the claim.** A server that appends a
+  trailing `Sources:` line (or equivalent) MUST draw only from the in-context
+  citation set. Presence in the prompt is not evidence that a document supported
+  the answer, so such a footer SHOULD be restricted to documents the answer
+  actually references rather than listing every context supplied.
+* **A model-generated footer MUST be sanitized too.** The rule above binds a
+  footer the *server* appends, but the model can emit its own `Sources:` block
+  naming documents it was never given, and a prose footer is not a `[rel_path]`
+  tag so the stripping rule above does not reach it. The answer post-processor
+  MUST therefore remove or rebuild any `Sources:` footer present in the model
+  output so that the emitted footer is derived from the in-context citation set,
+  never from model-authored text passed through unchecked.
+
+#### 9.4.2 Context sufficiency
+
+The text supplied to the model for a hit MUST be selected so that it contains the
+region its citation points at. A fixed head truncation of the chunk does not
+satisfy this: when the matched passage sits past the truncation point, the model
+never sees the text its own citation names, yet the citation invites the consumer
+to open that span and verify it. Implementations SHOULD send a match-centered
+window (or the entire chunk) and MUST NOT emit a citation whose span covers only
+text that was truncated away before the prompt was built.
+
+#### 9.4.3 Insufficient evidence
+
+A server MUST support a **relevance floor**: the minimum score a hit must reach
+to count as evidence, configured by `retrieval.min_score` (§16.2) and applied to
+each hit's final score, after reranking and any fusion (§9.1.1).
+
+**A relative floor cannot express insufficiency.** §9.1.1 leaves scores on
+incommensurable scales (cosine is roughly `0..1`; an RRF fusion score has a
+theoretical maximum near `2/(rrfK+1)`; a reranker's scale is provider-specific),
+and the same corpus and configuration can emit different scales on consecutive
+queries when a hybrid path falls back to pure-vector hits. A natural response is
+to normalize each result set to `[0,1]` before comparing, which does make the
+floor scale-free.
+
+But a floor normalized **over the result set** is a *ranking* control, not an
+*evidence* control: the top-scoring hit maps to the maximum by construction, so
+some hit always clears any floor whenever the set is non-empty, and a degenerate
+all-equal set survives in full. Such a floor can prune weaker hits relative to
+the best one; it can never report that the best one is itself too weak.
+
+A server therefore MUST distinguish the two:
+
+* The **pruning floor** MAY be relative (normalized per result set). It selects
+  the eligible set below.
+* The **evidence threshold** that triggers abstention MUST be **absolute**:
+  evaluated against a signal whose meaning does not depend on the other hits in
+  the same response. It MAY be a raw-score threshold maintained per retrieval
+  mode, a calibrated probability, or any signal a server can document, but it
+  MUST NOT be a value normalized over the result set, because such a value
+  cannot take a low reading for a uniformly weak result set.
+
+**Eligible evidence set.** The floor selects an eligible set *before* the prompt
+is assembled, not merely as a gate on whether to answer at all:
+
+```text
+eligible = [ h for h in final_hits if passes_pruning_floor(h) ]
+if eligible is empty or not clears_evidence_threshold(eligible):
+    return insufficient-evidence answer, citations = []
+prompt_contexts = select_contexts(eligible)     # never from below-floor hits
+```
+
+* Prompt contexts, and therefore `citations` (§9.4.1), MUST be drawn only from
+  `eligible`. A below-floor hit MUST NOT reach the prompt merely because some
+  *other* hit cleared the floor: it was judged too weak to be evidence, and
+  citing it would reintroduce exactly the overstated grounding §9.4.1 forbids.
+* Below-floor candidates MAY still be returned in `hits`, which reports
+  retrieval rather than grounding, so a caller can inspect what was rejected.
+* Under `mode=answer`, when `eligible` is empty, **or** when the eligible set
+  does not clear the absolute evidence threshold, the server MUST NOT generate an
+  answer from the remaining hits. It MUST return an explicit insufficient-evidence answer with an
+  **empty `citations` array**. This is a normal result and not an error (§14).
+* A caller MUST be able to tell abstention apart from an empty corpus result.
+  Both return no citations, so a server MUST distinguish them, either in the
+  answer text or in a structured field: "I found nothing" and "I found material
+  and judged it too weak" are different answers to the operator.
+
+**Comparable scores.** §9.1.1 permits a reranker to overwrite `score` and permits
+un-reranked fused hits to be appended when the candidate pool is smaller than
+`k`, so a single result list MAY carry scores drawn from different scales. A
+server MUST apply the floor only across scores on **one comparable scale**: it
+MUST either normalize to a common scale before applying the floor, or maintain a
+separate threshold per scoring mode. Applying one threshold across mixed scales
+is non-conformant, because it silently admits weak hits on one scale while
+rejecting strong hits on another, and which happens depends on the configured
+reranker and pool size rather than on the corpus.
+
+**Eligibility is not sufficiency.** Clearing the pruning floor makes a hit
+*eligible* to be cited; it does not establish that the eligible set is strong
+enough to answer from. The two tests are independent and both MUST be applied:
+a set can be non-empty and still fail the evidence threshold, which is exactly
+the case a relative floor cannot detect.
+
+**The absolute threshold MUST be specified, not merely chosen.** A threshold
+nobody can reproduce is not a contract, so a server MUST document, for each
+retrieval mode it supports:
+
+* the **signal** it evaluates and the **scale** that signal is on;
+* the **threshold value** it ships, and whether an operator may change it;
+* how the signal is **aggregated** across the eligible set (for example the
+  top-ranked hit's signal, or a quantile), since "the set clears the threshold"
+  is otherwise ambiguous for a set larger than one.
+
+Because §9.1.1 allows scores from different scales in one response, a server that
+supports several retrieval modes MUST keep a threshold per mode rather than one
+global number, or normalize to a documented absolute scale shared by all modes.
+
+**Configuration.** `retrieval.min_score` (§16.2) configures the **pruning floor**
+only. It is a number.
+
+* The floor **MUST default to enabled**: omitting the key keeps it enabled at the
+  server's documented default. A floor that shipped disabled would make a single
+  weak lexical match indistinguishable from a well-grounded answer, because both
+  return fluent prose beside a populated `citations` array.
+* Scores are not comparable across retrieval backends or rerankers, so this
+  document does **not** fix a numeric default. Each server MUST document the
+  default value it ships.
+* `0` is the explicit **disable** representation: it admits every hit and
+  restores pre-floor behaviour. A server MAY refuse to disable the floor.
 
 ### 9.5 Per-language retrieval filter (optional)
 
@@ -4215,6 +4359,15 @@ rerank:
     model: rerank-v3.5
 
 retrieval:
+  # Relevance floor (§9.4.3): the minimum final score a hit must reach to count
+  # as evidence. Hits below it are excluded from the prompt and from citations
+  # (they may still appear in `hits`); when NOTHING clears it, ask returns an
+  # insufficient-evidence answer with empty citations rather than generating.
+  # Ships ENABLED: omitting the key keeps it enabled at this server's documented
+  # default. `0` disables it explicitly. Apply only across one comparable score
+  # scale (§9.4.3).
+  min_score: 0.35                          # number; server-documented default, 0 = disabled
+
   # Contextual retrieval (§8.1.8): prepend an LLM-generated, document-aware
   # context to each chunk's EMBED input (cited text stays raw — #403).
   # Opt-in, off by default, domain-general. Reindex-bound: enabling it, or
