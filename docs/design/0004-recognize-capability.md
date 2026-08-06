@@ -146,10 +146,62 @@ entity-aware features; v1 ingestion indexes the `text` statements.
 
 ## 6. Retrieval
 
-No tool contract changes. Annotation chunks are ordinary text hits:
-BM25 + vector searchable, cited with the file + `time` span, quotable by
-`ask`. "Find all pitches by player X" is a plain query the moment the
-corpus is indexed.
+Annotation chunks are ordinary text hits: BM25 + vector searchable, cited
+with the file + `time` span, quotable by `ask`. "Find all pitches by player
+X" is a plain query the moment the corpus is indexed.
+
+That holds for the **actor** of a statement, whose canonical label is
+distinctive and appears in the annotations that are actually about them. It
+does **not** hold for an entity that (a) appears in most or all annotations
+and (b) participates in more than one **role**. §6.1 records the measurement;
+§8 promotes the entity filter that follows from it.
+
+### 6.1 Measured limit of text-only entity matching (pilot, 2026-08)
+
+Design 0004 deferred entity-aware filters "until text matching over canonical
+labels proves insufficient" (§8). This section records the run that met that
+condition, so the promotion in §7 rests on evidence rather than preference.
+
+**Corpus.** One baseball broadcast, 346 recognition annotations produced by
+the reference backend, embedded with `mistral-embed`, hybrid retrieval on.
+Each annotation names two participants in fixed roles: the pitcher who threw
+the pitch and the batter who faced it.
+
+**Task.** Six team-scoped queries ("when did the Giants score", "Nationals
+home run", ...). A hit is correct iff the team asked about is the team of the
+**batter** the annotation names, judged against the roster.
+
+**Variants.** The same annotations, re-embedded, with the team label written
+into the chunk text three ways:
+
+| variant | annotation text | precision |
+|---|---|---|
+| labels omitted | `Pitch: Robbie Ray to Dylan Crews` | 58.3% |
+| team appended to each name | `Pitch: Robbie Ray (San Francisco Giants) to Dylan Crews (Washington Nationals)` | 65.2% |
+| team + role appended | `Pitch: Robbie Ray (pitching for San Francisco Giants) to Dylan Crews (batting for Washington Nationals)` | 47.8% |
+
+**Result.** No variant is usable, and the ranking is not the interesting part.
+Under the best-scoring variant the query "Giants home run" returned **zero**
+correct hits where the label-free text returned three; its top results were a
+Giants **pitcher** throwing balls and fouls. Adding the label moved the
+query's mass onto the team token, which every annotation carries in **both**
+roles, and the words that identified the event ("home run") stopped deciding
+the ranking. Marking the role in prose made it worse, not better.
+
+The failure is structural, not a matter of phrasing. A label that appears on
+every candidate cannot discriminate between candidates, and a label carried in
+two roles cannot answer a question about one role. Both properties are normal
+for the entities a recognition backend reports: teams, programmes, channels,
+recurring participants. Only per-actor labels of high specificity, such as a
+player's name, survive text matching, which is why the §6 claim held for the
+motivating example and hides the general case.
+
+**Implication for implementers.** Writing entity labels into the annotation
+text remains correct and useful, and this section does not retract it. It is
+not, on its own, a substitute for selecting on the entity. The wire contract
+already carries `annotations[].entities` and the entity dictionary that gives
+each id a label; a conforming implementation that discards those ids has no
+way to express the query at all.
 
 ## 7. Proposed spec deltas (at promotion)
 
@@ -165,12 +217,46 @@ loop:
   (default `off`).
 - Tool schemas (`Hit`/`Citation`/`Span` in `spec/tools/schemas/common.json`)
   — **unchanged**.
+- **Annotation entities and `event` are persisted.** The ids in
+  `annotations[].entities`, the `entities` dictionary that gives each id its
+  label and aliases, and the annotation's `event`, MUST survive ingestion and
+  be recoverable per annotation. Persisting the annotation text alone is not
+  conforming: it makes §6.1's filter unimplementable and silently discards
+  data the backend was required to compute. `event` is named here rather than
+  left implicit because it is what makes the filter role-exact (§8), so
+  keeping the entity ids without it recovers only half the query. (In the
+  reference implementation the natural home is the annotation span's
+  `extra_json`, alongside `words` and `speaker`.)
+- **New optional retrieval filter** (next free §9 subsection, alongside the
+  language §9.5, date §9.6 and media time-window §9.8 filters):
+  `dir2mcp_search` / `dir2mcp_ask` MAY accept an optional set of entity ids
+  that restricts results to annotations referencing them. Additive and off by
+  default; conjunctive with every other filter; an empty result is not an
+  error. This one **does** touch the tool schemas, unlike the row above.
 
 ## 8. Out of scope / open questions
 
-- **Entity-aware query filters** ("player X" as a structured filter rather
+- ~~**Entity-aware query filters** ("player X" as a structured filter rather
   than a text match) — deferred until text matching over canonical labels
-  proves insufficient; rhymes with Design 0002.
+  proves insufficient; rhymes with Design 0002.~~ **Resolved (2026-08):** the
+  deferral condition was met. §6.1 records the measurement; §7 carries the
+  resulting deltas. The filter selects on the entity ids the wire contract
+  already defines, so no new vocabulary is introduced here. Whether an entity
+  additionally carries its **role** in an annotation (this id was the pitcher,
+  that one the batter) is the one genuinely open question the measurement
+  raises: without a role, "Giants batting" and "Giants pitching" remain
+  indistinguishable to the filter exactly as they were to text matching.
+
+  A backend can already express the distinction without new vocabulary, by
+  emitting **one annotation per role** and distinguishing them with `event`
+  (the reference backend does this: a pitch is reported once as `pitch` keyed
+  on the pitcher and once as `at_bat` keyed on the batter). An entity filter
+  conjoined with `event` is then role-exact. This is worth stating plainly
+  because the same duplication has a known cost on the retrieval side, where
+  two annotations covering one moment are counted twice by generated answers
+  (dir2mcp#784). Any consolidation of those annotations MUST preserve both
+  role-attributed entity references, or it will fix the double-count by
+  destroying the only signal that makes the filter role-exact.
 - **Serving media/clips for editorial** — same open question as Design 0003
   §7.2/§10; unchanged by this design.
 - **Hosted recognition providers** — the binding pattern accommodates them;
