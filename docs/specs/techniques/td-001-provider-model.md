@@ -194,10 +194,16 @@ mix vector spaces" rule above. Including the endpoint closes that gap.
 **canonical, normalized** form so that trivially-different-but-equivalent URLs do
 not fragment the identity and force needless re-embeds. The recorded value is
 computed as follows:
-1. **Not-meaningful → empty.** For a `kind` whose embed endpoint is a single
-   canonical provider surface that does not select an alternate model space
-   (native `gemini`, `cohere`), the normalized `base_url` is the **empty string**
-   `""` — `base_url` does not participate in the identity for that provider.
+1. **Hosted vendor surface → empty (native kinds).** For a `kind` whose embed
+   requests go to a single hosted vendor surface (native `gemini`, `cohere`), an
+   effective `base_url` that is unset or equal to **that vendor's hosted
+   endpoint** normalizes to the **empty string** `""`. The match is per-**kind**
+   (not per-profile-name, unlike rule 2), and every spelling of that surface an
+   implementation accepts (e.g. Gemini's native embed base and the
+   OpenAI-compatible base it derives from) normalizes alike. A **custom**
+   `base_url` on such a profile does **not** normalize away: implementations
+   honor it and send the embedding request there, so two custom endpoints can
+   serve different vector spaces and MUST NOT compare identity-equal.
 2. **Canonical/default → empty.** If the effective `base_url` is unset, or equals
    the built-in profile's shipped canonical `base_url` for that provider (e.g.
    `kind: openai` at `https://api.openai.com/v1`, the default `mistral` profile at
@@ -220,7 +226,22 @@ provider whose normalized `base_url` is also `""` (all built-in/hosted-default
 deployments, per rules 1–2). Only a corpus whose embed endpoint is a
 **non-canonical / custom** `base_url` sees a one-time `CONFIG_INVALID`/reindex on
 first reload after this change — the correct, bounded safety action, since those
-are exactly the corpora previously at risk of silent cross-endpoint mixing.
+are exactly the corpora previously at risk of silent cross-endpoint mixing. The
+same bounded action applies to the native-kind correction in rule 1: hosted
+`gemini`/`cohere` corpora are unaffected, a custom native endpoint reindexes once,
+and the implementation MUST surface that as the normal identity-mismatch error
+rather than a silent re-embed.
+
+**The model components are the EFFECTIVE models (normative).** `text_model` /
+`code_model` MUST be the concrete model ids sent on the wire, not the raw
+configuration fields — a profile may leave a model unset and let the adapter
+substitute its default, and recording the unset field would name no model at all,
+leaving the per-axis model fence inert for exactly those profiles. An
+implementation MUST treat an **empty recorded** model component as compatible
+with whatever concrete model the current identity names for that axis (its
+vectors came from the adapter default of the day), provided every other component
+matches. That grace is legacy-only and applies to the recorded side only: a
+recorded **concrete** model never matches a different one.
 
 #### 8.1.5 Asymmetric embeddings (input role)
 
