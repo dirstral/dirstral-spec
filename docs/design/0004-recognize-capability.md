@@ -274,7 +274,10 @@ loop:
   not otherwise constrained. (In the reference implementation the natural home
   is the annotation span's `extra_json`, alongside `words` and `speaker`.)
 - **New optional retrieval filter** (next free §9 subsection, alongside the
-  language §9.5, date §9.6 and media time-window §9.8 filters). This one
+  language §9.5, date §9.6 and media time-window §9.8 filters; the same
+  material is being restructured into
+  [bs-003](../specs/behavior/bs-003-retrieval-and-answer.md), which is where
+  this belongs once that document is Stable and authoritative). This one
   **does** touch the tool schemas, unlike the row above. Contract:
 
   * **Request fields.** `dir2mcp_search` / `dir2mcp_ask` MAY accept
