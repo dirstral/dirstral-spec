@@ -242,18 +242,21 @@ dictionary that gives each id a label; an implementation that discards those
 ids keeps text matching, with the limits measured above, and loses the
 structured entity filter and role-specific selection entirely.
 
-### 6.2 The filter, measured on the same corpus (2026-08)
+### 6.2 The filter, measured end to end (2026-08)
 
 §6.1 established what does **not** work and left the filter as the inference
 that follows. This records the filter actually running, so the design rests on
 a measured outcome at both ends rather than a measured problem and a predicted
 cure.
 
-Same game, same six team-scoped queries, same gold rule (the club asked about
-must be the **batter's** club **and** the annotation's outcome must satisfy the
-query's event term), `k = 5`. The reference implementation now persists
-`annotations[].entities` and `event` (§7) and exposes the filter, so all three
-rows below are one run against one corpus:
+**This is not a controlled reproduction of §6.1.** Same game, same roster, same
+six team-scoped queries, same gold rule (the club asked about must be the
+**batter's** club **and** the annotation's outcome must satisfy the query's
+event term), `k = 5`. But the corpus is a **separate, re-derived one of 350
+annotations**, not §6.1's 346-annotation corpus: the cue text now carries the
+half-inning and a lower-precision cue source became opt-in between the runs.
+The three rows below are one run against that one corpus, so they are
+comparable to each other and **not** to §6.1's figures.
 
 | selection | precision |
 |---|---|
@@ -276,12 +279,13 @@ it. Excluding that data-bounded query the role-exact selection is 18/19
 (94.7%). It is left in the table because removing an inconvenient query is how
 a benchmark stops being one.
 
-**On comparing against §6.1.** The 52.2% baseline here is not the 58.3% in
-§6.1, and the difference is the corpus rather than the retrieval: this run has
-350 annotations against 346, the cue text now carries the half-inning, and a
-lower-precision cue source was made opt-in between the two runs. Both figures
-are therefore quoted only against the other variants **within their own run**,
-which is the only comparison either measurement supports.
+**Do not read 52.2% against §6.1's 58.3%.** Both are the same *kind* of
+baseline (no filter, annotation text only) but they are measured over
+different corpora, for the reasons above. Neither number is evidence about the
+other, and the drop from 58.3 to 52.2 says nothing about the filter: it is the
+corpus that changed. Each figure is meaningful only against the other variants
+**within its own run**, which is the only comparison either measurement
+supports.
 
 ## 7. Proposed spec deltas (at promotion)
 
