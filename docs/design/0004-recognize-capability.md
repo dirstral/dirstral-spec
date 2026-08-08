@@ -242,6 +242,51 @@ dictionary that gives each id a label; an implementation that discards those
 ids keeps text matching, with the limits measured above, and loses the
 structured entity filter and role-specific selection entirely.
 
+### 6.2 The filter, measured end to end (2026-08)
+
+§6.1 established what does **not** work and left the filter as the inference
+that follows. This records the filter actually running, so the design rests on
+a measured outcome at both ends rather than a measured problem and a predicted
+cure.
+
+**This is not a controlled reproduction of §6.1.** Same game, same roster, same
+six team-scoped queries, same gold rule (the club asked about must be the
+**batter's** club **and** the annotation's outcome must satisfy the query's
+event term), `k = 5`. But the corpus is a **separate, re-derived one of 350
+annotations**, not §6.1's 346-annotation corpus: the cue text now carries the
+half-inning and a lower-precision cue source became opt-in between the runs.
+The three rows below are one run against that one corpus, so they are
+comparable to each other and **not** to §6.1's figures.
+
+| selection | precision |
+|---|---|
+| no filter (annotation text only) | **52.2%** |
+| `entities=[club]` | 54.2% |
+| `entities=[club]` **+** `events=[at_bat]` | **82.6%** |
+
+**The middle row carries the design's central claim.** Selecting on the club
+alone is worth almost nothing (52.2% to 54.2%), because a club appears on
+*both* annotations of a moment: once attributed to the side fielding, once to
+the side at the plate. Only conjoining the event isolates a role, and that is
+where the result comes from. An implementation that persists entity ids but not
+`event` would land on the middle row and reasonably conclude the whole approach
+was not worth it.
+
+**Residual, and its cause.** One query, "Nationals home run", scores 1/4 in
+every row including the best. The corpus contains exactly **one** Nationals home
+run, so 1 correct hit out of the 4 returned is the ceiling, and the filter finds
+it. Excluding that data-bounded query the role-exact selection is 18/19
+(94.7%). It is left in the table because removing an inconvenient query is how
+a benchmark stops being one.
+
+**Do not read 52.2% against §6.1's 58.3%.** Both are the same *kind* of
+baseline (no filter, annotation text only) but they are measured over
+different corpora, for the reasons above. Neither number is evidence about the
+other, and the drop from 58.3 to 52.2 says nothing about the filter: it is the
+corpus that changed. Each figure is meaningful only against the other variants
+**within its own run**, which is the only comparison either measurement
+supports.
+
 ## 7. Proposed spec deltas (at promotion)
 
 MINOR bump, applied together with the implementation per the spec-first
@@ -326,7 +371,13 @@ loop:
   per role** and distinguishing them with `event`, which the reference backend
   does: a pitch is reported once as `pitch` keyed on the pitcher and once as
   `at_bat` keyed on the batter. An entity filter conjoined with `event` is
-  then role-exact, with no new vocabulary.
+  then role-exact, with no new vocabulary. §6.2 measures that workaround end
+  to end and finds it sufficient: the club alone is worth about two points,
+  the club conjoined with the role about thirty. So the per-entity role
+  question is one of **ergonomics and generality**, not of capability. What it
+  does decide is what happens to a backend that declines to split its
+  annotations by role: such a backend cannot be filtered by role at all, and
+  nothing downstream can recover the distinction.
 
   This matters because that same duplication has a known cost on the retrieval
   side, where two annotations covering one moment are counted twice by
