@@ -1,7 +1,7 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -76,6 +76,14 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 `common.json`, so the fix propagates without further edits.
 
 ## Changelog
+
+- **0.6.0** — `stats.json` `skip_reasons[].reason` enum gains `symlink_ignored`
+  (additive; SPEC §15.2, dir2mcp #781): a discovered entry is a symbolic link and
+  `ingest.follow_symlinks` is false, so the walker does not follow the link and
+  does not index the target. Before this value the skip had no reason to report,
+  so an all-symlink corpus reported `scanned: 0, skipped: 0, errors: 0` and a
+  healthy daemon. The same forward-extensible rule applies: a client validates
+  against the server-advertised schema and renders an unknown value verbatim.
 
 - **0.5.0** — Added `related.json` (dir2mcp_related §15.12, dir2mcp #324): the
   query-by-example 'more like this' tool, cataloged in the tool map; its `hits[]`
