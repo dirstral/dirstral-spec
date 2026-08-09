@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.46.0`  
+**Spec version:** `0.47.0`  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -929,7 +929,34 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 ### 7.1 Discovery
 
 * Recursive walk from root.
-* Default ignore list includes: `.git/`, `node_modules/`, `dist/`, `build/`, `.venv/`, `.dir2mcp/`.
+* **Directory ignore list.** Discovery does not descend into a directory whose
+  **name** matches an entry in the ignore list. The default list is: `.git/`,
+  `.dir2mcp/`, `node_modules/`, `vendor/`, `__pycache__/`, `dist/`, `build/`,
+  `.venv/`.
+
+  (Earlier editions named six of these eight. They omitted `vendor/` and
+  `__pycache__/`, which the reference implementation has always excluded. This
+  edition records the list that ships.)
+  * An entry is a plain directory name. It is not a path and it is not a glob.
+    A name matches at any depth below the root.
+  * `ingest.exclude_dirs` MAY replace the list. A present key replaces the
+    default list in full. It does not add to the default list. This matches the
+    list semantics of `security.path_excludes`. An absent key keeps the default
+    list, so an existing corpus does not change.
+  * `.dir2mcp/` stays in the resolved list even when `ingest.exclude_dirs`
+    omits it. The state directory lives under the corpus root, so to index it is
+    self-referential: the walk reads the index that the same run writes, and
+    watch mode feeds its own writes back into ingest. An implementation MUST add
+    `.dir2mcp/` back to the resolved list, and SHOULD say that it did so.
+  * **The gates are independent and they compose by AND.** A file reaches the
+    index only if the directory ignore list, `security.path_excludes` and the
+    optional `.gitignore` rules all admit it. Five names appear in BOTH the
+    default ignore list and the default `security.path_excludes`:
+    `node_modules`, `vendor`, `__pycache__`, `.git` and `.dir2mcp`. To
+    re-include such a directory an operator MUST clear the name from every gate
+    that lists it. To clear one gate alone changes nothing that the operator can
+    observe, because the next gate drops the same file. An implementation MUST
+    document this where it documents the key.
 * Optional `.gitignore` support.
 * Symlink policy:
 
@@ -4276,6 +4303,13 @@ ingest:
     mode: deep         # off|shallow|deep
   follow_symlinks: false
   max_file_mb: 20
+  # Directory names that discovery does not descend into (SPEC 7.1). A present
+  # key REPLACES the default list; it does not add to it. Absent = the default
+  # list below. `.dir2mcp` is always added back, because the state directory
+  # lives under root_dir and to index it is self-referential.
+  # To re-index a directory that `security.path_excludes` also lists, clear the
+  # name from BOTH keys: the two gates compose by AND.
+  exclude_dirs: [".git", ".dir2mcp", "node_modules", "vendor", "__pycache__", "dist", "build", ".venv"]
   # Late chunking (opt-in, off by default): embed the WHOLE document through a
   # long-context model to get token-level embeddings, then apply the chunk
   # boundaries and pool each chunk's token vectors, so every chunk vector carries
