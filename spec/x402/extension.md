@@ -1,6 +1,7 @@
 # x402 Payment Extension
 
-**Spec version:** `0.16.0`
+**Last changed in spec version:** `0.16.0`  
+**Current spec version:** see [`spec/versioning.md`](../versioning.md), the single source (this file does not track it).
 **Status:** Optional extension — not required for core MCP conformance.
 
 ## Overview
