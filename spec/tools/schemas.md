@@ -1,6 +1,7 @@
 # Tool Schemas
 
-**Spec version:** `0.17.0`
+**Last changed in spec version:** `0.17.0`  
+**Current spec version:** see [`spec/versioning.md`](../versioning.md), the single source (this file does not track it).
 **MCP protocol target:** `2025-11-25`
 
 This document defines the canonical input/output schemas for all dir2mcp MCP tools.

@@ -12,7 +12,24 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.22.0`
+**Current spec version:** `0.47.1`
+
+This file is the **single source** for the current spec version. Every other
+document points here. An artifact under `spec/` carries a **Last changed in
+spec version** header instead, which records when that artifact last changed
+and is not the global version. A numbered document under `docs/specs/` carries
+its own independent `Version` field, per the restructure.
+
+**The changelog below is incomplete, and this states it rather than hides it.**
+Entries stop at `0.22.0`. Versions `0.23.0` through `0.47.0` were applied to
+`docs/SPEC.md` without an entry here, so the release history for that range
+lives in the git log and in the pull requests, not in this file. The missing
+entries are NOT reconstructed here: to write 25 summaries after the fact would
+invent a record rather than report one. Issues #58 and #73 track the backfill.
+
+Going forward, a change that bumps the version MUST add its entry here in the
+same pull request.
+
 **MCP protocol target:** `2025-11-25`
 
 ## Implementation compatibility
@@ -43,6 +60,25 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.47.1 — one source for the current spec version
+
+Doc fix, so a PATCH bump. No normative statement changes.
+
+The repository exposed five disagreeing "current spec version" values
+(#58, #73): `docs/SPEC.md` at `0.47.0`, this file at `0.22.0`,
+`spec/tools/schemas.md` at `0.17.0`, and the errors, sessions and x402
+artifacts at `0.16.0`. A consumer could not tell which contract version the
+schemas and the prose belonged to, and the governance rule "a breaking change
+requires a version bump" could not be audited, because the pointers disagreed
+about what the version even was.
+
+This file is now the single source. The four artifacts under `spec/` carry
+**Last changed in spec version** instead, which is what their number always
+meant, and each links here for the current one.
+
+The 0.23.0 to 0.47.0 changelog gap is stated rather than backfilled. See the
+note above the changelog.
 
 ## 0.22.0 — detected-language metadata + per-language retrieval filter
 
