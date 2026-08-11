@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.7.0
+- **Version:** 0.8.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -185,8 +185,20 @@ and `truncated` (`rel_path`, `doc_type`, `content`, `truncated` required).
 **Behavior.** Pagination is via `limit`/`offset`; the output echoes both and
 reports `total` (the full match count, independent of the page window). `files[]`
 entries carry `rel_path`, `doc_type`, `size_bytes`, `mtime_unix`,
-`status` (`ok | skipped | error`), and `deleted` (all required per entry). The
-metadata mirrors the df-003 `documents` row.
+`status` (`ok | skipped | pending | error`), and `deleted` (all required per
+entry). The metadata mirrors the df-003 `documents` row.
+
+`status` is a **projection of the stored state, not the stored state itself**.
+SPEC.md §15.5 holds the normative mapping table; the rules that bind a caller
+are:
+
+- A server MUST NOT report a document as `ok` unless it is retrievable now.
+- A document withheld by secret detection publishes as `skipped`, and its cause
+  travels in the skip-reason enum (`secret_excluded`), never in `status`.
+- `pending` means known and not yet retrievable. A client MUST NOT treat it as
+  searchable and MUST NOT treat it as a failure. It is transient, so a cached
+  listing SHOULD be re-read rather than assumed final. A server that indexes
+  synchronously never emits it, which is conformant.
 
 ### dir2mcp_stats
 
@@ -396,6 +408,12 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 ## Changelog
 
+- **0.8.0**: added `pending` to the `dir2mcp_list_files` `status` enum and
+  stated that `status` is a projection of the stored state, with SPEC.md §15.5
+  holding the normative mapping table. A server MUST NOT report unfinished work
+  as `ok`; a secret-withheld document publishes as `skipped` with the reason
+  `secret_excluded`. Mirrors spec 0.48.0. Resolves the `status` half of
+  dirstral-spec #63; unblocks dir2mcp #676.
 - **0.7.0**: tightened the `dir2mcp_ask` grounding contract (dir2mcp #403). `citations[]` is now the **in-context** set rather than the retrieved set, an evidence floor gates what may be cited, and `mode=search_only` is stated to return an empty `citations[]`. Normative rules live in SPEC §9.4.1–§9.4.3; this document only records the resulting `dir2mcp_ask` output shape.
 - **0.6.0** — added the optional `time_from_ms`/`time_to_ms` **intra-document media time-window** filter to `dir2mcp_search`/`dir2mcp_ask` (SPEC §9.8): non-negative integer millisecond offsets within a document's timeline (§5.4), orthogonal to the `date_*` document-date window (§9.6). When either bound is present only `time`-spanned hits are eligible (mirroring `speaker`); a hit is kept iff its span overlaps the window (inclusive); additive/off-by-default; `INVALID_FIELD` on a negative or inverted range; empty (not error) on no match. Schemas: `search.json`/`ask.json` (df-007).
 - **0.5.0** — `dir2mcp_stats.indexing` MAY carry an optional additive `watch_overflows` integer (fsnotify kernel event-buffer overflow count; absence = unknown/NA, not zero). Schema: `stats.json` (df-007). dir2mcp #591.
@@ -415,4 +433,4 @@ optional refinement and MUST NOT change the bounds or error semantics above.
   df-007; §16 → bs-011. The `§8.2` STT-provider reference was rewired to td-001
   (matching the df-003 precedent).
 - **0.2.0** — Added the optional `skip_reasons` honest-coverage breakdown to `dir2mcp_stats` (one `{reason, count}` entry per distinct reason a document was set to `status="skipped"`), and marked `recent_failures` and `skip_reasons` as the tool's two optional output fields. Backfilled: the version header was bumped to `0.2.0` in spec 0.26.0 without a corresponding changelog entry.
-- **0.3.0** — Corrected the `doc_counts` description in `skip_reasons`. It claimed `doc_counts` groups `status="ready"` documents, which was wrong twice over: no `ready` status exists (the enum is `ok | skipped | error`, see `dir2mcp_list_files`), and a count restricted to successfully-indexed documents could not "overstate" coverage — the sentence contradicted its own rationale. `doc_counts` groups **all** non-deleted documents by `doc_type` regardless of status; that is precisely why it overstates, and why `skip_reasons` exists. Clarification only — no behavior change.
+- **0.3.0** — Corrected the `doc_counts` description in `skip_reasons`. It claimed `doc_counts` groups `status="ready"` documents, which was wrong twice over: no `ready` status exists (the enum was `ok | skipped | error` at 0.3.0, and is `ok | skipped | pending | error` since 0.8.0; see `dir2mcp_list_files`), and a count restricted to successfully-indexed documents could not "overstate" coverage — the sentence contradicted its own rationale. `doc_counts` groups **all** non-deleted documents by `doc_type` regardless of status; that is precisely why it overstates, and why `skip_reasons` exists. Clarification only — no behavior change.

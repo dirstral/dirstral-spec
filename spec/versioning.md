@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.47.1`
+**Current spec version:** `0.48.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,41 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.48.0: a document status a client can act on
+
+New optional enum value, so a MINOR bump under the pre-1.0 policy.
+
+`dir2mcp_list_files` published `status` as `ok | skipped | error` while a store
+holds more states than that. Two of them had nowhere honest to go: a document
+withheld by secret detection, and a document the corpus knows about but has not
+finished indexing. The reference implementation reported the second one as
+`ok`, so a caller read "indexed and readable", asked for the content, and got
+nothing back.
+
+Neither existing value was usable for it. `skipped` means "not indexed, and not
+going to be", which is a different claim. `error` is false. So the gap was in
+the contract, not in the implementation.
+
+This release:
+
+- adds `pending` to the §15.5 `status` enum, for a document that is known and
+  not yet retrievable, and states that it is transient and MUST NOT be read as
+  a failure;
+- makes the storage-to-public mapping normative as a table, so a secret-
+  withheld document publishes as `skipped` with skip reason `secret_excluded`
+  and the two surfaces cannot disagree;
+- forbids reporting unfinished work as `ok`, which is the rule the defect broke;
+- says in §5.1 and in df-003 that the PERSISTED status vocabulary MAY be wider
+  than the published one, which is the distinction the two documents were
+  missing.
+
+`spec/tools/schemas/list_files.json` carries the same enum, so the prose and
+the machine-readable schema still agree.
+
+Resolves the `status` half of #63. The `source_type` half (`file` versus
+`filesystem`) and the canonical error/skip-reason field names stay open there.
+Unblocks dir2mcp #676.
 
 ## 0.47.1 — one source for the current spec version
 
