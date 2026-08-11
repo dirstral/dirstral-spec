@@ -30,7 +30,7 @@
               "doc_type": { "type": "string" },
               "size_bytes": { "type": "integer" },
               "mtime_unix": { "type": "integer" },
-              "status": { "type": "string", "enum": ["ok", "skipped", "error"] },
+              "status": { "type": "string", "enum": ["ok", "skipped", "pending", "error"] },
               "deleted": { "type": "boolean" }
             },
             "required": ["rel_path", "doc_type", "size_bytes", "mtime_unix", "status", "deleted"]

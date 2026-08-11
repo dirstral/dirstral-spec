@@ -538,7 +538,12 @@ The exact SQL types may vary; semantics must match.
 * `size_bytes`
 * `mtime_unix`
 * `content_hash` (stable, e.g., blake3/sha256)
-* `status` (`ok|skipped|error`)
+* `status` (`ok|skipped|error`, and OPTIONALLY the implementation states an
+  implementation MAY persist, such as a secret-withheld state or a
+  not-yet-indexed state). The persisted vocabulary is a store-internal detail;
+  what a client sees is the PROJECTION defined in §15.5, and a store that
+  persists an extra state MUST publish it through that table. A store that
+  persists only the three states above is conformant.
 * `error` (nullable)
 * `deleted` (boolean; tombstone)
 * `canonical_doc_id` (optional; `0`/self when the document is canonical, otherwise
@@ -3692,6 +3697,46 @@ through the OCR / transcript cache, never through a direct file read.
 
 **Description:** list files under root for navigation and filter selection.
 
+**Document status is a PROJECTION, not the stored value (normative).** A store
+holds more states than this tool publishes, so a server MUST map each stored
+state onto the published enum with the table below. Two rules make the mapping
+safe to consume:
+
+* A server MUST NOT report a document as `ok` unless that document is
+  **retrievable now**: `search` can return it and `open_file` can read it.
+  Reporting work that has not finished as `ok` makes a caller ask for content
+  that does not exist yet, which is the failure this rule exists to stop.
+* A server MUST NOT invent a state outside the enum, and MUST NOT reuse a state
+  whose meaning differs from the stored one. `skipped` means "not indexed, and
+  not going to be"; it is the wrong answer for work still in progress.
+
+| Stored state | Published `status` | Notes |
+|---|---|---|
+| indexed / complete | `ok` | Retrievable now. |
+| skipped | `skipped` | Terminal. The reason is reported through the skip-reason enum (§15.6) and the coverage aggregate (§7.7), never through `status`. |
+| withheld by secret detection | `skipped` | The document is known and deliberately not indexed, which is a terminal skip. Its skip reason is `secret_excluded`. `status` MUST NOT disclose that a secret was the cause; the reason field already carries that, and the two surfaces MUST agree. |
+| known, not yet indexed | `pending` | Not retrievable yet. NOT an error and NOT terminal. |
+| failed | `error` | Terminal for this scan. |
+
+**`pending` (normative).** `pending` means the corpus knows the document and has
+not finished making it retrievable. A client MUST NOT treat a `pending`
+document as searchable, and MUST NOT treat it as a failure. The state is
+transient by definition: the same document MAY later report `ok`, `skipped` or
+`error` with no change to the file itself, so a client that caches a listing
+SHOULD re-read it rather than assume the state is final. A server that indexes
+synchronously never emits `pending`, and that is conformant: the state is
+available, not required.
+
+`pending` describes a DOCUMENT. It is deliberately the same word `df-003` uses
+for a chunk's `embedding_status`, because it is the same idea one level down:
+the row exists and it is not retrievable yet.
+
+**Compatibility.** `pending` is additive. A client written against an older
+minor MAY receive a value it does not recognize and SHOULD render it verbatim
+rather than error, which is the rule the skip-reason enum (§15.6) already
+states. A server MUST NOT emit `pending` to satisfy a state it could report
+honestly as `ok`, `skipped` or `error`.
+
 **Input schema:**
 
 ```json
@@ -3727,7 +3772,7 @@ through the OCR / transcript cache, never through a direct file read.
           "doc_type": { "type": "string" },
           "size_bytes": { "type": "integer" },
           "mtime_unix": { "type": "integer" },
-          "status": { "type": "string", "enum": ["ok", "skipped", "error"] },
+          "status": { "type": "string", "enum": ["ok", "skipped", "pending", "error"] },
           "deleted": { "type": "boolean" }
         },
         "required": ["rel_path", "doc_type", "size_bytes", "mtime_unix", "status", "deleted"]

@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -27,7 +27,7 @@ ANN label (bs-008); the `spans` row is the at-rest form of the
 - `size_bytes`
 - `mtime_unix`
 - `content_hash` (stable, e.g. blake3/sha256)
-- `status` (`ok | skipped | error`)
+- `status` (`ok | skipped | error`, plus any implementation state below)
 - `error` (nullable)
 - `deleted` (boolean; tombstone)
 - `canonical_doc_id` (optional; `0`/self when canonical, otherwise the `doc_id`
@@ -35,6 +35,27 @@ ANN label (bs-008); the `spans` row is the at-rest form of the
 - `is_alias` (optional boolean; `true` for a non-canonical member of a duplicate
   group). Alias rows share the canonical `content_hash` and hold **no**
   representations, chunks, or embeddings.
+
+**The persisted `status` vocabulary MAY be wider than the published one
+(normative).** The three states above are the minimum. A store MAY persist
+further states where it needs to record WHY a row is not indexed, and two are
+common enough to name here:
+
+- a **secret-withheld** state, for a document deliberately not indexed because
+  it matched secret detection;
+- a **not-yet-indexed** state, for a row the store knows about and has not
+  finished processing.
+
+These are storage detail, not contract. What a client sees is the projection
+`SPEC.md §15.5` defines, and a store that persists an extra state MUST publish
+it through that table: secret-withheld projects to `skipped` with skip reason
+`secret_excluded`, and not-yet-indexed projects to `pending`. A store MUST NOT
+publish a persisted state directly if the projection names a different value,
+and it MUST NOT report a not-yet-indexed row as `ok`.
+
+This resolves the `status` half of the df-003 / reference-implementation
+conflict: the two contracts disagreed because one described storage and the
+other described the wire, without saying which was which.
 
 ### 5.2 `representations`
 
@@ -211,6 +232,12 @@ bounding box and **SHOULD** carry the section breadcrumb:
 
 ## Changelog
 
+- **0.5.0** — Stated that the persisted `documents.status` vocabulary MAY be
+  wider than the published one, named the secret-withheld and not-yet-indexed
+  states, and pointed both at the normative storage-to-public projection added
+  in SPEC §15.5. Resolves the `status` half of dirstral-spec #63; the
+  `source_type` half and the canonical error/skip-reason field names stay open.
+  Unblocks dir2mcp #676.
 - **0.4.0** — Added the `summary` value to the `representations.rep_type` enum for
   hierarchical / multi-resolution retrieval (dir2mcp #329). The `summary`
   `meta_json` contract, its `coverage` linkage, and the derivation identity are
