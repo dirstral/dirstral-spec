@@ -3698,7 +3698,7 @@ through the OCR / transcript cache, never through a direct file read.
 **Description:** list files under root for navigation and filter selection.
 
 **Document status is a PROJECTION, not the stored value (normative).** A store
-holds more states than this tool publishes, so a server MUST map each stored
+MAY hold more states than this tool publishes, so a server MUST map each stored
 state onto the published enum with the table below. Two rules make the mapping
 safe to consume:
 

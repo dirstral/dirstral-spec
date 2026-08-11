@@ -232,7 +232,7 @@ bounding box and **SHOULD** carry the section breadcrumb:
 
 ## Changelog
 
-- **0.5.0** — Stated that the persisted `documents.status` vocabulary MAY be
+- **0.5.0**: stated that the persisted `documents.status` vocabulary MAY be
   wider than the published one, named the secret-withheld and not-yet-indexed
   states, and pointed both at the normative storage-to-public projection added
   in SPEC §15.5. Resolves the `status` half of dirstral-spec #63; the
