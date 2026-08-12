@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.49.0`
+**Current spec version:** `0.50.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,55 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.50.0: resolve how k is chosen, and name generate_answer where it is defined
+
+Wire-visible correction, so a MINOR bump under the pre-1.0 policy. Resolves #61.
+
+Two changes with different risk, in two commits.
+
+**The clarification, no behavior change.** §9.4 has always defined what happens
+when answer generation is off: "If disabled or `mode=search_only`: return hits
+only [...] `answer: ""`, `citations: []`". It never named the key. So a reader
+searching for `generate_answer` found only the §16 config template and concluded
+the false case was undefined, which is what #61 reports. The clause now names
+`rag.generate_answer`, and states the precedence that always followed from it
+being a disjunction: either condition is sufficient, and a request cannot turn
+generation back on against the server setting. `mode=answer` against
+`generate_answer: false` is SERVED as `search_only` rather than refused, because
+the response shape is identical.
+
+**The correction.** §9.1 now resolves `k`:
+
+- precedence: the request field, then `rag.k_default`, then the shipped fallback;
+- `rag.k_default` MUST satisfy the same `1..50` bound as the request field, and a
+  value outside it is `CONFIG_INVALID` at load rather than a failure at some
+  later request the operator did not write;
+- scope: every tool that takes a `k`, which is `search`, `ask`, `related`,
+  `ask_audio` and `transcribe_and_ask`. It is one setting about how much evidence
+  a corpus needs, not a per-tool knob, and a server MUST NOT apply it to some of
+  those surfaces and not others;
+- **a served schema reports the EFFECTIVE default.** A server publishes its
+  input schemas through `tools/list`, so that schema describes THIS deployment,
+  and the advertised `default` for `k` MUST be what an omitted field really
+  produces.
+
+That last rule is the wire-visible one. A fixed advertised default would make
+the schema state something untrue the moment an operator configured another
+value: a client reading the schema and sending the advertised value explicitly
+would get a different `k` from a client omitting the field, with nothing to
+explain the difference.
+
+Consequently the canonical schemas carry NO literal default for `k`. Five files
+held `"default": 15` (`search`, `ask`, `ask_audio`, `transcribe_and_ask`,
+`related`); each now describes the field, its bound, and what an omitted field
+resolves to. A conformance fixture must not assert a specific advertised default
+without also fixing `rag.k_default` in the configuration under test.
+
+bs-007 goes to 0.10.0 with the same rule, so prose, numbered doc and schema
+agree.
+
+Unblocks dir2mcp #654.
 
 ## 0.49.0: name the content carrier for an inline video clip
 

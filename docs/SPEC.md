@@ -2642,6 +2642,44 @@ MUST NOT make ingestion fail.
 
 ### 9.1 Search routing
 
+**How `k` is resolved (normative).** `k` names how many hits a caller wants.
+Three things can supply it, and the order is fixed:
+
+1. the value on the REQUEST, when the field is present;
+2. `rag.k_default` (§16), the server's configured default;
+3. the shipped fallback, when the operator configured none.
+
+`rag.k_default` MUST satisfy the same bound the request field does, `1..50`. A
+configured value outside it is `CONFIG_INVALID` at load: a default that asks for
+a `k` the schema forbids can only fail later, at a request the operator did not
+write.
+
+**Scope: every tool that takes a `k`.** `rag.k_default` applies to
+`dir2mcp_search`, `dir2mcp_ask`, `dir2mcp_related`, `dir2mcp_ask_audio` and
+`dir2mcp_transcribe_and_ask`, and to any CLI surface over them. It is one
+setting about how much evidence this corpus needs, not a per-tool tuning knob,
+and a server MUST NOT apply it to some of those surfaces and not others. An
+implementation that resolved `k` per tool would give one corpus several
+different defaults for the same question.
+
+**The served schema reports the EFFECTIVE default (normative).** A server
+publishes its input schemas through `tools/list`, so that schema describes THIS
+deployment. The `default` a server advertises for `k` MUST therefore be the
+value an omitted field actually produces, which is `rag.k_default` when the
+operator set one.
+
+This is the one rule with a wire-visible consequence, and it is the honest
+direction. A fixed advertised default would make the schema state something
+untrue as soon as an operator configured a different one: a client that reads
+the schema and sends the advertised value explicitly would get a different `k`
+from a client that omits the field, with nothing to explain the difference.
+
+The canonical schemas in `spec/tools/schemas/` therefore do NOT carry a literal
+default for `k`. They describe the field and its bound, and they name
+`rag.k_default` as what an omitted field resolves to. A conformance fixture MUST
+NOT assert a specific advertised default without also fixing
+`rag.k_default` in the configuration under test.
+
 At query time:
 
 * `index=auto`:
@@ -2734,13 +2772,30 @@ If enabled:
   * retrieved contexts + citations
 * return answer text + citations list + underlying hits (structured output)
 
-If disabled or `mode=search_only`:
+If disabled (`rag.generate_answer: false`, §16) or `mode=search_only`:
 
 * return hits only, in the sense that no answer is generated. The response
   **shape** is unchanged: `ask.json` marks `answer` and `citations` **required**,
   so both are present and empty (`answer: ""`, `citations: []`) rather than
-  absent. §9.4.3's insufficient-evidence rules apply to `mode=answer` only,
-  because `search_only` never assembles a prompt to judge.
+  absent. §9.4.3's insufficient-evidence rules apply to `mode=answer` **with
+  generation enabled** only, because nothing else assembles a prompt to judge. A
+  request that asks for `mode=answer` against `rag.generate_answer: false` is
+  served as `search_only` (below), so it is outside those rules too.
+
+**Either condition is sufficient (normative).** The clause above is a
+disjunction, so `rag.generate_answer: false` withholds generation whatever the
+request asks, and `mode=search_only` withholds it whatever the server is
+configured to do. A request MUST NOT turn generation back on against the server
+setting: that setting is an operator's decision about provider cost and data
+flow, and a caller cannot overrule it. `mode=answer` against
+`generate_answer: false` is therefore SERVED as `search_only`, not refused,
+because the response shape is identical and a refusal would leave the caller no
+way to use the corpus at all.
+
+This was specified from the start and was unfindable. The clause said
+"disabled" without naming the key it refers to, so a reader searching for
+`generate_answer` found only the §16 config template and concluded the false
+case had no normative behavior (#61).
 
 #### 9.4.1 Grounding: citations describe what the model saw
 
@@ -3527,7 +3582,7 @@ timed slice.
   "additionalProperties": false,
   "properties": {
     "query": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (\u00a716), so a served schema reports that effective value as this field's default (\u00a79.1). This example carries no literal default, because the value is per deployment." },
     "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
     "path_prefix": { "type": "string" },
     "file_glob": { "type": "string" },
@@ -3579,7 +3634,7 @@ timed slice.
   "additionalProperties": false,
   "properties": {
     "question": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (\u00a716), so a served schema reports that effective value as this field's default (\u00a79.1). This example carries no literal default, because the value is per deployment." },
     "mode": { "type": "string", "enum": ["answer", "search_only"], "default": "answer" },
     "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
     "path_prefix": { "type": "string" },
@@ -3618,7 +3673,7 @@ timed slice.
     "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
     "indexing_complete": { "type": "boolean" }
   },
-  "required": ["question", "citations", "hits", "indexing_complete"]
+  "required": ["question", "answer", "citations", "hits", "indexing_complete"]
 }
 ```
 
@@ -4000,7 +4055,7 @@ honestly as `ok`, `skipped` or `error`.
   "properties": {
     "rel_path": { "type": "string", "minLength": 1 },
     "question": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 }
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (\u00a716), so a served schema reports that effective value as this field's default (\u00a79.1). This example carries no literal default, because the value is per deployment." }
   },
   "required": ["rel_path", "question"]
 }
@@ -4028,7 +4083,7 @@ Input schema (audio-specific fields; the rest mirror `dir2mcp_ask`):
   "additionalProperties": false,
   "properties": {
     "question": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (\u00a716), so a served schema reports that effective value as this field's default (\u00a79.1). This example carries no literal default, because the value is per deployment." },
     "voice_id": { "type": "string" },
     "format": { "type": "string", "enum": ["mp3", "wav"], "default": "mp3" }
   },
