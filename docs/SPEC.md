@@ -4086,8 +4086,30 @@ span. Extraction failures (unreadable media, missing `ffmpeg`) return
 `return` (default `inline`):
 
 * `inline` — the clip is returned **base64-encoded** in the structured output
-  (`data` + `mime_type`) and as an `audio`/`video`-typed `content[]` item. Inline
-  return is subject to the byte bound above.
+  (`data` + `mime_type`) and carried in `content[]`. Inline return is subject to
+  the byte bound above. The `content[]` carrier depends on the media kind,
+  because the MCP content union does not define one item type for both:
+
+  | Clip kind | `content[]` item | Why |
+  |---|---|---|
+  | audio | native `audio` item, `data` + `mimeType` | MCP defines an `audio` content item. |
+  | video | **embedded resource** whose `resource` carries `blob` (base64) and a `video/*` `mimeType` | MCP (`2025-11-25`) defines `text`, `image`, `audio`, `resource_link` and `resource`. It defines **no** `video` item, so an embedded resource is the only MCP-valid carrier for inline video bytes. |
+
+  A server MUST NOT invent a `video`-typed content item: a strict client rejects
+  an item type outside the union, and an SDK that models the union as a closed
+  set cannot construct one at all. A server MUST NOT fall back to a `text` item
+  either. That is not a lesser form of the same answer; it drops the clip while
+  reporting success, which is the failure this rule exists to stop (dir2mcp
+  #663).
+
+  **The bytes travel once (normative).** `structuredContent.data` and the
+  `content[]` payload are the SAME clip. A server MUST NOT send both, because
+  `media.clip.max_bytes` bounds the CLIP and a response carrying it twice puts
+  roughly double that on the wire with no bound of its own. `content[]` is the
+  required carrier for `inline`, since it is what a client renders; `data` is
+  then omitted. A server MAY instead return `data` alone when it cannot build
+  the content item, and MUST then say so, because a caller that receives neither
+  cannot tell a refusal from an empty clip.
 * `reference` — the clip is materialized to a short-lived, server-managed location
   and a `uri` (plus `expires_unix`) is returned instead of bytes, for clients that
   fetch out-of-band. Implementations that do not support `reference` MUST fall

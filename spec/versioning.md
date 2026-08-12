@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.48.0`
+**Current spec version:** `0.49.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,49 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.49.0: name the content carrier for an inline video clip
+
+Wire-visible correction, so a MINOR bump under the pre-1.0 policy.
+
+§15.11 said an inline clip travels "as an `audio`/`video`-typed `content[]`
+item". MCP `2025-11-25` defines `text`, `image`, `audio`, `resource_link` and
+`resource`. It defines no `video` item, so that sentence asked for something no
+conforming client accepts and no SDK that models the union as a closed set can
+build.
+
+The reference implementation showed the cost. Its SDK adapter could not
+construct the item, so it produced an empty `text` item instead: the call
+reported success and the client got a blank result with no player, no text and
+no error. Audio worked, so the failure looked arbitrary. The bytes survived only
+in `structuredContent`. That is dir2mcp #663, and the conformance measurement is
+in dir2mcp PR #827.
+
+This release:
+
+- names the carrier per media kind. Audio keeps the native `audio` item. Video
+  travels as an **embedded resource** whose `resource` carries `blob` and a
+  `video/*` `mimeType`, which is the only MCP-valid carrier for inline video
+  bytes;
+- forbids the invented `video` item, because a strict client rejects it;
+- forbids the `text` fallback, because it drops the clip while reporting
+  success. That is the defect, not a lesser form of the answer;
+- states that the clip bytes travel ONCE. `media.clip.max_bytes` bounds the
+  clip, and a response carrying it in both `structuredContent.data` and
+  `content[]` puts roughly double that on the wire with no bound of its own.
+  `content[]` is the required carrier and `data` is then omitted.
+
+Audio behavior does not change. `reference` mode does not change, and video is
+NOT forced onto it: the spec already requires an implementation without
+`reference` support to fall back to `inline`, so making `reference` normative
+for video would contradict that rule and would split video from audio at the
+tool level for no gain.
+
+bs-007 goes to 0.9.0 with the same contract, and
+`spec/tools/schemas/open_media_clip.json` records the `data` relationship, so
+prose, numbered doc and schema agree.
+
+Resolves #60. Unblocks dir2mcp #663.
 
 ## 0.48.0: a document status a client can act on
 

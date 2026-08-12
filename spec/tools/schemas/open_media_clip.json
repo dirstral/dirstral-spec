@@ -32,7 +32,7 @@
       "duration_ms": { "type": "integer" },
       "size_bytes": { "type": "integer" },
       "return": { "type": "string", "enum": ["inline", "reference"] },
-      "data": { "type": "string", "contentEncoding": "base64", "description": "Present when return=inline: base64 clip bytes." },
+      "data": { "type": "string", "contentEncoding": "base64", "description": "Optional when return=inline: base64 clip bytes. The clip travels ONCE. content[] is the required carrier for inline (audio: a native audio item; video: an embedded resource whose resource carries blob plus a video/* mimeType, because MCP 2025-11-25 defines no video item), and data is then omitted. A server that cannot build the content item MAY return data alone and MUST say so. Never both: media.clip.max_bytes bounds the clip, and carrying it twice doubles the response with no bound of its own." },
       "uri": { "type": "string", "description": "Present when return=reference: short-lived fetch URI." },
       "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." }
     },
