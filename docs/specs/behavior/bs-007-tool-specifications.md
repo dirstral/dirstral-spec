@@ -114,7 +114,10 @@ set, so it MAY be shorter than `hits[]`; with `mode=answer`, a query where no hi
 clears the relevance floor returns an insufficient-evidence answer with an empty
 `citations[]` and is not an error. `mode=search_only` builds no prompt, so it
 returns retrieval results with `answer: ""` and `citations: []`, and the
-insufficient-evidence rules do not apply to it. Full
+insufficient-evidence rules do not apply to it. `rag.generate_answer: false`
+reaches the same outcome by the same reasoning: a request that asks for
+`mode=answer` against it is SERVED as `search_only`, so it builds no prompt and
+the insufficient-evidence rules do not apply to it either (SPEC.md §9.4). Full
 normative contract: SPEC §9.4.1–§9.4.3. A `Citation` is lean — `chunk_id` + `rel_path` + `span` (df-006); the
 cited text is resolved via `dir2mcp_open_file` or the matching `hits[]` entry.
 The result `content[]` MUST include a `text` item containing the final answer

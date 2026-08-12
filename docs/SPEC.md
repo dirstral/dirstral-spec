@@ -2777,8 +2777,10 @@ If disabled (`rag.generate_answer: false`, §16) or `mode=search_only`:
 * return hits only, in the sense that no answer is generated. The response
   **shape** is unchanged: `ask.json` marks `answer` and `citations` **required**,
   so both are present and empty (`answer: ""`, `citations: []`) rather than
-  absent. §9.4.3's insufficient-evidence rules apply to `mode=answer` only,
-  because `search_only` never assembles a prompt to judge.
+  absent. §9.4.3's insufficient-evidence rules apply to `mode=answer` **with
+  generation enabled** only, because nothing else assembles a prompt to judge. A
+  request that asks for `mode=answer` against `rag.generate_answer: false` is
+  served as `search_only` (below), so it is outside those rules too.
 
 **Either condition is sufficient (normative).** The clause above is a
 disjunction, so `rag.generate_answer: false` withholds generation whatever the
@@ -3580,7 +3582,7 @@ timed slice.
   "additionalProperties": false,
   "properties": {
     "query": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (\u00a716), so a served schema reports that effective value as this field's default (\u00a79.1). This example carries no literal default, because the value is per deployment." },
     "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
     "path_prefix": { "type": "string" },
     "file_glob": { "type": "string" },
@@ -3632,7 +3634,7 @@ timed slice.
   "additionalProperties": false,
   "properties": {
     "question": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (\u00a716), so a served schema reports that effective value as this field's default (\u00a79.1). This example carries no literal default, because the value is per deployment." },
     "mode": { "type": "string", "enum": ["answer", "search_only"], "default": "answer" },
     "index": { "type": "string", "enum": ["auto", "text", "code", "both"], "default": "auto" },
     "path_prefix": { "type": "string" },
@@ -3671,7 +3673,7 @@ timed slice.
     "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
     "indexing_complete": { "type": "boolean" }
   },
-  "required": ["question", "citations", "hits", "indexing_complete"]
+  "required": ["question", "answer", "citations", "hits", "indexing_complete"]
 }
 ```
 
@@ -4053,7 +4055,7 @@ honestly as `ok`, `skipped` or `error`.
   "properties": {
     "rel_path": { "type": "string", "minLength": 1 },
     "question": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 }
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (\u00a716), so a served schema reports that effective value as this field's default (\u00a79.1). This example carries no literal default, because the value is per deployment." }
   },
   "required": ["rel_path", "question"]
 }
@@ -4081,7 +4083,7 @@ Input schema (audio-specific fields; the rest mirror `dir2mcp_ask`):
   "additionalProperties": false,
   "properties": {
     "question": { "type": "string", "minLength": 1 },
-    "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 },
+    "k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (\u00a716), so a served schema reports that effective value as this field's default (\u00a79.1). This example carries no literal default, because the value is per deployment." },
     "voice_id": { "type": "string" },
     "format": { "type": "string", "enum": ["mp3", "wav"], "default": "mp3" }
   },
