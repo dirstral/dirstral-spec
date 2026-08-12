@@ -387,9 +387,9 @@ shorter span. Extraction failures (unreadable media, missing `ffmpeg`) return
   `2025-11-25` defines no `video` content item, so an embedded resource is the
   only valid carrier for inline video bytes. A server MUST NOT invent a
   `video`-typed item, and MUST NOT fall back to a `text` item, which drops the
-  clip while reporting success (dir2mcp #663). The clip travels ONCE: a server
-  MUST NOT put the same bytes in both `structuredContent.data` and `content[]`.
-  SPEC.md §15.11 holds the normative table.
+  clip while reporting success (dir2mcp #663). `data` stays required for
+  `inline`, so the clip travels in both places and the response is about twice
+  `media.clip.max_bytes`. SPEC.md §15.11 holds the normative table.
 - `reference` — the clip is materialized to a short-lived, server-managed
   location and a `uri` (plus `expires_unix`) is returned instead of bytes, for
   clients that fetch out-of-band. Implementations that do not support
@@ -409,7 +409,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 **Output.** Carries `rel_path`, `doc_type`, `span`, `mime_type`, and `return`
 (required), plus `duration_ms`, `size_bytes`, `data` (present when
-`return=inline`), `uri` and `expires_unix` (present when `return=reference`).
+`return=inline`, alongside the `content[]` carrier rather than instead of it), `uri` and `expires_unix` (present when `return=reference`).
 
 **Errors:** `DOC_TYPE_UNSUPPORTED`, `FILE_NOT_FOUND`, `INVALID_RANGE`,
 `CLIP_TOO_LARGE`, `MEDIA_CLIP_FAILED` (df-008).
@@ -419,8 +419,10 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 - **0.9.0**: named the `content[]` carrier for an inline clip. Audio uses the
   native `audio` item; video uses an embedded resource with a `video/*` blob,
   because MCP `2025-11-25` defines no `video` item. Forbade the invented
-  `video` item and the `text` fallback, and stated that the clip bytes travel
-  once. Mirrors spec 0.49.0. Resolves dirstral-spec #60; unblocks dir2mcp #663.
+  `video` item and the `text` fallback, and stated that `data` and the
+  `content[]` item carry the same clip so an inline response is about twice
+  `media.clip.max_bytes`. Mirrors spec 0.49.0. Resolves the video-carrier half
+  of dirstral-spec #60; unblocks dir2mcp #663.
 - **0.8.0**: added `pending` to the `dir2mcp_list_files` `status` enum and
   stated that `status` is a projection of the stored state, with SPEC.md §15.5
   holding the normative mapping table. A server MUST NOT report unfinished work

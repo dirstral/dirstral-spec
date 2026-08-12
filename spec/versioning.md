@@ -87,10 +87,12 @@ This release:
 - forbids the invented `video` item, because a strict client rejects it;
 - forbids the `text` fallback, because it drops the clip while reporting
   success. That is the defect, not a lesser form of the answer;
-- states that the clip bytes travel ONCE. `media.clip.max_bytes` bounds the
-  clip, and a response carrying it in both `structuredContent.data` and
-  `content[]` puts roughly double that on the wire with no bound of its own.
-  `content[]` is the required carrier and `data` is then omitted.
+- states the relationship between `data` and `content[]` rather than changing
+  it. `data` stays REQUIRED for `inline`, so the clip travels in both places and
+  an inline response is about twice `media.clip.max_bytes`. That duplication is
+  now written down instead of implied. It is NOT narrowed here: dropping `data`
+  would break a client reading it today, and audio inline works today, so that
+  is a separate client-visible decision. #60 stays open for it.
 
 Audio behavior does not change. `reference` mode does not change, and video is
 NOT forced onto it: the spec already requires an implementation without
@@ -102,7 +104,8 @@ bs-007 goes to 0.9.0 with the same contract, and
 `spec/tools/schemas/open_media_clip.json` records the `data` relationship, so
 prose, numbered doc and schema agree.
 
-Resolves #60. Unblocks dir2mcp #663.
+Resolves the video-carrier half of #60. The `data` versus `content[]` narrowing
+and the fixture set stay open there. Unblocks dir2mcp #663.
 
 ## 0.48.0: a document status a client can act on
 

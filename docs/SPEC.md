@@ -4102,14 +4102,14 @@ span. Extraction failures (unreadable media, missing `ffmpeg`) return
   reporting success, which is the failure this rule exists to stop (dir2mcp
   #663).
 
-  **The bytes travel once (normative).** `structuredContent.data` and the
-  `content[]` payload are the SAME clip. A server MUST NOT send both, because
-  `media.clip.max_bytes` bounds the CLIP and a response carrying it twice puts
-  roughly double that on the wire with no bound of its own. `content[]` is the
-  required carrier for `inline`, since it is what a client renders; `data` is
-  then omitted. A server MAY instead return `data` alone when it cannot build
-  the content item, and MUST then say so, because a caller that receives neither
-  cannot tell a refusal from an empty clip.
+  **`data` and `content[]` carry the same clip, and both are sent.** `data`
+  stays REQUIRED for `return=inline`: it is the typed result, and an existing
+  audio client may read it. The `content[]` item is what a client renders. So an
+  inline response carries the clip TWICE, and `media.clip.max_bytes` bounds the
+  CLIP rather than the response, which is therefore about twice that size. This
+  is stated rather than fixed here: dropping `data` would break a client reading
+  it today, so narrowing the response is a separate, client-visible decision
+  (#60).
 * `reference` — the clip is materialized to a short-lived, server-managed location
   and a `uri` (plus `expires_unix`) is returned instead of bytes, for clients that
   fetch out-of-band. Implementations that do not support `reference` MUST fall
@@ -4167,10 +4167,12 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 }
 ```
 
-Tool result `content[]` MUST include an `audio`- or `video`-typed item carrying
-the clip (base64 `data` + `mimeType`) when `return=inline`; for
-`return=reference` the `content[]` carries a text item with the `uri` and a
-`resource_link` where supported.
+Tool result `content[]` MUST carry the clip when `return=inline`, in the item
+the table above names for its media kind: a native `audio` item for an audio
+clip (base64 `data` + `mimeType`), and an embedded resource carrying `blob`
+plus a `video/*` `mimeType` for a video clip. For `return=reference` the
+`content[]` carries a text item with the `uri` and a `resource_link` where
+supported.
 
 ### 15.12 `dir2mcp_related` (optional extension)
 
