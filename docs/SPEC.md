@@ -4086,8 +4086,30 @@ span. Extraction failures (unreadable media, missing `ffmpeg`) return
 `return` (default `inline`):
 
 * `inline` — the clip is returned **base64-encoded** in the structured output
-  (`data` + `mime_type`) and as an `audio`/`video`-typed `content[]` item. Inline
-  return is subject to the byte bound above.
+  (`data` + `mime_type`) and carried in `content[]`. Inline return is subject to
+  the byte bound above. The `content[]` carrier depends on the media kind,
+  because the MCP content union does not define one item type for both:
+
+  | Clip kind | `content[]` item | Why |
+  |---|---|---|
+  | audio | native `audio` item, `data` + `mimeType` | MCP defines an `audio` content item. |
+  | video | **embedded resource** whose `resource` carries `blob` (base64) and a `video/*` `mimeType` | MCP (`2025-11-25`) defines `text`, `image`, `audio`, `resource_link` and `resource`. It defines **no** `video` item, so an embedded resource is the only MCP-valid carrier for inline video bytes. |
+
+  A server MUST NOT invent a `video`-typed content item: a strict client rejects
+  an item type outside the union, and an SDK that models the union as a closed
+  set cannot construct one at all. A server MUST NOT fall back to a `text` item
+  either. That is not a lesser form of the same answer; it drops the clip while
+  reporting success, which is the failure this rule exists to stop (dir2mcp
+  #663).
+
+  **`data` and `content[]` carry the same clip, and both are sent.** `data`
+  stays REQUIRED for `return=inline`: it is the typed result, and an existing
+  audio client may read it. The `content[]` item is what a client renders. So an
+  inline response carries the clip TWICE, and `media.clip.max_bytes` bounds the
+  CLIP rather than the response, which is therefore about twice that size. This
+  is stated rather than fixed here: dropping `data` would break a client reading
+  it today, so narrowing the response is a separate, client-visible decision
+  (#60).
 * `reference` — the clip is materialized to a short-lived, server-managed location
   and a `uri` (plus `expires_unix`) is returned instead of bytes, for clients that
   fetch out-of-band. Implementations that do not support `reference` MUST fall
@@ -4145,10 +4167,12 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 }
 ```
 
-Tool result `content[]` MUST include an `audio`- or `video`-typed item carrying
-the clip (base64 `data` + `mimeType`) when `return=inline`; for
-`return=reference` the `content[]` carries a text item with the `uri` and a
-`resource_link` where supported.
+Tool result `content[]` MUST carry the clip when `return=inline`, in the item
+the table above names for its media kind: a native `audio` item for an audio
+clip (base64 `data` + `mimeType`), and an embedded resource carrying `blob`
+plus a `video/*` `mimeType` for a video clip. For `return=reference` the
+`content[]` carries a text item with the `uri` and a `resource_link` where
+supported.
 
 ### 15.12 `dir2mcp_related` (optional extension)
 
