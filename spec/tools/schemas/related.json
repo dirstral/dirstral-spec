@@ -34,7 +34,7 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 50,
-                "default": 15
+                "description": "Number of hits to return. Bound 1..50. An OMITTED field resolves to the server's configured rag.k_default (SPEC 16), so a served schema reports that effective value as this field's default (SPEC 9.1). The canonical schema carries no literal default, because the value is per deployment."
             },
             "index": {
                 "type": "string",

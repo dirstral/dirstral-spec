@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.9.0
+- **Version:** 0.10.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -42,7 +42,9 @@ input-validation, and provider codes in df-008 apply across all tools.
 **Parameters.**
 
 - `query` (**required**, non-empty) — the retrieval query.
-- `k` — number of hits, integer in `[1, 50]`, default **15**.
+- `k`: number of hits, integer in `[1, 50]`. An omitted field resolves to the
+  server's configured `rag.k_default`, and a served schema reports that effective
+  value as this field's default (SPEC.md §9.1).
 - `index` — which vector space to search: `auto | text | code | both`, default
   **`auto`**. The resolved space is reported back as `index_used`
   (`text | code | both`).
@@ -86,7 +88,8 @@ result `content[]` MUST include at least one `text` item summarizing results
 **Parameters.**
 
 - `question` (**required**, non-empty).
-- `k` — integer in `[1, 50]`, default **15**.
+- `k`: integer in `[1, 50]`. An omitted field resolves to `rag.k_default`
+  (SPEC.md §9.1).
 - `mode` — `answer | search_only`, default **`answer`**. In `search_only` no
   answer is generated; only retrieval results are returned.
 - `index` — `auto | text | code | both`, default **`auto`**.
@@ -306,7 +309,8 @@ configured).
 
 - `rel_path` (**required**, non-empty) — the audio file.
 - `question` (**required**, non-empty).
-- `k` — integer in `[1, 50]`, default **15**.
+- `k`: integer in `[1, 50]`. An omitted field resolves to `rag.k_default`
+  (SPEC.md §9.1).
 
 **Behavior.** Output is the same shape as `dir2mcp_ask` plus `stt_provider`,
 `transcript_model`, and a `transcribed` boolean (whether transcription ran on
@@ -416,6 +420,10 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 ## Changelog
 
+- **0.10.0**: stated that an omitted `k` resolves to the server's configured
+  `rag.k_default` and that a served schema reports that effective value, rather
+  than repeating a literal default of 15. Mirrors spec 0.50.0. Resolves
+  dirstral-spec #61; unblocks dir2mcp #654.
 - **0.9.0**: named the `content[]` carrier for an inline clip. Audio uses the
   native `audio` item; video uses an embedded resource with a `video/*` blob,
   because MCP `2025-11-25` defines no `video` item. Forbade the invented

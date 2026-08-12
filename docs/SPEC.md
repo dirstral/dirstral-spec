@@ -2642,6 +2642,44 @@ MUST NOT make ingestion fail.
 
 ### 9.1 Search routing
 
+**How `k` is resolved (normative).** `k` names how many hits a caller wants.
+Three things can supply it, and the order is fixed:
+
+1. the value on the REQUEST, when the field is present;
+2. `rag.k_default` (§16), the server's configured default;
+3. the shipped fallback, when the operator configured none.
+
+`rag.k_default` MUST satisfy the same bound the request field does, `1..50`. A
+configured value outside it is `CONFIG_INVALID` at load: a default that asks for
+a `k` the schema forbids can only fail later, at a request the operator did not
+write.
+
+**Scope: every tool that takes a `k`.** `rag.k_default` applies to
+`dir2mcp_search`, `dir2mcp_ask`, `dir2mcp_related`, `dir2mcp_ask_audio` and
+`dir2mcp_transcribe_and_ask`, and to any CLI surface over them. It is one
+setting about how much evidence this corpus needs, not a per-tool tuning knob,
+and a server MUST NOT apply it to some of those surfaces and not others. An
+implementation that resolved `k` per tool would give one corpus several
+different defaults for the same question.
+
+**The served schema reports the EFFECTIVE default (normative).** A server
+publishes its input schemas through `tools/list`, so that schema describes THIS
+deployment. The `default` a server advertises for `k` MUST therefore be the
+value an omitted field actually produces, which is `rag.k_default` when the
+operator set one.
+
+This is the one rule with a wire-visible consequence, and it is the honest
+direction. A fixed advertised default would make the schema state something
+untrue as soon as an operator configured a different one: a client that reads
+the schema and sends the advertised value explicitly would get a different `k`
+from a client that omits the field, with nothing to explain the difference.
+
+The canonical schemas in `spec/tools/schemas/` therefore do NOT carry a literal
+default for `k`. They describe the field and its bound, and they name
+`rag.k_default` as what an omitted field resolves to. A conformance fixture MUST
+NOT assert a specific advertised default without also fixing
+`rag.k_default` in the configuration under test.
+
 At query time:
 
 * `index=auto`:
