@@ -2734,13 +2734,28 @@ If enabled:
   * retrieved contexts + citations
 * return answer text + citations list + underlying hits (structured output)
 
-If disabled or `mode=search_only`:
+If disabled (`rag.generate_answer: false`, §16) or `mode=search_only`:
 
 * return hits only, in the sense that no answer is generated. The response
   **shape** is unchanged: `ask.json` marks `answer` and `citations` **required**,
   so both are present and empty (`answer: ""`, `citations: []`) rather than
   absent. §9.4.3's insufficient-evidence rules apply to `mode=answer` only,
   because `search_only` never assembles a prompt to judge.
+
+**Either condition is sufficient (normative).** The clause above is a
+disjunction, so `rag.generate_answer: false` withholds generation whatever the
+request asks, and `mode=search_only` withholds it whatever the server is
+configured to do. A request MUST NOT turn generation back on against the server
+setting: that setting is an operator's decision about provider cost and data
+flow, and a caller cannot overrule it. `mode=answer` against
+`generate_answer: false` is therefore SERVED as `search_only`, not refused,
+because the response shape is identical and a refusal would leave the caller no
+way to use the corpus at all.
+
+This was specified from the start and was unfindable. The clause said
+"disabled" without naming the key it refers to, so a reader searching for
+`generate_answer` found only the §16 config template and concluded the false
+case had no normative behavior (#61).
 
 #### 9.4.1 Grounding: citations describe what the model saw
 
