@@ -769,6 +769,25 @@ Both are **optional and additive**, exactly like `speaker` above: a consumer tha
 does not recognize them MUST treat the span as un-attributed. A chunk that is not
 a recognition annotation carries neither.
 
+A recognition span MAY also carry `derivation`, either `observed` or
+`generated`. It answers a question a reader of the text cannot: whether the
+annotation RECORDS something or DESCRIBES it.
+
+* `observed` is a reading of something the source recorded: a play-by-play feed
+  entry, text read off an on-screen overlay, a face matched against a bank.
+* `generated` is a model's description of the media in its own words.
+
+Absent means `observed`, which keeps every producer written before this field
+correct without changing its output.
+
+**A consumer MUST NOT present a `generated` annotation as the source's own
+account of what happened (normative).** The two are not interchangeable. "Ball,
+called strike" read from a feed is a fact about the game; "the crowd erupts as
+the ball clears the wall" is one model's reading of some pixels, and it can be
+confidently wrong in a way a feed entry cannot. A citation that hides the
+difference invites a user to treat an interpretation as evidence, and the risk
+grows with how fluent the description is.
+
 Serving them matters because the filter is otherwise opaque. A caller who asks
 for `events: ["home_run"]` and receives five hits has no way to confirm that all
 five carry that event, and no way to tell a filtered result from an unfiltered
