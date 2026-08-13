@@ -758,6 +758,23 @@ MUST treat the span as un-attributed (degrade to a flat transcript citation).
 Diarization is **off by default** and **provider-dependent** (§8.6.8); a
 non-diarized transcript carries no `speaker` field.
 
+For `time` spans produced by the **recognition** capability (design 0004),
+`extra_json` MAY carry the attribution the recognizer recorded: `entities`, an
+array of entity ids, and `event`, the producer's event token. These are the same
+values `dir2mcp_search` and `dir2mcp_ask` filter on through their `entities` and
+`events` arguments (§15.2), so a served hit that carries them lets a caller see
+WHY it matched rather than only that it did.
+
+Both are **optional and additive**, exactly like `speaker` above: a consumer that
+does not recognize them MUST treat the span as un-attributed. A chunk that is not
+a recognition annotation carries neither.
+
+Serving them matters because the filter is otherwise opaque. A caller who asks
+for `events: ["home_run"]` and receives five hits has no way to confirm that all
+five carry that event, and no way to tell a filtered result from an unfiltered
+one. That is the difference between a contract a client can verify and one it
+must trust.
+
 The `region` span kind localizes a chunk to a rectangular area on a page.
 For `region` spans, `start` and `end` carry the first and last page the
 chunk's source elements appear on (equal when single-page), and

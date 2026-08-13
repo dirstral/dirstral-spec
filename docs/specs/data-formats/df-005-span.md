@@ -1,7 +1,7 @@
 # df-005: Span
 
 - **ID:** df-005
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -40,7 +40,9 @@ A `Span` is exactly one of five variants, selected by `kind`. Each variant is
         "start_ms": { "type": "integer" },
         "end_ms": { "type": "integer" },
         "speaker": { "type": "string", "description": "Optional (td-003): stable per-transcript speaker id on a diarized transcript." },
-        "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (td-003)." }
+        "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (td-003)." },
+        "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (bs-007 design 0004): entity ids the recognizer attributed to this span." },
+        "event": { "type": "string", "description": "Optional (bs-007 design 0004): the producer's event token for this span. Vocabulary is producer-defined." }
       },
       "required": ["kind", "start_ms", "end_ms"]
     },
