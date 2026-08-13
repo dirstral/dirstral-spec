@@ -758,41 +758,11 @@ MUST treat the span as un-attributed (degrade to a flat transcript citation).
 Diarization is **off by default** and **provider-dependent** (§8.6.8); a
 non-diarized transcript carries no `speaker` field.
 
-For `time` spans produced by the **recognition** capability (design 0004),
-`extra_json` MAY carry the attribution the recognizer recorded: `entities`, an
-array of entity ids, and `event`, the producer's event token. These are the same
-values `dir2mcp_search` and `dir2mcp_ask` filter on through their `entities` and
-`events` arguments (§15.2), so a served hit that carries them lets a caller see
-WHY it matched rather than only that it did.
-
-Both are **optional and additive**, exactly like `speaker` above: a consumer that
-does not recognize them MUST treat the span as un-attributed. A chunk that is not
-a recognition annotation carries neither.
-
-A recognition span MAY also carry `derivation`, either `observed` or
-`generated`. It answers a question a reader of the text cannot: whether the
-annotation RECORDS something or DESCRIBES it.
-
-* `observed` is a reading of something the source recorded: a play-by-play feed
-  entry, text read off an on-screen overlay, a face matched against a bank.
-* `generated` is a model's description of the media in its own words.
-
-Absent means `observed`, which keeps every producer written before this field
-correct without changing its output.
-
-**A consumer MUST NOT present a `generated` annotation as the source's own
-account of what happened (normative).** The two are not interchangeable. "Ball,
-called strike" read from a feed is a fact about the game; "the crowd erupts as
-the ball clears the wall" is one model's reading of some pixels, and it can be
-confidently wrong in a way a feed entry cannot. A citation that hides the
-difference invites a user to treat an interpretation as evidence, and the risk
-grows with how fluent the description is.
-
-Serving them matters because the filter is otherwise opaque. A caller who asks
-for `events: ["home_run"]` and receives five hits has no way to confirm that all
-five carry that event, and no way to tell a filtered result from an unfiltered
-one. That is the difference between a contract a client can verify and one it
-must trust.
+For `time` spans produced by the **recognition** capability, `extra_json` MAY
+carry `entities`, `event` and `derivation`. **df-005 is the source of truth for
+all three**, including the normative rule that a consumer MUST NOT present a
+`generated` annotation as the source's own account of what happened. They are
+optional and additive in the same way `speaker` is above.
 
 The `region` span kind localizes a chunk to a rectangular area on a page.
 For `region` spans, `start` and `end` carry the first and last page the
@@ -3534,7 +3504,10 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
         "start_ms": { "type": "integer" },
         "end_ms": { "type": "integer" },
         "speaker": { "type": "string", "description": "Optional (§8.6.8): stable per-transcript speaker id on a diarized transcript." },
-        "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (§8.6.8)." }
+        "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (§8.6.8)." },
+        "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (df-005): entity ids the recognizer attributed to this span." },
+        "event": { "type": "string", "description": "Optional (df-005): the producer's event token for this span. Vocabulary is producer-defined." },
+        "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional (df-005): whether this span records something observed or something a model generated. Absent means observed." }
       },
       "required": ["kind", "start_ms", "end_ms"]
     },

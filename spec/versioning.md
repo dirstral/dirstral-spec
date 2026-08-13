@@ -88,7 +88,15 @@ know it is one.
 
 Both fields reach the client end to end: the 0004 recognize-response schema
 carries `derivation` from the recognizer, and the canonical Span carries both to
-the citation. df-005 goes to 0.2.0 with the attribution fields.
+the citation. **df-005 is the source of truth for all three fields**, per the repository rule
+that a numbered document owns migrated content and SPEC.md must not duplicate
+it. SPEC.md 5.4 points there. df-005 goes to 0.2.0.
+
+The published `Span` exists in four places and all four now agree: the canonical
+`common.json`, the inline copy in SPEC.md 15.1.1, df-005, and the 0004
+recognize-response schema. The inline copy is `additionalProperties: false`, so
+leaving it behind would have made the prose reject what the canonical schema
+permits.
 
 Unblocks the wire half of dir2mcp #856, and is a precondition for dir2mcp #860.
 

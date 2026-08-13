@@ -16,6 +16,45 @@ and by the `open_file` tool output.
 
 ## Specification (normative)
 
+### Recognition metadata on a `time` span
+
+A span produced by the recognition capability MAY carry the attribution the
+recognizer recorded:
+
+* `entities`, an array of entity ids;
+* `event`, the producer's event token.
+
+These are the values `dir2mcp_search` and `dir2mcp_ask` filter on through their
+`entities` and `events` arguments (bs-007). A served hit that carries them lets a
+caller see WHY it matched rather than only that it did. The filter is otherwise
+opaque: a caller who asks for `events: ["home_run"]` and receives five hits has
+no way to confirm all five carry that event, nor to tell a filtered result from
+an unfiltered one.
+
+A span MAY also carry `derivation`, either `observed` or `generated`. It answers
+a question a reader of the text cannot: whether the annotation RECORDS something
+or DESCRIBES it.
+
+* `observed` is a reading of something the source recorded: a play-by-play feed
+  entry, text read off an on-screen overlay, a face matched against a bank.
+* `generated` is a model's description of the media in its own words.
+
+Absent means `observed`, which keeps every producer written before this field
+correct without changing its output.
+
+**A consumer MUST NOT present a `generated` annotation as the source's own
+account of what happened.** The two are not interchangeable. "Ball, called
+strike" read from a feed is a fact about the game; "the crowd erupts as the ball
+clears the wall" is one model's reading of some pixels, and it can be
+confidently wrong in a way a feed entry cannot. Fluency is why the rule is
+needed: a confident sentence reads like evidence, so the more convincing a
+description is, the more a reader needs to know it is one.
+
+All three fields are **optional and additive**, exactly as `speaker` is: a
+consumer that does not recognize them MUST treat the span as it did before. A
+chunk that is not a recognition annotation carries none of them.
+
+
 A `Span` is exactly one of five variants, selected by `kind`. Each variant is
 `additionalProperties: false`.
 
@@ -42,7 +81,8 @@ A `Span` is exactly one of five variants, selected by `kind`. Each variant is
         "speaker": { "type": "string", "description": "Optional (td-003): stable per-transcript speaker id on a diarized transcript." },
         "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (td-003)." },
         "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (bs-007 design 0004): entity ids the recognizer attributed to this span." },
-        "event": { "type": "string", "description": "Optional (bs-007 design 0004): the producer's event token for this span. Vocabulary is producer-defined." }
+        "event": { "type": "string", "description": "Optional (bs-007 design 0004): the producer's event token for this span. Vocabulary is producer-defined." },
+        "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional: whether this span records something observed or something a model generated. Absent means observed." }
       },
       "required": ["kind", "start_ms", "end_ms"]
     },
@@ -114,6 +154,15 @@ or timed slice.
 
 ## Changelog
 
+- **0.2.0**: added three optional `time` span fields. `entities` and `event`
+  carry the attribution a recognizer recorded, which is what the `entities` and
+  `events` filters match on, so a served hit can show WHY it matched.
+  `derivation` (`observed` or `generated`) separates a reading of something
+  recorded from a model's description of the media; absent means `observed`, so
+  every earlier producer stays correct. All three are additive in the same way
+  `speaker` is: a consumer that does not recognize them treats the span as it
+  did before. This document is the source of truth for them, and SPEC.md points
+  here. Unblocks dir2mcp #856; precondition for dir2mcp #860.
 - **0.1.0** — Migrated from SPEC.md §15.1.1. Added the normative MUST that a
   producer emit a defined non-empty `kind` (codifies dir2mcp #397). Updated
   internal cross-references from `§8.6.8`/`§7.4.B` to `td-003`/`td-004`.
