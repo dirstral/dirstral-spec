@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.50.0`
+**Current spec version:** `0.51.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,45 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.51.0: let a span say what it is and where it came from
+
+Two optional additions to the `time` span, so a MINOR bump under the pre-1.0
+policy. Both are additive in the same way `speaker` already is on that branch: a
+consumer that does not recognize them treats the span as it did before.
+
+**Attribution, for dir2mcp #856.** `entities` and `event` are what
+`dir2mcp_search` and `dir2mcp_ask` filter recognition hits on, and a served hit
+carried neither. A caller who asked for `events: ["home_run"]` and got five hits
+could not confirm all five carry that event, nor tell a filtered result from an
+unfiltered one. That is not theoretical: #856 reported the filters as silently
+ignored, an impossible value returning a full page of hits, and the reason it
+survived is that no client could look.
+
+**Derivation, for dir2mcp #860.** `derivation` is `observed` or `generated`, and
+it separates a reading of something recorded from a model's description of the
+media. Absent means `observed`, so every existing producer stays correct.
+
+The rule is normative: a consumer MUST NOT present a `generated` annotation as
+the source's own account of what happened. The scoping work for #860 measured a
+frame captioner at 0.63 precision on crowd reactions, with every failure a FALSE
+POSITIVE claiming a reaction that was not there. A fluent sentence reads like
+evidence, so the more convincing a description is, the more a reader needs to
+know it is one.
+
+Both fields reach the client end to end: the 0004 recognize-response schema
+carries `derivation` from the recognizer, and the canonical Span carries both to
+the citation. **df-005 is the source of truth for all three fields**, per the repository rule
+that a numbered document owns migrated content and SPEC.md must not duplicate
+it. SPEC.md 5.4 points there. df-005 goes to 0.2.0.
+
+The published `Span` exists in four places and all four now agree: the canonical
+`common.json`, the inline copy in SPEC.md 15.1.1, df-005, and the 0004
+recognize-response schema. The inline copy is `additionalProperties: false`, so
+leaving it behind would have made the prose reject what the canonical schema
+permits.
+
+Unblocks the wire half of dir2mcp #856, and is a precondition for dir2mcp #860.
 
 ## 0.50.0: resolve how k is chosen, and name generate_answer where it is defined
 

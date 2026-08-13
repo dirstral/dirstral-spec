@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dirstral.dev/design/0004-recognize-response.schema.json",
-  "title": "Recognize response (design 0004 v1 — DRAFT, non-normative)",
-  "description": "Draft wire contract for the recognize capability's serve provider (design 0004 §5): the JSON a served recognizer returns from POST /recognize. Non-normative while the design is Proposed; the normative copy lands under spec/ with the v1 spec deltas.",
+  "title": "Recognize response (design 0004 v1 \u2014 DRAFT, non-normative)",
+  "description": "Draft wire contract for the recognize capability's serve provider (design 0004 \u00a75): the JSON a served recognizer returns from POST /recognize. Non-normative while the design is Proposed; the normative copy lands under spec/ with the v1 spec deltas.",
   "type": "object",
   "required": [
     "recognizer",
@@ -12,7 +12,7 @@
   "properties": {
     "recognizer": {
       "type": "object",
-      "description": "Recognizer identity, declared by the backend (design 0004 §4): feeds the derivation identity of the persisted annotation representation.",
+      "description": "Recognizer identity, declared by the backend (design 0004 \u00a74): feeds the derivation identity of the persisted annotation representation.",
       "required": [
         "name",
         "version"
@@ -31,7 +31,7 @@
     },
     "entities": {
       "type": "array",
-      "description": "Entity dictionary for ids referenced by annotations[].entities. Ids are free-form but should be stable across the corpus (open question, design 0004 §6).",
+      "description": "Entity dictionary for ids referenced by annotations[].entities. Ids are free-form but should be stable across the corpus (open question, design 0004 \u00a76).",
       "items": {
         "type": "object",
         "required": [
@@ -61,7 +61,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "description": "One recognized statement with a time span. The span maps directly to a persisted `time` citation, so it MUST satisfy 0 <= start_s <= end_s. A zero-length span (end_s == start_s) is permitted and denotes an instantaneous event (e.g. a single pitch-release frame). JSON Schema (2020-12) cannot express the cross-field `end_s >= start_s` bound portably, so the ingestion side DROPS a reversed span as a malformed annotation — the rest of the document's annotations proceed (design 0004 §5); the per-field `minimum: 0` below is the portion the schema can enforce.",
+        "description": "One recognized statement with a time span. The span maps directly to a persisted `time` citation, so it MUST satisfy 0 <= start_s <= end_s. A zero-length span (end_s == start_s) is permitted and denotes an instantaneous event (e.g. a single pitch-release frame). JSON Schema (2020-12) cannot express the cross-field `end_s >= start_s` bound portably, so the ingestion side DROPS a reversed span as a malformed annotation \u2014 the rest of the document's annotations proceed (design 0004 \u00a75); the per-field `minimum: 0` below is the portion the schema can enforce.",
         "required": [
           "start_s",
           "end_s",
@@ -106,7 +106,15 @@
             "items": {
               "type": "string"
             },
-            "description": "Recognizer tags that contributed (e.g. \"scorebug\", \"face\"). Provenance metadata, not a relevance signal (design 0004 §4)."
+            "description": "Recognizer tags that contributed (e.g. \"scorebug\", \"face\"). Provenance metadata, not a relevance signal (design 0004 \u00a74)."
+          },
+          "derivation": {
+            "type": "string",
+            "enum": [
+              "observed",
+              "generated"
+            ],
+            "description": "Optional. How this annotation came to exist. 'observed' means it is a reading of something recorded: a play-by-play feed entry, text read off an overlay, a matched face. 'generated' means a model DESCRIBED the media in its own words, so the annotation is an interpretation and not a record. Absent means observed, which keeps every existing producer correct. A consumer MUST NOT present a generated annotation as the source's own account of what happened."
           }
         }
       }
