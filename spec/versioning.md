@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.51.0`
+**Current spec version:** `0.52.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,41 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.52.0: name the recognizer behind an annotation
+
+One optional additive field on the `time` span, so a MINOR bump under the
+pre-1.0 policy.
+
+A recognition annotation is produced by one or more recognizers: a play-by-play
+feed, a scorebug reader, a jersey reader, a face matcher. The recognize response
+has carried that in `sources` since design 0004, and the span had nowhere to put
+it, so the information stopped at the implementation boundary and never reached
+a client.
+
+**Why a client needs it, and why `derivation` does not cover it.** 0.51.0 added
+`derivation`, which reports whether an annotation RECORDS or DESCRIBES. That is a
+two-value judgement about kind. `sources` reports WHICH component produced the
+annotation, and that is what lets a client weigh one reading against another.
+Recognizers within one implementation differ widely in reliability: a scorebug
+reader covering most of a broadcast and a face matcher covering a fraction of it
+are both `observed`, and a viewer asking "how do you know" deserves to be told
+which one spoke.
+
+**The vocabulary stays open.** The recognizers an implementation runs are its own
+design, and enumerating their names here would make adding one a spec change. A
+client MUST render an unrecognized tag verbatim rather than error, the same rule
+the skip-reason enum already states for its own growth.
+
+`sources` is provenance only. An implementation MUST NOT require a client to
+read it in order to rank or filter correctly.
+
+df-005 goes to 0.3.0 and holds the normative rule; SPEC.md 5.4 stays a pointer.
+All four copies of the published Span carry the field: `common.json`, the
+SPEC.md 15.1.1 inline copy, df-005, and the 0004 recognize-response schema,
+which already had it.
+
+Unblocks dir2mcp #861.
 
 ## 0.51.0: let a span say what it is and where it came from
 

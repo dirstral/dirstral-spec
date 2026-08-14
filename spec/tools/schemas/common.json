@@ -79,6 +79,13 @@
                 "generated"
               ],
               "description": "Optional (SPEC 5.4): whether this span records something observed or something a model generated. Absent means observed. A client MUST NOT present a generated span as a record of what happened."
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional (df-005): the recognizers that contributed to this annotation, for example [\"scorebug\"] or [\"playbyplay\",\"face\"]. Producer-defined tags, not a closed set and not a relevance signal. A client MAY use them to explain or weigh a hit, because recognizers differ in reliability."
             }
           },
           "required": [

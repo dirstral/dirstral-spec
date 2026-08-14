@@ -759,8 +759,8 @@ Diarization is **off by default** and **provider-dependent** (§8.6.8); a
 non-diarized transcript carries no `speaker` field.
 
 For `time` spans produced by the **recognition** capability, `extra_json` MAY
-carry `entities`, `event` and `derivation`. **df-005 is the source of truth for
-all three**, including the normative rule that a consumer MUST NOT present a
+carry `entities`, `event`, `derivation` and `sources`. **df-005 is the source of
+truth for all four**, including the normative rule that a consumer MUST NOT present a
 `generated` annotation as the source's own account of what happened. They are
 optional and additive in the same way `speaker` is above.
 
@@ -3507,7 +3507,8 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
         "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (§8.6.8)." },
         "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (df-005): entity ids the recognizer attributed to this span." },
         "event": { "type": "string", "description": "Optional (df-005): the producer's event token for this span. Vocabulary is producer-defined." },
-        "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional (df-005): whether this span records something observed or something a model generated. Absent means observed." }
+        "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional (df-005): whether this span records something observed or something a model generated. Absent means observed." },
+        "sources": { "type": "array", "items": { "type": "string" }, "description": "Optional (df-005): the recognizers that contributed to this annotation. Producer-defined tags." }
       },
       "required": ["kind", "start_ms", "end_ms"]
     },
