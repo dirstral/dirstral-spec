@@ -1,7 +1,7 @@
 # df-005: Span
 
 - **ID:** df-005
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -50,7 +50,31 @@ confidently wrong in a way a feed entry cannot. Fluency is why the rule is
 needed: a confident sentence reads like evidence, so the more convincing a
 description is, the more a reader needs to know it is one.
 
-All three fields are **optional and additive**, exactly as `speaker` is: a
+A span MAY also carry `sources`, an array naming the recognizers that
+contributed to the annotation, for example `["scorebug"]` or
+`["playbyplay", "face"]`.
+
+`sources` and `derivation` answer different questions and neither replaces the
+other. `derivation` says whether an annotation RECORDS or DESCRIBES, which is a
+two-value judgement about kind. `sources` says WHICH component produced it,
+which is what lets a client weigh one reading against another.
+
+That difference is practical, not theoretical. Recognizers within one
+implementation vary widely in reliability: a scorebug reader that covers most of
+a broadcast and a face matcher that covers a fraction of it are both `observed`,
+and a viewer asking "how do you know" deserves to be told which one spoke. A
+client MAY therefore use `sources` to explain a hit or to weigh it.
+
+**The vocabulary is producer-defined and NOT enumerated here.** The recognizers
+an implementation runs are its own design, and freezing their names in this
+document would make adding one a spec change. A client MUST therefore treat an
+unrecognized tag as opaque and render it verbatim rather than error, which is
+the same rule the skip-reason enum states for its own additive growth.
+
+`sources` is provenance, not a relevance signal. An implementation MUST NOT
+require a client to read it in order to rank or filter correctly.
+
+All four fields are **optional and additive**, exactly as `speaker` is: a
 consumer that does not recognize them MUST treat the span as it did before. A
 chunk that is not a recognition annotation carries none of them.
 
@@ -82,7 +106,8 @@ A `Span` is exactly one of five variants, selected by `kind`. Each variant is
         "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (td-003)." },
         "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (bs-007 design 0004): entity ids the recognizer attributed to this span." },
         "event": { "type": "string", "description": "Optional (bs-007 design 0004): the producer's event token for this span. Vocabulary is producer-defined." },
-        "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional: whether this span records something observed or something a model generated. Absent means observed." }
+        "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional: whether this span records something observed or something a model generated. Absent means observed." },
+        "sources": { "type": "array", "items": { "type": "string" }, "description": "Optional: the recognizers that contributed to this annotation. Producer-defined tags." }
       },
       "required": ["kind", "start_ms", "end_ms"]
     },
@@ -154,6 +179,13 @@ or timed slice.
 
 ## Changelog
 
+- **0.3.0**: added the optional `time` span field `sources`, an array naming
+  the recognizers that contributed to an annotation. It is not what `derivation`
+  says: `derivation` reports whether an annotation records or describes, and
+  `sources` reports which component produced it, so a client can weigh a
+  scorebug reading against a face match. The vocabulary is producer-defined and
+  deliberately not enumerated, and a client MUST render an unrecognized tag
+  verbatim. Provenance only, never required for ranking. Unblocks dir2mcp #861.
 - **0.2.0**: added three optional `time` span fields. `entities` and `event`
   carry the attribution a recognizer recorded, which is what the `entities` and
   `events` filters match on, so a served hit can show WHY it matched.
