@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.52.0`
+**Current spec version:** `0.53.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,28 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.53.0: declare the reference fallback an implementation already emits
+
+One optional additive field on the `dir2mcp_open_media_clip` output, so a MINOR
+bump under the pre-1.0 policy.
+
+This closes a conformance break rather than adding a capability. The output
+object is `additionalProperties: false`, and an implementation emits
+`reference_fallback` when a caller asks for `return=reference` and the server
+serves inline instead. A client validating against the canonical schema
+therefore rejected the whole tool result for every such response, which is the
+failure mode 15.1.1 exists to prevent: a server MUST NOT emit a field the
+advertised branch does not declare.
+
+The field is deliberately defined by its PRESENCE rather than its text. A caller
+reads `return` to learn the carrier it got, and reads whether
+`reference_fallback` is present to learn that the carrier is not the one it
+asked for. The string explains why, for a human. Nothing should parse it.
+
+It is optional and absent on every response that honoured the requested carrier,
+so an implementation that always honours `return=reference`, and every client
+written before this version, are unaffected.
 
 ## 0.52.0: name the recognizer behind an annotation
 

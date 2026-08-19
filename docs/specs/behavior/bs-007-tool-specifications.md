@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.10.0
+- **Version:** 0.11.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -416,12 +416,14 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 **Output.** Carries `rel_path`, `doc_type`, `span`, `mime_type`, and `return`
 (required), plus `duration_ms`, `size_bytes`, `data` (present when
-`return=inline`, alongside the `content[]` carrier rather than instead of it), `uri` and `expires_unix` (present when `return=reference`).
+`return=inline`, alongside the `content[]` carrier rather than instead of it), `uri` and `expires_unix` (present when `return=reference`), and `reference_fallback` (present ONLY when the caller asked for `return=reference` and the server served inline instead; its presence is what tells the caller the returned `return` value is not the one it asked for).
 
 **Errors:** `DOC_TYPE_UNSUPPORTED`, `FILE_NOT_FOUND`, `INVALID_RANGE`,
 `CLIP_TOO_LARGE`, `MEDIA_CLIP_FAILED` (df-008).
 
 ## Changelog
+
+- **0.11.0** — Declared `reference_fallback` on the `dir2mcp_open_media_clip` output. The field is emitted by an existing implementation when `return=reference` is requested and inline is served instead, and the canonical schema is `additionalProperties: false`, so a canonically validating client rejected every such response. Additive and optional.
 
 - **0.10.0**: stated that an omitted `k` resolves to the server's configured
   `rag.k_default` and that a served schema reports that effective value, rather
