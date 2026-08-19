@@ -34,7 +34,8 @@
       "return": { "type": "string", "enum": ["inline", "reference"] },
       "data": { "type": "string", "contentEncoding": "base64", "description": "Required when return=inline (see allOf below): base64 clip bytes. content[] carries the SAME clip in addition, in the item SPEC 15.11 names for the media kind (audio: a native audio item; video: an embedded resource whose resource carries blob plus a video/* mimeType, because MCP 2025-11-25 defines no video item). So an inline response holds the clip twice, and media.clip.max_bytes bounds the CLIP rather than the response." },
       "uri": { "type": "string", "description": "Present when return=reference: short-lived fetch URI." },
-      "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." }
+      "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." },
+      "reference_fallback": { "type": "string", "description": "Present ONLY when the caller asked for return=reference and the server served inline instead; explains why. Its PRESENCE is the signal that the returned return value is not the one asked for, so a caller tests presence and does not parse the text. Absent whenever the requested carrier was honoured." }
     },
     "required": ["rel_path", "doc_type", "span", "mime_type", "return"],
     "allOf": [
