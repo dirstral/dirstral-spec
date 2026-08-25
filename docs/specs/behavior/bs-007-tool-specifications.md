@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.11.0
+- **Version:** 0.12.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -363,6 +363,11 @@ text, and played.
   is absent.
 - `start_ms` / `end_ms` — integers `≥ 0`.
 - `return` — `inline | reference`, default **`inline`**.
+- `max_bytes` — optional integer `≥ 1`; the caller's ceiling on the **clip**
+  bytes (not the response). The effective bound is
+  `min(max_bytes, media.clip.max_bytes)`. The server MAY re-encode the span to a
+  reduced-fidelity preview to fit under it, and MUST mark the result with the
+  output `preview` field; when even a preview cannot fit, `CLIP_TOO_LARGE`.
 
 **Selection rules.**
 
@@ -416,12 +421,14 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 **Output.** Carries `rel_path`, `doc_type`, `span`, `mime_type`, and `return`
 (required), plus `duration_ms`, `size_bytes`, `data` (present when
-`return=inline`, alongside the `content[]` carrier rather than instead of it), `uri` and `expires_unix` (present when `return=reference`), and `reference_fallback` (present ONLY when the caller asked for `return=reference` and the server served inline instead; its presence is what tells the caller the returned `return` value is not the one it asked for).
+`return=inline`, alongside the `content[]` carrier rather than instead of it), `uri` and `expires_unix` (present when `return=reference`), `reference_fallback` (present ONLY when the caller asked for `return=reference` and the server served inline instead; its presence is what tells the caller the returned `return` value is not the one it asked for), and `preview` (present ONLY when the served bytes are a reduced-fidelity re-encode rather than a source-fidelity cut; names the rendition for a human, and its presence is the machine signal, so a source cut is never mistakable for a preview).
 
 **Errors:** `DOC_TYPE_UNSUPPORTED`, `FILE_NOT_FOUND`, `INVALID_RANGE`,
 `CLIP_TOO_LARGE`, `MEDIA_CLIP_FAILED` (df-008).
 
 ## Changelog
+
+- **0.12.0** — Added the optional `max_bytes` input and the `preview` output to `dir2mcp_open_media_clip`. A clip cut at the source bitrate can be ~22 MB for 8 seconds (dir2mcp #878); `max_bytes` lets the caller bound the clip bytes and the server re-encode to fit, and `preview`'s presence marks the result as a reduced-fidelity re-encode so it is never mistakable for a source cut. Both additive and optional.
 
 - **0.11.0** — Declared `reference_fallback` on the `dir2mcp_open_media_clip` output. The field is emitted by an existing implementation when `return=reference` is requested and inline is served instead, and the canonical schema is `additionalProperties: false`, so a canonically validating client rejected every such response. Additive and optional.
 
