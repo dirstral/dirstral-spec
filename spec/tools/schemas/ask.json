@@ -38,7 +38,8 @@
         "items": { "$ref": "#/definitions/Citation" }
       },
       "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
-      "indexing_complete": { "type": "boolean" }
+      "indexing_complete": { "type": "boolean" },
+    "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Absolute evidence verdict of the ELIGIBLE hit set behind the answer. Aggregation is normative (SPEC 9.4.3): the strongest eligible hit's verdict, ordered strong > sufficient > insufficient, with unknown only when no eligible hit carries an absolute signal. insufficient is the structured form of the abstention 9.4.3 requires a caller to be able to distinguish. Never a raw score (SPEC 9.1.1). Optional; a server MUST NOT emit it unless it advertises a schema that declares it." }
     },
     "required": ["question", "answer", "citations", "hits", "indexing_complete"]
   }

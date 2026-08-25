@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.54.0`
+**Current spec version:** `0.55.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,39 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.55.0: expose the evidence verdict the server already computes
+
+One optional additive field in two placements (the shared `Hit`, and the
+`dir2mcp_ask` output), so a MINOR bump under the pre-1.0 policy.
+
+The abstention guard of 9.4.3 already computes an absolute evidence verdict and
+acts on it; no client could see it. Behaviour was therefore binary: abstain or
+answer, with a barely-cleared answer indistinguishable from an overwhelmingly
+supported one (dir2mcp #896), and no absolute relevance readable off a search
+hit (dir2mcp #785, the same gap from the search side). Both are resolved with
+ONE closed vocabulary rather than two: `strong | sufficient | insufficient |
+unknown`, defined in 9.4.3 next to the thresholds it is measured against.
+
+It is a NAME, never a raw score or scale. Raw scores are incomparable across
+retrieval modes (9.1.1), and exposing them invites exactly the cross-mode
+comparison that section rules meaningless. `strong` is an optional refinement a
+server emits only if it documents a stronger per-scale threshold, the same
+documentation duty 9.4.3 already imposes for the abstention threshold; a server
+that maintains none simply never emits it. The ask-level field's aggregation is
+normative for the field itself: the strongest eligible hit's verdict, ordered
+strong > sufficient > insufficient, with unknown only when no eligible hit
+carries an absolute signal. 9.4.3 deliberately leaves the ABSTENTION test's
+aggregation open, so the field cannot borrow its rule from there: two servers
+emitting `evidence` for the same eligible verdicts must agree, or the name stops
+travelling. An abstaining answer carries `insufficient`, giving 9.4.3's required
+abstention-vs-empty distinction a structured form.
+
+Both fields are optional, and both host objects are closed
+(`additionalProperties: false`), so the 0.54.0 compatibility condition applies
+verbatim: an optional field is not transparent to a closed schema, and a server
+MUST NOT emit `evidence` unless it advertises a schema that declares it
+(15.1.1).
 
 ## 0.54.0: let the caller bound clip bytes, and mark previews as previews
 
