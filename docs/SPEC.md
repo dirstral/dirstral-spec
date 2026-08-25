@@ -2918,9 +2918,14 @@ least supported:
   be asserted either way. This is the fail-open case above.
 
 Placement: each `Hit` MAY carry `evidence` (its own verdict, §15.1.2), and the
-`dir2mcp_ask` result MAY carry a top-level `evidence` (the verdict of the
-ELIGIBLE set, aggregated as the strongest eligible hit's verdict, which is the
-same aggregation the abstention test uses). An abstaining answer carries
+`dir2mcp_ask` result MAY carry a top-level `evidence` for the ELIGIBLE set. A
+server that emits the top-level field MUST aggregate it as the strongest
+eligible hit's verdict, in the order `strong > sufficient > insufficient`, with
+`unknown` only when NO eligible hit carries an absolute signal. This rule is
+normative for the field itself, independent of how the server's abstention test
+aggregates (the section above deliberately leaves that open): two servers
+emitting `evidence` for the same eligible verdicts MUST agree, or the name
+stops travelling across implementations. An abstaining answer carries
 `evidence: "insufficient"`, which is the structured form of the distinction
 required above. The verdict is a name, never a raw score or scale: raw scores
 are incomparable across retrieval modes (§9.1.1), and exposing them invites
@@ -3586,6 +3591,10 @@ The `document` variant is emitted by `dir2mcp_open_file` when the requested
 timed slice.
 
 #### 15.1.2 `Hit`
+
+**df-006 is the source of truth for this shape** (as df-005 is for `Span`); the
+block below is kept in sync with it. `evidence` is defined normatively in
+§9.4.3.
 
 ```json
 {

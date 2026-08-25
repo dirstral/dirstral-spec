@@ -1,7 +1,7 @@
 # df-006: Hit and Citation
 
 - **ID:** df-006
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -121,6 +121,14 @@ dir2mcp #428). See [df-007](df-007-tool-schemas.md) for the schema-file catalog.
 ```
 
 ## Changelog
+
+- **0.2.0**: added the optional `Hit` field `evidence`
+  (`strong | sufficient | insufficient | unknown`), the named absolute verdict
+  of SPEC 9.4.3 measured per hit against the server's documented per-scale
+  thresholds. One vocabulary shared with the `dir2mcp_ask` top-level field. A
+  name, never a raw score: raw scores are incomparable across retrieval modes
+  (SPEC 9.1.1). The object is closed, so a server MUST NOT emit it unless it
+  advertises a schema that declares it. Unblocks dir2mcp #896 and #785.
 
 - **0.1.0** — Migrated from SPEC.md §15.1.2 and reconciled to the implementation's
   served `outputSchema`: `Hit` gains optional `title`/`modality`/`media_ref`

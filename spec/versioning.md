@@ -79,10 +79,14 @@ retrieval modes (9.1.1), and exposing them invites exactly the cross-mode
 comparison that section rules meaningless. `strong` is an optional refinement a
 server emits only if it documents a stronger per-scale threshold, the same
 documentation duty 9.4.3 already imposes for the abstention threshold; a server
-that maintains none simply never emits it. The ask-level field aggregates as the
-strongest eligible hit's verdict, which is the aggregation the abstention test
-already uses, and an abstaining answer carries `insufficient`, giving 9.4.3's
-required abstention-vs-empty distinction a structured form.
+that maintains none simply never emits it. The ask-level field's aggregation is
+normative for the field itself: the strongest eligible hit's verdict, ordered
+strong > sufficient > insufficient, with unknown only when no eligible hit
+carries an absolute signal. 9.4.3 deliberately leaves the ABSTENTION test's
+aggregation open, so the field cannot borrow its rule from there: two servers
+emitting `evidence` for the same eligible verdicts must agree, or the name stops
+travelling. An abstaining answer carries `insufficient`, giving 9.4.3's required
+abstention-vs-empty distinction a structured form.
 
 Both fields are optional, and both host objects are closed
 (`additionalProperties: false`), so the 0.54.0 compatibility condition applies
