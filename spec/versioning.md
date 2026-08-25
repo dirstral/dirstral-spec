@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.53.0`
+**Current spec version:** `0.54.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,33 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.54.0: let the caller bound clip bytes, and mark previews as previews
+
+Two optional additive fields on `dir2mcp_open_media_clip` (one input, one
+output), so a MINOR bump under the pre-1.0 policy.
+
+The problem is dir2mcp #878: the tool cuts at the source bitrate, so an 8-second
+clip of a ~20 Mbit/s broadcast recording is ~22 MB (~30 MB base64 on the wire),
+and a caller has no way to ask for less. Both halves of the fix are contract
+surface, and the schema closes both objects with `additionalProperties: false`,
+so neither could ship implementation-first.
+
+`max_bytes` (input) is the caller's ceiling on the CLIP bytes; the effective
+bound is `min(max_bytes, media.clip.max_bytes)`. The server MAY re-encode the
+span to a reduced-fidelity preview to fit under it; when even a preview cannot
+fit, `CLIP_TOO_LARGE`, exactly as an oversized span fails today.
+
+`preview` (output) is present exactly when the served bytes are a re-encode
+rather than a source-fidelity cut, and names the rendition for a human. Its
+PRESENCE is the machine signal, mirroring `reference_fallback` (0.53.0): a
+caller tests presence and does not parse the text. Without this field a server
+that quietly served a smaller clip would be undetectable, and a preview would be
+mistakable for the original, which is worse than the size problem the input half
+solves.
+
+Both fields are optional, so every existing implementation and every client
+written before this version validate unchanged.
 
 ## 0.53.0: declare the reference fallback an implementation already emits
 

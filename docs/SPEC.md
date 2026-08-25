@@ -4147,6 +4147,26 @@ returns the **non-retryable** `CLIP_TOO_LARGE`; the caller must request a shorte
 span. Extraction failures (unreadable media, missing `ffmpeg`) return
 `MEDIA_CLIP_FAILED` (§14.4).
 
+**Fitting under a byte ceiling (`max_bytes`).** A clip cut at the source bitrate
+can be enormous relative to its duration (a ~20 Mbit/s broadcast recording makes
+an 8-second clip ≈ 22 MB, ≈ 30 MB base64 on the wire; dir2mcp #878), and the
+caller is the one who knows its transport budget. The optional `max_bytes` input
+is the caller's ceiling on the **clip** bytes (not the response); the effective
+bound is `min(max_bytes, media.clip.max_bytes)`. To fit under it a server MAY
+re-encode the span to a reduced-fidelity **preview** instead of cutting at
+source fidelity, and when it does it MUST say so: the output `preview` field is
+present exactly when the served bytes are a re-encode, and names the rendition
+for a human (codec, resolution, approximate bitrate). Its PRESENCE is the
+machine signal, mirroring `reference_fallback`: a caller tests presence and does
+not parse the text. A source-fidelity cut, whether or not `max_bytes` was given,
+carries no `preview` field — so a preview is never mistakable for the original,
+which would otherwise make silent quality reduction undetectable. When even a
+preview cannot fit the span under the effective bound, the request fails
+`CLIP_TOO_LARGE` exactly as an oversized span does today. A server that cannot
+re-encode (no `ffmpeg`) simply has no preview to offer: it serves a
+source-fidelity cut when that fits the effective bound and fails `CLIP_TOO_LARGE`
+when it does not.
+
 **Return shape.** The server returns the clip in **one** of two modes selected by
 `return` (default `inline`):
 
@@ -4201,7 +4221,8 @@ optional refinement and MUST NOT change the bounds or error semantics above.
     "rel_path": { "type": "string", "minLength": 1 },
     "start_ms": { "type": "integer", "minimum": 0 },
     "end_ms": { "type": "integer", "minimum": 0 },
-    "return": { "type": "string", "enum": ["inline", "reference"], "default": "inline" }
+    "return": { "type": "string", "enum": ["inline", "reference"], "default": "inline" },
+    "max_bytes": { "type": "integer", "minimum": 1, "description": "Optional caller ceiling on the CLIP bytes; effective bound is min(max_bytes, media.clip.max_bytes)." }
   },
   "anyOf": [
     { "required": ["chunk_id"] },
@@ -4226,7 +4247,8 @@ optional refinement and MUST NOT change the bounds or error semantics above.
     "return": { "type": "string", "enum": ["inline", "reference"] },
     "data": { "type": "string", "contentEncoding": "base64", "description": "Present when return=inline: base64 clip bytes." },
     "uri": { "type": "string", "description": "Present when return=reference: short-lived fetch URI." },
-    "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." }
+    "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." },
+    "preview": { "type": "string", "description": "Present ONLY when the served bytes are a reduced-fidelity re-encode; names the rendition. Presence is the signal." }
   },
   "required": ["rel_path", "doc_type", "span", "mime_type", "return"]
 }
