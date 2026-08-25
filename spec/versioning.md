@@ -85,8 +85,14 @@ that quietly served a smaller clip would be undetectable, and a preview would be
 mistakable for the original, which is worse than the size problem the input half
 solves.
 
-Both fields are optional, so every existing implementation and every client
-written before this version validate unchanged.
+Both fields are optional inputs to their producers: a caller may omit
+`max_bytes`, and a server that never re-encodes never emits `preview`, so such
+pairs are unaffected. But an optional field is NOT transparent to a closed
+schema: the output object is `additionalProperties: false`, so a strict client
+still validating against the 0.53.0 schema rejects any response that carries
+`preview`. A server therefore MUST NOT emit `preview` unless it advertises the
+0.54.0 output schema, which is the same discipline 15.1.1 already imposes and
+the same failure class 0.53.0 records for `reference_fallback`.
 
 ## 0.53.0: declare the reference fallback an implementation already emits
 

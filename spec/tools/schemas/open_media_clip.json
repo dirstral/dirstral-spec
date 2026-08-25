@@ -37,7 +37,7 @@
       "uri": { "type": "string", "description": "Present when return=reference: short-lived fetch URI." },
       "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." },
       "reference_fallback": { "type": "string", "description": "Present ONLY when the caller asked for return=reference and the server served inline instead; explains why. Its PRESENCE is the signal that the returned return value is not the one asked for, so a caller tests presence and does not parse the text. Absent whenever the requested carrier was honoured." },
-      "preview": { "type": "string", "description": "Present ONLY when the served bytes are a reduced-fidelity re-encode rather than a source-fidelity cut; names the rendition for a human (codec, resolution, approximate bitrate). Its PRESENCE is the signal that the clip is a preview, so a caller tests presence and does not parse the text. Absent whenever the bytes are cut at source fidelity." }
+      "preview": { "type": "string", "minLength": 1, "description": "Present ONLY when the served bytes are a reduced-fidelity re-encode rather than a source-fidelity cut; names the rendition for a human (codec, resolution, approximate bitrate). Its PRESENCE is the signal that the clip is a preview, so a caller tests presence and does not parse the text. Absent whenever the bytes are cut at source fidelity." }
     },
     "required": ["rel_path", "doc_type", "span", "mime_type", "return"],
     "allOf": [

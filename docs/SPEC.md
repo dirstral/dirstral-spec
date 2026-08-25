@@ -4248,7 +4248,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
     "data": { "type": "string", "contentEncoding": "base64", "description": "Present when return=inline: base64 clip bytes." },
     "uri": { "type": "string", "description": "Present when return=reference: short-lived fetch URI." },
     "expires_unix": { "type": "integer", "description": "Present when return=reference: expiry of uri." },
-    "preview": { "type": "string", "description": "Present ONLY when the served bytes are a reduced-fidelity re-encode; names the rendition. Presence is the signal." }
+    "preview": { "type": "string", "minLength": 1, "description": "Present ONLY when the served bytes are a reduced-fidelity re-encode; names the rendition. Presence is the signal." }
   },
   "required": ["rel_path", "doc_type", "span", "mime_type", "return"]
 }
