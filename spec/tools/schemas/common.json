@@ -200,7 +200,12 @@
           "type": "string",
           "description": "Media/multimodal chunks (td-002 multimodal media chunks): e.g. text/image/audio/video. Omitted for plain text."
         },
-        "media_ref": {
+        "evidence": {
+        "type": "string",
+        "enum": ["strong", "sufficient", "insufficient", "unknown"],
+        "description": "Absolute evidence verdict for this hit, measured against the server's documented per-scale thresholds (SPEC 9.4.3): sufficient / insufficient say the hit's absolute signal cleared / missed its scale's threshold; strong is an OPTIONAL refinement a server emits only if it documents a stronger threshold; unknown means the hit carries no absolute signal (e.g. a purely lexical hit). Never a raw score: raw scores are incomparable across retrieval modes (SPEC 9.1.1). Optional; a server MUST NOT emit it unless it advertises a schema that declares it."
+      },
+      "media_ref": {
           "type": "string",
           "description": "Media/multimodal chunks: reference to the source media used to embed this chunk. Omitted for plain text."
         }

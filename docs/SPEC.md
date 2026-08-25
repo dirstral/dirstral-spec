@@ -2900,6 +2900,34 @@ prompt_contexts = select_contexts(eligible)     # never from below-floor hits
   answer text or in a structured field: "I found nothing" and "I found material
   and judged it too weak" are different answers to the operator.
 
+**Exposing the verdict (`evidence`, optional).** The server already computes an
+absolute verdict in order to abstain; without exposing it, behaviour is binary
+and a caller cannot tell a barely-cleared answer from an overwhelmingly
+supported one (dir2mcp #896), nor read any absolute relevance off a search hit
+(dir2mcp #785). Both surfaces share ONE closed vocabulary, ordered from most to
+least supported:
+
+* `strong` — the absolute signal reached a stronger threshold than the
+  abstention one. OPTIONAL refinement: a server emits it only if it documents
+  that stronger threshold per scale, exactly as it documents the abstention
+  threshold; a server that maintains none simply never emits `strong`.
+* `sufficient` — the absolute signal cleared the (documented) abstention
+  threshold for its scale.
+* `insufficient` — the signal missed its scale's threshold.
+* `unknown` — no absolute signal exists (e.g. a purely lexical hit); nothing can
+  be asserted either way. This is the fail-open case above.
+
+Placement: each `Hit` MAY carry `evidence` (its own verdict, §15.1.2), and the
+`dir2mcp_ask` result MAY carry a top-level `evidence` (the verdict of the
+ELIGIBLE set, aggregated as the strongest eligible hit's verdict, which is the
+same aggregation the abstention test uses). An abstaining answer carries
+`evidence: "insufficient"`, which is the structured form of the distinction
+required above. The verdict is a name, never a raw score or scale: raw scores
+are incomparable across retrieval modes (§9.1.1), and exposing them invites
+exactly the cross-mode comparison that section rules meaningless. Both fields
+are optional, but the closed schemas make them non-transparent: a server MUST
+NOT emit either unless it advertises a schema that declares it (§15.1.1).
+
 **Comparable scores.** §9.1.1 permits a reranker to overwrite `score` and permits
 un-reranked fused hits to be appended when the candidate pool is smaller than
 `k`, so a single result list MAY carry scores drawn from different scales. A
@@ -3570,7 +3598,8 @@ timed slice.
     "rep_type": { "type": "string" },
     "score": { "type": "number" },
     "snippet": { "type": "string" },
-    "span": { "$ref": "#/definitions/Span" }
+    "span": { "$ref": "#/definitions/Span" },
+    "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute evidence verdict for this hit (§9.4.3). Never a raw score (§9.1.1)." }
   },
   "required": ["chunk_id", "rel_path", "score", "snippet", "span"]
 }
@@ -3681,7 +3710,8 @@ timed slice.
       }
     },
     "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
-    "indexing_complete": { "type": "boolean" }
+    "indexing_complete": { "type": "boolean" },
+    "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute verdict of the eligible set behind the answer (§9.4.3); insufficient is the structured form of abstention." }
   },
   "required": ["question", "answer", "citations", "hits", "indexing_complete"]
 }

@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.12.0
+- **Version:** 0.13.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -107,7 +107,10 @@ result `content[]` MUST include at least one `text` item summarizing results
   a document's timeline, §5.4), same value forms and semantics as
   `dir2mcp_search`.
 
-**Behavior.** Output carries `question`, `answer`, `citations[]`, `hits[]`, and
+**Behavior.** Output MAY carry a top-level `evidence` verdict of the eligible
+set behind the answer (`strong | sufficient | insufficient | unknown`, SPEC
+9.4.3; `insufficient` is the structured form of abstention, and the same
+vocabulary appears per hit on df-006 `Hit`). Output carries `question`, `answer`, `citations[]`, `hits[]`, and
 `indexing_complete` (all five are **required** by `ask.json`, `answer` included,
 so it is present and empty rather than absent when nothing is generated). `citations[]` is the in-context set rather than the full retrieved
 set, so it MAY be shorter than `hits[]`; with `mode=answer`, a query where no hit
@@ -427,6 +430,8 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 `CLIP_TOO_LARGE`, `MEDIA_CLIP_FAILED` (df-008).
 
 ## Changelog
+
+- **0.13.0** — Declared the optional `evidence` verdict: per df-006 `Hit`, and top-level on the `dir2mcp_ask` output (SPEC 9.4.3, spec 0.55.0; dir2mcp #896/#785). One closed vocabulary (`strong | sufficient | insufficient | unknown`); a name, never a raw score, because raw scores are incomparable across retrieval modes (SPEC 9.1.1).
 
 - **0.12.0** — Added the optional `max_bytes` input and the `preview` output to `dir2mcp_open_media_clip`. A clip cut at the source bitrate can be ~22 MB for 8 seconds (dir2mcp #878); `max_bytes` lets the caller bound the clip bytes and the server re-encode to fit, and `preview`'s presence marks the result as a reduced-fidelity re-encode so it is never mistakable for a source cut. Both additive and optional.
 

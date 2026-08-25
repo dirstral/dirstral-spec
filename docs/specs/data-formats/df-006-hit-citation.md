@@ -43,13 +43,18 @@ returned by `dir2mcp_ask` (`citations[]`). Both reference a [df-005
     "snippet":   { "type": "string" },
     "span":      { "$ref": "#/definitions/Span" },
     "modality":  { "type": "string", "description": "Media/multimodal chunks (td-002): e.g. \"text\", \"image\", \"audio\", \"video\". Omitted for plain text." },
-    "media_ref": { "type": "string", "description": "Media/multimodal chunks (td-002): reference to the source media used to embed this chunk. Omitted for plain text." }
+    "media_ref": { "type": "string", "description": "Media/multimodal chunks (td-002): reference to the source media used to embed this chunk. Omitted for plain text." },
+    "evidence":  { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute evidence verdict for this hit (SPEC 9.4.3). Never a raw score (SPEC 9.1.1)." }
   },
   "required": ["chunk_id", "rel_path", "score", "snippet", "span"]
 }
 ```
 
 - `chunk_id` is an **integer** (NOT a string).
+- `evidence` (spec 0.55.0) is the named absolute verdict of SPEC 9.4.3, one
+  vocabulary shared with the `dir2mcp_ask` top-level field. It is optional, but
+  the object is closed, so a server MUST NOT emit it unless it advertises a
+  schema that declares it.
 - The object is `additionalProperties: false`. Every field a producer can emit
   **MUST** be declared here. `title`, `modality`, and `media_ref` are optional
   and omitted when absent; a strict MCP client validates `structuredContent`
