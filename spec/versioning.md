@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.55.0`
+**Current spec version:** `0.56.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,24 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.56.0: declare `evidence` on transcribe_and_ask, the 0.55.0 omission
+
+One optional additive field, MINOR bump under the pre-1.0 policy.
+
+0.55.0 added the `evidence` verdict to the `dir2mcp_ask` output.
+`dir2mcp_transcribe_and_ask` returns the SAME answer surface (its output is
+ask's plus the transcription provenance fields), and the reference
+implementation serves it through the same code path, so a transcribe_and_ask
+response that carries a verdict failed canonical validation: the field was
+declared on one of the two answer surfaces and not the other. Found by the
+dir2mcp #643 conformance gate, which tolerates exactly this one drift and
+self-tightens when this version is pinned.
+
+Same field, same closed vocabulary, same normative aggregation as ask.json;
+nothing is redefined here. The 0.54.0 compatibility condition applies
+verbatim: the output object is closed, so a server MUST NOT emit `evidence`
+on this tool unless it advertises a schema that declares it (15.1.1).
 
 ## 0.55.0: expose the evidence verdict the server already computes
 
