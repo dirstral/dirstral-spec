@@ -36,6 +36,8 @@
       },
       "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
       "indexing_complete": { "type": "boolean" },
+      "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute verdict of the eligible set behind the answer, aggregated as the strongest eligible hit's verdict (SPEC 9.4.3); insufficient is the structured form of abstention. Same field and vocabulary as ask.json (0.55.0)." },
+      "faithfulness": { "type": "string", "enum": ["verified", "unsupported", "unchecked"], "description": "Optional verdict on the ANSWER rather than the retrieval (SPEC 9.4.4): unsupported means the answer was withheld, so `answer` carries a refusal and `citations` is empty; unchecked means verification produced no verdict (not configured, or attempted and unable to complete), which is the default and is NOT a quality signal. Orthogonal to `evidence`. Same field and vocabulary as ask.json (0.57.0)." },
       "audio": {
         "type": "object",
         "additionalProperties": false,

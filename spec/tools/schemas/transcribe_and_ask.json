@@ -30,6 +30,7 @@
       },
       "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
       "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute verdict of the eligible set behind the answer, aggregated as the strongest eligible hit's verdict (SPEC 9.4.3); insufficient is the structured form of abstention. Same field and vocabulary as ask.json (0.55.0)." },
+      "faithfulness": { "type": "string", "enum": ["verified", "unsupported", "unchecked"], "description": "Whether the published answer was checked against the retrieved passages the model was shown, and what that check concluded (SPEC 9.4.4). verified: every claim was supported. unsupported: at least one claim was not, and the server therefore WITHHELD the answer, so `answer` carries a refusal and `citations` is empty. unchecked: verification produced no verdict (not configured, or attempted and unable to complete), which is the default and is NOT a quality signal. Orthogonal to `evidence`: that verdict describes the RETRIEVAL, this one describes the ANSWER, and a withheld answer may sit on strong evidence. Optional; a server MUST NOT emit it unless it advertises a schema that declares it." },
       "indexing_complete": { "type": "boolean" },
       "stt_provider": { "type": "string", "description": "STT provider name; not a closed enum (any STT-capable provider per SPEC §8.2)." },
       "transcript_model": { "type": "string" },

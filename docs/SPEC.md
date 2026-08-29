@@ -2976,6 +2976,52 @@ only. It is a number.
 * `0` is the explicit **disable** representation: it admits every hit and
   restores pre-floor behaviour. A server MAY refuse to disable the floor.
 
+#### 9.4.4 Answer faithfulness (optional)
+
+§9.4.3 answers "is there relevant material here". It cannot answer "does the
+answer report what that material says", and the two come apart in the way that
+matters most: retrieval can be entirely correct while the generated answer
+renames, merges or extrapolates beyond what the passages state. The evidence
+threshold cannot catch that, because the evidence really is relevant.
+
+A server MAY therefore verify a generated answer against the retrieved
+passages it placed in the prompt, and MAY withhold an answer that fails.
+
+* Verification, when performed, MUST be against the passages the answering
+  model was actually shown, not a re-rendered or re-retrieved set. Checking a
+  different context checks a different claim.
+* A server that withholds an answer MUST return an explicit refusal in
+  `answer` with an **empty `citations` array**. Citing passages just judged not
+  to support the claim would assert exactly the grounding §9.4.1 forbids. This
+  is a normal result and not an error (§14).
+* A withheld answer MUST NOT be reported as insufficient evidence. The
+  eligible set cleared the threshold; what failed is the answer. Downgrading
+  `evidence` to `insufficient` would misdescribe the retrieval and mislead a
+  caller deciding whether to re-query.
+* Verification MUST NOT be required to answer. A server that cannot reach its
+  verifier MAY publish the answer unchecked, reporting `unchecked`, because
+  making answers unavailable during a verifier outage is a worse failure than
+  publishing one unverified.
+
+**Exposing the verdict (`faithfulness`, optional).** §9.4.3 already obliges a
+server to let a caller tell abstention from an empty corpus. Withholding adds a
+THIRD empty-citation outcome, and text alone does not let a client route on it.
+The optional `faithfulness` field on the answer surfaces (§15.3, §15.9,
+§15.10) reports it in one closed vocabulary:
+
+* `verified` — the answer was checked and every claim was supported.
+* `unsupported` — the answer was checked, at least one claim was not supported,
+  and the answer was therefore withheld.
+* `unchecked` — verification produced no verdict, either because it was not
+  configured or because it was attempted and could not complete. This is the
+  default and it is NOT a quality signal: it says nothing about the answer,
+  only that no answer-level judgement is available.
+
+`faithfulness` is orthogonal to `evidence`. `evidence` describes the
+RETRIEVAL, `faithfulness` describes the ANSWER, and a withheld answer may sit
+on `strong` evidence. A server MUST NOT emit `faithfulness` unless it
+advertises a schema that declares it (§15.1.1).
+
 ### 9.5 Per-language retrieval filter (optional)
 
 `dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept an **optional**
@@ -3720,7 +3766,8 @@ block below is kept in sync with it. `evidence` is defined normatively in
     },
     "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
     "indexing_complete": { "type": "boolean" },
-    "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute verdict of the eligible set behind the answer (§9.4.3); insufficient is the structured form of abstention." }
+    "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute verdict of the eligible set behind the answer (§9.4.3); insufficient is the structured form of abstention." },
+    "faithfulness": { "type": "string", "enum": ["verified", "unsupported", "unchecked"], "description": "Optional verdict on the ANSWER rather than the retrieval (§9.4.4): unsupported means the answer was withheld, and unchecked means verification produced no verdict (not configured, or attempted and unable to complete). Orthogonal to evidence." }
   },
   "required": ["question", "answer", "citations", "hits", "indexing_complete"]
 }
