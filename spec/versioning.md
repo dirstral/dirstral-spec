@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.56.0`
+**Current spec version:** `0.57.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,50 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.57.0: expose whether the answer was checked against its own evidence
+
+One optional additive field on the two answer surfaces, MINOR bump under the
+pre-1.0 policy, plus the normative section that gives it meaning (9.4.4).
+
+9.4.3 answers "is there relevant material here". It cannot answer "does the
+answer report what that material says". The two come apart, and the failure is
+not hypothetical: on the dir2mcp pilot corpus, "Who was ejected from the game?"
+returned "Buddy Kennedy was ejected", with `evidence: sufficient` and ten
+citations, over a corpus where the word "eject" appears in no chunk at all. The
+nearest passage read "Buddy Kennedy challenged (pitch result), call on the
+field was confirmed". Retrieval was correct: a challenge really is the closest
+thing the corpus holds to an ejection, so the threshold was right to say so.
+The model renamed the event and kept the name attached.
+
+9.4.4 therefore permits a server to verify a generated answer against the
+passages it actually placed in the prompt, and to withhold one that fails. Four
+constraints make that safe rather than merely available: verification is
+against the shown passages and not a re-rendered set; a withheld answer carries
+an explicit refusal with empty citations; a withheld answer is NOT reported as
+insufficient evidence, because the retrieval was fine and only the answer
+failed; and verification MUST NOT be required to answer, so a verifier outage
+degrades to `unchecked` rather than to silence.
+
+The field exists because withholding creates a THIRD empty-citation outcome.
+9.4.3 already obliges a server to let a caller tell abstention from an empty
+corpus, and it accepts answer text as the channel. Text does not let a client
+ROUTE on the difference, and a client that keys on `evidence` would read
+`sufficient` on a refusal and treat it as an answer. `faithfulness` is
+orthogonal to `evidence` on purpose: one describes the retrieval, the other the
+answer, and a withheld answer may sit on `strong` evidence.
+
+`unchecked` is the default and is deliberately not a quality signal: it says
+the question was not asked, which is a different statement from a negative
+answer. The 0.54.0 compatibility condition applies verbatim: the output object
+is closed, so a server MUST NOT emit `faithfulness` unless it advertises a
+schema that declares it (15.1.1).
+
+Known omission, recorded rather than silently carried: `dir2mcp_ask_audio`
+declares neither `evidence` nor `faithfulness`, though it returns the same
+answer surface. That is the same class of gap 0.56.0 closed for
+transcribe_and_ask. It is left out of this version because it is a separate
+omission with its own history, not because it is correct.
 
 ## 0.56.0: declare `evidence` on transcribe_and_ask, the 0.55.0 omission
 
