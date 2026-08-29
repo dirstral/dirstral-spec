@@ -94,8 +94,11 @@ orthogonal to `evidence` on purpose: one describes the retrieval, the other the
 answer, and a withheld answer may sit on `strong` evidence.
 
 `unchecked` is the default and is deliberately not a quality signal: it says
-the question was not asked, which is a different statement from a negative
-answer. The 0.54.0 compatibility condition applies verbatim: the output object
+verification produced no verdict, either because it was not configured or
+because it was attempted and could not complete. Both causes reach it, which is
+why it cannot be read as a weak `verified` or a soft `unsupported`: it carries
+no answer-level judgement at all. The 0.54.0 compatibility condition applies
+verbatim: the output object
 is closed, so a server MUST NOT emit `faithfulness` unless it advertises a
 schema that declares it (15.1.1).
 

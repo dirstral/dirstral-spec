@@ -3012,8 +3012,10 @@ The optional `faithfulness` field on the answer surfaces (§15.3, §15.9,
 * `verified` — the answer was checked and every claim was supported.
 * `unsupported` — the answer was checked, at least one claim was not supported,
   and the answer was therefore withheld.
-* `unchecked` — no check ran. This is the default and it is NOT a quality
-  signal: it means the question was not asked.
+* `unchecked` — verification produced no verdict, either because it was not
+  configured or because it was attempted and could not complete. This is the
+  default and it is NOT a quality signal: it says nothing about the answer,
+  only that no answer-level judgement is available.
 
 `faithfulness` is orthogonal to `evidence`. `evidence` describes the
 RETRIEVAL, `faithfulness` describes the ANSWER, and a withheld answer may sit
@@ -3765,7 +3767,7 @@ block below is kept in sync with it. `evidence` is defined normatively in
     "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
     "indexing_complete": { "type": "boolean" },
     "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute verdict of the eligible set behind the answer (§9.4.3); insufficient is the structured form of abstention." },
-    "faithfulness": { "type": "string", "enum": ["verified", "unsupported", "unchecked"], "description": "Optional verdict on the ANSWER rather than the retrieval (§9.4.4): unsupported means the answer was withheld, and unchecked means no check ran. Orthogonal to evidence." }
+    "faithfulness": { "type": "string", "enum": ["verified", "unsupported", "unchecked"], "description": "Optional verdict on the ANSWER rather than the retrieval (§9.4.4): unsupported means the answer was withheld, and unchecked means verification produced no verdict (not configured, or attempted and unable to complete). Orthogonal to evidence." }
   },
   "required": ["question", "answer", "citations", "hits", "indexing_complete"]
 }
