@@ -3006,8 +3006,8 @@ passages it placed in the prompt, and MAY withhold an answer that fails.
 **Exposing the verdict (`faithfulness`, optional).** §9.4.3 already obliges a
 server to let a caller tell abstention from an empty corpus. Withholding adds a
 THIRD empty-citation outcome, and text alone does not let a client route on it.
-The optional `faithfulness` field on the answer surfaces (§15.3, §15.9) reports
-it in one closed vocabulary:
+The optional `faithfulness` field on the answer surfaces (§15.3, §15.9,
+§15.10) reports it in one closed vocabulary:
 
 * `verified` — the answer was checked and every claim was supported.
 * `unsupported` — the answer was checked, at least one claim was not supported,

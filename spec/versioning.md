@@ -61,10 +61,10 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
 
-## 0.57.0: expose whether the answer was checked against its own evidence
+## 0.57.0: expose whether the answer was checked against its own evidence, and close the ask_audio verdict gap
 
-One optional additive field on the two answer surfaces, MINOR bump under the
-pre-1.0 policy, plus the normative section that gives it meaning (9.4.4).
+Optional additive fields on all three answer surfaces, MINOR bump under the
+pre-1.0 policy, plus the normative section that gives them meaning (9.4.4).
 
 9.4.3 answers "is there relevant material here". It cannot answer "does the
 answer report what that material says". The two come apart, and the failure is
@@ -99,11 +99,17 @@ answer. The 0.54.0 compatibility condition applies verbatim: the output object
 is closed, so a server MUST NOT emit `faithfulness` unless it advertises a
 schema that declares it (15.1.1).
 
-Known omission, recorded rather than silently carried: `dir2mcp_ask_audio`
-declares neither `evidence` nor `faithfulness`, though it returns the same
-answer surface. That is the same class of gap 0.56.0 closed for
-transcribe_and_ask. It is left out of this version because it is a separate
-omission with its own history, not because it is correct.
+**`dir2mcp_ask_audio` gains both verdicts, closing the gap 0.56.0 left open.**
+0.55.0 added `evidence` to ask and 0.56.0 added it to transcribe_and_ask; the
+third surface that returns the same answer shape was missed both times. Adding
+`faithfulness` to two of three and leaving the third short would have recreated
+the exact drift 0.56.0 existed to correct, so ask_audio is brought level here:
+`evidence` with the 0.55.0 semantics, `faithfulness` with the semantics above.
+
+All three answer surfaces now declare the same two verdicts with the same
+vocabularies. A caller can read the retrieval verdict and the answer verdict
+off any of them, which is what "same answer surface" ought to have meant from
+0.55.0 onward.
 
 ## 0.56.0: declare `evidence` on transcribe_and_ask, the 0.55.0 omission
 
