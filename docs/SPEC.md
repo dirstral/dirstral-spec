@@ -3248,6 +3248,49 @@ and existing callers that never send them observe no change.
   result set, not an error — exactly as the language (§9.5) and date (§9.6)
   filters.
 
+### 9.9 Annotation entity/event filter (optional)
+
+`dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept **optional**
+`entities` and `events`, each an array of strings, restricting hits to those
+derived from a recognition annotation (design 0004) that matches. Absent or
+empty means no filtering on that field, so existing callers observe no change.
+
+Promoted from design 0004 §7, where it shipped as a proposed delta "at
+promotion". The reference implementation has served both arguments since the
+recognition capability landed; this declares what was already on the wire.
+
+* **Values.** An `entities` element is an id exactly as it appears in
+  `annotations[].entities`. An `events` element is matched **literally**
+  against the annotation's `event`. The wire's `event` is a free-form
+  backend-declared string, so this filter defines **no vocabulary** and MUST
+  NOT constrain one: `pitch` and `at_bat` are the reference backend's values,
+  not normative ones.
+* **Multi-value semantics.** Within a field, **OR**: a hit matches if the
+  annotation references **any** requested entity id, respectively if its
+  `event` equals any requested value. Across the two fields, and against every
+  other filter, **AND**. So `entities=[team:x]` with `events=[at_bat]` is a
+  role-exact selection that entity ids alone cannot express.
+* **Eligibility.** Only hits derived from a recognition annotation carry
+  entities and an event. A hit from any other representation does **not**
+  match a non-empty filter, mirroring how the media time-window filter (§9.8)
+  admits only time-spanned hits.
+* **Unknown values are empty, not errors.** An id or event value that exists
+  nowhere in the corpus matches nothing and returns an empty result set,
+  exactly as the language (§9.5) and date (§9.6) filters.
+* **Pipeline placement.** Candidate-selection, before dedup, rerank and
+  truncation to `k`, so `k` counts only surviving hits and a filtered query MAY
+  return fewer than `k`. It removes candidates only; it never reorders results
+  or changes result structure (§9.2) or citation format (§9.3).
+
+Filtering on an attribute the annotation records but that is neither an entity
+nor an event, an inning or a chapter number for instance, is **not** covered
+here. Such a value can only be matched as text today, which means it can be
+preferred but never required. That gap is real and is left open deliberately
+rather than solved by widening `events` into a general attribute channel, which
+would overload one field with two meanings.
+
+---
+
 ---
 
 ## 10) MCP server: Streamable HTTP (2025-11-25)

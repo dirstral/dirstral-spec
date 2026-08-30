@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.57.0`
+**Current spec version:** `0.58.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,43 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.58.0: declare the three retrieval filters the reference server already serves
+
+Three optional input fields on `dir2mcp_search` and `dir2mcp_ask`, MINOR bump
+under the pre-1.0 policy. No new behaviour: every one of them has been on the
+wire for some time. This closes the gap between what the server advertises and
+what the canonical schemas declare.
+
+Found by diffing the served input schemas against `spec/tools/schemas/` rather
+than by reading, which is how the drift stayed invisible: the audit reported
+`entities`, `events` and `language_match` served-but-undeclared on both tools,
+and nothing declared-but-unserved. One direction only, the implementation ahead
+of the spec.
+
+The three are not the same kind of gap, and the fix differs accordingly.
+
+**`language_match` was a pure schema omission.** §9.5 already specifies it
+normatively, down to the `primary`/`strict` vocabulary and the `INVALID_FIELD`
+response for an unrecognized value. Only the JSON schema was missing it, so
+nothing is decided here beyond transcribing what §9.5 already says.
+
+**`entities` and `events` were specified only as a PROPOSAL.** Design 0004 §7
+carried a complete contract labelled "at promotion", and the promotion never
+happened while the implementation shipped anyway. New §9.9 promotes that
+contract essentially verbatim, because it was already right: OR within a field
+and AND across fields, values matched literally, a backend-declared event
+vocabulary the filter MUST NOT constrain, only annotation-derived hits
+eligible, unknown values empty rather than an error, and candidate-selection
+placement so `k` counts survivors.
+
+§9.9 also records what it does NOT cover, rather than leaving a reader to
+discover it: an annotation attribute that is neither an entity nor an event, an
+inning or a chapter number for instance, can still only be matched as text, so
+it can be preferred but never required. Widening `events` into a general
+attribute channel would have closed that cheaply and wrongly, by overloading
+one field with two meanings. The gap is left open deliberately and gets its own
+design.
 
 ## 0.57.0: expose whether the answer was checked against its own evidence, and close the ask_audio verdict gap
 
