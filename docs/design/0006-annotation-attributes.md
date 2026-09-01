@@ -49,8 +49,8 @@ range from the server's point of view** (the server does not know when the
   arithmetic on attribute values are out of scope: the moment values have
   order, they have types, units and comparison semantics, and the right tool
   for "a contiguous stretch of the timeline" already exists (§9.8). A
-  producer who wants range-like scoping SHOULD also emit accurate time spans,
-  which it must do anyway (Design 0004 requires them).
+  producer who wants range-like scoping already MUST emit accurate time spans
+  (Design 0004), and §9.8 queries them.
 * **Not nested.** One flat string→string map per annotation. Nesting invites
   schema growth without a driving use case; every motivating example above is
   flat.
@@ -70,13 +70,14 @@ range from the server's point of view** (the server does not know when the
 "attributes": {
   "type": "object",
   "additionalProperties": { "type": "string" },
-  "description": "Optional flat producer-defined key/value scopes for this annotation (e.g. {\"inning\": \"8\", \"half\": \"bottom\"}). Keys and values are opaque strings; the contract enumerates neither. Values are equality-matched by the SPEC 9.10 filter, so producers SHOULD normalize (lowercase, no leading zeros) at emission."
+  "description": "Optional flat producer-defined key/value scopes for this annotation (e.g. {\"inning\": \"8\", \"half\": \"bottom\"}). Keys and values are opaque strings; the contract enumerates neither. Values are matched by literal equality (see the filter section of this design; SPEC section number assigned at promotion), so a producer MUST emit each key's values in ONE canonical form of its own choosing and SHOULD document that form. The contract imposes no normalization: a producer whose values are case-sensitive codes or zero-padded identifiers keeps them."
 }
 ```
 
 Values are **strings on the wire even when semantically numeric**, because
 the filter is literal equality and one representation avoids `8` vs `"8"` vs
-`8.0` mismatches; the producer normalizes once at emission. The object stays
+`8.0` mismatches. Canonicalization is the producer's job, once, at emission,
+in a form the producer documents; the server compares bytes. The object stays
 `additionalProperties: false` overall; this is the one new key.
 
 ### 4.2 Persistence
@@ -97,6 +98,11 @@ mapping attribute keys to arrays of acceptable values.
 "attributes": { "inning": ["8"], "half": ["bottom", "top"] }
 ```
 
+* **Absent or empty disables, at both levels.** An absent `attributes`, an
+  empty object `{}`, and a key mapped to an empty array `[]` all mean "no
+  constraint" (the empty-array key is ignored as if not sent). This mirrors
+  every other §9 filter: only a stated value ever narrows a result, so no
+  client serialization quirk can turn "no filter" into "match nothing".
 * **Within one key: OR.** The annotation's value for that key must equal ANY
   listed value.
 * **Across keys, and against every other filter: AND.**
@@ -105,15 +111,34 @@ mapping attribute keys to arrays of acceptable values.
 * **Eligibility:** only annotation-derived hits carry attributes; a hit from
   any other representation never matches a non-empty filter (mirrors §9.8 and
   §9.9). An annotation that lacks a requested KEY does not match.
-* **Unknown keys or values are empty results, not errors** (mirrors §9.5,
-  §9.6, §9.9).
+* **Unknown values are not errors, and they do not poison the OR.** A value
+  that exists nowhere in the corpus simply matches nothing: if a sibling
+  value under the same key matches, the query still returns those hits. Only
+  a filter whose every constraint matches nothing returns an empty result
+  set, and that is a normal empty result, not an error (mirrors §9.5, §9.6,
+  §9.9).
 * **Pipeline placement:** candidate-selection, before dedup/rerank/truncation,
   so `k` counts survivors (mirrors §9.9).
 
 ### 4.4 Tool schemas
 
-`spec/tools/schemas/search.json` and `ask.json` inputs gain the `attributes`
-object above. Additive and optional; existing callers observe no change.
+`spec/tools/schemas/search.json` and `ask.json` inputs gain, verbatim:
+
+```json
+"attributes": {
+  "type": "object",
+  "additionalProperties": {
+    "type": "array",
+    "items": { "type": "string" }
+  },
+  "description": "Optional (section assigned at promotion): restrict hits to annotation-derived ones whose attributes match. Each key maps to an array of acceptable values: OR within a key, AND across keys and against every other filter, literal string equality, no vocabulary defined. Absent, {}, or a key with [] disables that constraint."
+}
+```
+
+Note the deliberate asymmetry with §4.1: the ANNOTATION carries one string per
+key (an annotation is in exactly one inning), while the FILTER carries an
+array per key (a caller may accept several). Additive and optional; existing
+callers observe no change.
 The served schemas in the reference implementation gain it in the same PR
 that implements the filter, per the 0.58.0 lesson (declare what is served,
 in the same version that serves it).
