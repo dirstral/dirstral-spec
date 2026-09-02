@@ -3312,10 +3312,12 @@ core semantics; a producer MUST NOT emit them.
 ingestion and be recoverable per annotation, exactly as the annotation's
 entities and `event` must; persisting the annotation text alone is not
 conforming, because it makes this filter unimplementable and silently discards
-data the backend computed. "Recoverable" has a defined wire surface: a
-recognition-derived hit's `span` MAY carry the optional `attributes` map
-(§15.1.1 shared `Span`), mirroring how `entities` and `event` surface there,
-so a client can render the scope it filtered by.
+data the backend computed. "Recoverable" has a defined wire surface: when the
+annotation carries attributes, a recognition-derived hit's `span` MUST include
+that `attributes` map (§15.1.1 shared `Span`), mirroring how `entities` and
+`event` surface there; the property is omitted only when the annotation has no
+attributes. A MAY here would let a server accept the filter and hide the very
+values it filtered by, so a client could never render or verify the scope.
 
 **The filter.** `dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept
 an **optional** `attributes` object mapping attribute keys to arrays of
