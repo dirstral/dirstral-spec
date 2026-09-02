@@ -71,6 +71,7 @@
             "attributes": {
               "type": "object",
               "additionalProperties": { "type": "string" },
+              "propertyNames": { "not": { "pattern": "^dir2mcp:" } },
               "description": "Optional (SPEC 9.10, design 0006): the producer-defined key/value scopes the recognizer attached to this annotation, for example {\"inning\": \"8\"}. Same values the attributes filter matches. Absent on a span that is not a recognition annotation."
             },
             "event": {

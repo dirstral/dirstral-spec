@@ -3690,7 +3690,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
         "speaker": { "type": "string", "description": "Optional (§8.6.8): stable per-transcript speaker id on a diarized transcript." },
         "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (§8.6.8)." },
         "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (df-005): entity ids the recognizer attributed to this span." },
-        "attributes": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional (§9.10): producer-defined key/value scopes the recognizer attached to this span. Same values the attributes filter matches." },
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" }, "propertyNames": { "not": { "pattern": "^dir2mcp:" } }, "description": "Optional (§9.10): producer-defined key/value scopes the recognizer attached to this span. Same values the attributes filter matches." },
         "event": { "type": "string", "description": "Optional (df-005): the producer's event token for this span. Vocabulary is producer-defined." },
         "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional (df-005): whether this span records something observed or something a model generated. Absent means observed." },
         "sources": { "type": "array", "items": { "type": "string" }, "description": "Optional (df-005): the recognizers that contributed to this annotation. Producer-defined tags." }
