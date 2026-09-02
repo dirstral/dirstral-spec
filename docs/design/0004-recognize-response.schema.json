@@ -90,6 +90,11 @@
             },
             "description": "Entity ids involved; each should resolve in the top-level entities dictionary."
           },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Optional flat producer-defined key/value scopes for this annotation (e.g. {\"inning\": \"8\", \"half\": \"bottom\"}; SPEC 9.10, Design 0006). Keys and values are opaque strings; the contract enumerates neither. Values are matched by literal equality, so the producer MUST emit each key's values in one canonical, documented form; the contract imposes no normalization. Keys with the dir2mcp: prefix are reserved for future core semantics and MUST NOT be emitted."
+          },
           "text": {
             "type": "string",
             "minLength": 1,

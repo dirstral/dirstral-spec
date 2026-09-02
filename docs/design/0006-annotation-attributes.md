@@ -1,6 +1,6 @@
 # Design 0006 — Annotation attributes: structured scopes a filter can require
 
-**Status:** Proposed (targets a future MINOR spec bump)
+**Status:** Promoted in spec 0.59.0 (SPEC §9.10)
 **Author:** dirstral maintainers
 **Extends:** SPEC §9.9 (annotation entity/event filter), Design 0004 (recognition capability, annotation wire contract), §15.2/§15.3 (tool inputs)
 **Related:** SPEC §9.6 (date filter), §9.8 (media time-window filter): the same "structured attribute, not similarity" argument, one level more general

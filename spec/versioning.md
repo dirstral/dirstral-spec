@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.58.0`
+**Current spec version:** `0.59.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,44 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.59.0: annotation attributes, the structured scope a filter can require
+
+Promotes Design 0006. One optional annotation field, one optional filter on
+both retrieval tools, MINOR bump under the pre-1.0 policy.
+
+0.58.0's new 9.9 recorded the gap on purpose: an annotation value that is
+neither an entity nor an event, an inning or a chapter number, existed only in
+prose, so it could be preferred by similarity but never required by a filter.
+Measured shape of the failure on the pilot corpus: an "8th inning" query's
+score spread across twelve play-by-play hits was 0.0137 to 0.0250, because the
+embedding matches "baseball text", not ordinals, while the recognizer HAD the
+inning as structured feed data and the wire contract gave it nowhere to put it
+(the annotation object is additionalProperties: false).
+
+New 9.10 adds the whole chain. The annotation MAY carry a flat map of
+producer-defined string keys to string values; the map MUST survive ingestion
+per annotation; and search/ask MAY accept an `attributes` filter with 9.9's
+exact semantics: OR within a key, AND across keys and every other filter,
+literal equality, no vocabulary, only annotation-derived hits eligible,
+unknown values empty rather than an error, candidate-selection placement.
+
+Decisions worth restating rather than rediscovering:
+
+- Absent, {}, and key: [] all disable. Only a stated value narrows a result,
+  so a client serialization quirk cannot turn "no filter" into "match
+  nothing".
+- Values are strings even when semantically numeric: the filter is literal
+  equality, and one representation avoids 8 vs "8" vs 8.0. Canonicalization is
+  the producer's, once, documented; the server compares bytes.
+- No ranges. Ordered values mean types and comparison semantics, and the tool
+  for a contiguous timeline stretch is 9.8. "Innings 7 through 9" is three
+  OR-ed values.
+- The annotation carries ONE string per key (a span is in exactly one inning);
+  the filter carries an ARRAY per key (a caller may accept several). The
+  asymmetry is deliberate.
+- Key names with the dir2mcp: prefix are reserved for future core semantics,
+  at zero cost today, so producer keys and core keys can never collide.
 
 ## 0.58.0: declare the three retrieval filters the reference server already serves
 
