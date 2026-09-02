@@ -3308,17 +3308,21 @@ literal equality and one representation avoids `8` vs `"8"` vs `8.0`
 mismatches. Key names with the `dir2mcp:` prefix are RESERVED for future
 core semantics; a producer MUST NOT emit them.
 
-**Attributes are persisted.** The attributes map MUST survive ingestion and be
-recoverable per annotation, exactly as the annotation's entities and `event`
-must. Persisting the annotation text alone is not conforming: it makes this
-filter unimplementable and silently discards data the backend computed.
+**Attributes are persisted and surfaced.** The attributes map MUST survive
+ingestion and be recoverable per annotation, exactly as the annotation's
+entities and `event` must; persisting the annotation text alone is not
+conforming, because it makes this filter unimplementable and silently discards
+data the backend computed. "Recoverable" has a defined wire surface: a
+recognition-derived hit's `span` MAY carry the optional `attributes` map
+(§15.1.1 shared `Span`), mirroring how `entities` and `event` surface there,
+so a client can render the scope it filtered by.
 
 **The filter.** `dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept
 an **optional** `attributes` object mapping attribute keys to arrays of
 acceptable values:
 
 ```json
-"attributes": { "inning": ["8"], "half": ["bottom", "top"] }
+{ "attributes": { "inning": ["8"], "half": ["bottom", "top"] } }
 ```
 
 * **Absent or empty disables, at both levels.** An absent `attributes`, an
@@ -3686,6 +3690,7 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
         "speaker": { "type": "string", "description": "Optional (§8.6.8): stable per-transcript speaker id on a diarized transcript." },
         "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (§8.6.8)." },
         "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (df-005): entity ids the recognizer attributed to this span." },
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional (§9.10): producer-defined key/value scopes the recognizer attached to this span. Same values the attributes filter matches." },
         "event": { "type": "string", "description": "Optional (df-005): the producer's event token for this span. Vocabulary is producer-defined." },
         "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional (df-005): whether this span records something observed or something a model generated. Absent means observed." },
         "sources": { "type": "array", "items": { "type": "string" }, "description": "Optional (df-005): the recognizers that contributed to this annotation. Producer-defined tags." }

@@ -70,7 +70,7 @@ range from the server's point of view** (the server does not know when the
 "attributes": {
   "type": "object",
   "additionalProperties": { "type": "string" },
-  "description": "Optional flat producer-defined key/value scopes for this annotation (e.g. {\"inning\": \"8\", \"half\": \"bottom\"}). Keys and values are opaque strings; the contract enumerates neither. Values are matched by literal equality (see the filter section of this design; SPEC section number assigned at promotion), so a producer MUST emit each key's values in ONE canonical form of its own choosing and SHOULD document that form. The contract imposes no normalization: a producer whose values are case-sensitive codes or zero-padded identifiers keeps them."
+  "description": "Optional flat producer-defined key/value scopes for this annotation (e.g. {\"inning\": \"8\", \"half\": \"bottom\"}). Keys and values are opaque strings; the contract enumerates neither. Values are matched by literal equality (SPEC §9.10), so a producer MUST emit each key's values in ONE canonical form of its own choosing and SHOULD document that form. The contract imposes no normalization: a producer whose values are case-sensitive codes or zero-padded identifiers keeps them."
 }
 ```
 
@@ -131,7 +131,7 @@ mapping attribute keys to arrays of acceptable values.
     "type": "array",
     "items": { "type": "string" }
   },
-  "description": "Optional (section assigned at promotion): restrict hits to annotation-derived ones whose attributes match. Each key maps to an array of acceptable values: OR within a key, AND across keys and against every other filter, literal string equality, no vocabulary defined. Absent, {}, or a key with [] disables that constraint."
+  "description": "Optional (SPEC 9.10): restrict hits to annotation-derived ones whose attributes match. Each key maps to an array of acceptable values: OR within a key, AND across keys and against every other filter, literal string equality, no vocabulary defined. Absent, {}, or a key with [] disables that constraint."
 }
 ```
 
