@@ -3284,12 +3284,70 @@ recognition capability landed; this declares what was already on the wire.
 
 Filtering on an attribute the annotation records but that is neither an entity
 nor an event, an inning or a chapter number for instance, is **not** covered
-here. Such a value can only be matched as text today, which means it can be
-preferred but never required. That gap is real and is left open deliberately
-rather than solved by widening `events` into a general attribute channel, which
-would overload one field with two meanings.
+here. Widening `events` into a general attribute channel would overload one
+field with two meanings; the general mechanism is §9.10.
 
----
+### 9.10 Annotation attribute filter (optional)
+
+Promoted from [Design 0006](design/0006-annotation-attributes.md). An
+annotation may record structured scopes that are neither an entity nor an
+event: the inning of a baseball game, the period of a hockey game, the chapter
+of an audiobook, the act of a play. A value that exists only in prose can be
+*preferred* by similarity but never *required*; this filter is how it is
+required.
+
+**The annotation carries attributes.** A recognition backend MAY attach a flat
+map of producer-defined string keys to string values to any annotation
+(`{"inning": "8", "half": "bottom"}`; Design 0004 wire schema). Keys and
+values are opaque: the contract enumerates neither, and dir2mcp learns no
+domain. A producer MUST emit each key's values in ONE canonical form of its
+own choosing and SHOULD document that form; the contract imposes no
+normalization, so case-sensitive codes and zero-padded identifiers survive.
+Values are strings even when semantically numeric, because the filter is
+literal equality and one representation avoids `8` vs `"8"` vs `8.0`
+mismatches. Key names with the `dir2mcp:` prefix are RESERVED for future
+core semantics; a producer MUST NOT emit them.
+
+**Attributes are persisted.** The attributes map MUST survive ingestion and be
+recoverable per annotation, exactly as the annotation's entities and `event`
+must. Persisting the annotation text alone is not conforming: it makes this
+filter unimplementable and silently discards data the backend computed.
+
+**The filter.** `dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept
+an **optional** `attributes` object mapping attribute keys to arrays of
+acceptable values:
+
+```json
+"attributes": { "inning": ["8"], "half": ["bottom", "top"] }
+```
+
+* **Absent or empty disables, at both levels.** An absent `attributes`, an
+  empty object `{}`, and a key mapped to an empty array `[]` all mean "no
+  constraint" (the empty-array key is ignored as if not sent). Only a stated
+  value ever narrows a result, so no client serialization quirk can turn "no
+  filter" into "match nothing".
+* **Within one key: OR.** The annotation's value for that key must equal ANY
+  listed value. **Across keys, and against every other filter: AND.**
+* **Values match literally**, case-sensitively, as strings. An annotation that
+  lacks a requested KEY does not match.
+* **Eligibility.** Only hits derived from a recognition annotation carry
+  attributes; a hit from any other representation never matches a non-empty
+  filter (mirrors §9.8, §9.9).
+* **Unknown values are not errors, and they do not poison the OR.** A value
+  that exists nowhere in the corpus simply matches nothing; a matching sibling
+  value under the same key still returns its hits. Only a filter whose every
+  constraint matches nothing returns an empty result set, and that is a normal
+  empty result, not an error (mirrors §9.5, §9.6, §9.9).
+* **Pipeline placement.** Candidate-selection, before dedup, rerank and
+  truncation to `k`, so `k` counts survivors and a filtered query MAY return
+  fewer than `k`. It removes candidates only; it never reorders results or
+  changes result structure (§9.2) or citation format (§9.3).
+
+Ranges are deliberately out of scope: values match by equality only, and
+"innings 7 through 9" is three OR-ed values. The moment values have order they
+have types and comparison semantics, and the tool for "a contiguous stretch of
+the timeline" already exists (§9.8); a producer whose scopes map to time
+already MUST emit accurate spans (Design 0004).
 
 ---
 
