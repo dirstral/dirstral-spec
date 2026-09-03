@@ -231,21 +231,12 @@ are optional.
   overflow counter whose absence means "unknown / not applicable", not zero;
   see `stats.json` (df-007) for the field contract and SPEC §15.6 for its full
   normative semantics.
-- `errors` counts failures observed during the **current** run. It resets with
-  each run, so it is **not** the number of chunks currently missing, and a
-  client **MUST NOT** read `errors: 0` as "no content is missing".
-- `indexing` **MAY** additionally carry the optional, additive `failed_chunks`
-  object (dir2mcp #939): the **standing** count of chunks left in a terminal
-  embed-failure state across the whole corpus, from **any** run. It carries
-  `total`, `retryable` (how many a plain embed retry can plausibly clear, stated
-  by the server so no client hard-codes that mapping), and a `by_category`
-  breakdown that omits zero-count categories and whose category vocabulary is
-  **open** (an unrecognised value **SHOULD** be rendered verbatim). A server
-  that can derive the counts **SHOULD** emit the object even when `total` is
-  `0`, because "zero" and "not reported" are different facts; when the counts
-  are not derivable the field is omitted and absence means **unknown**, not
-  zero. See `stats.json` (df-007) and SPEC §15.6 for the full normative
-  semantics.
+- `errors` counts failures observed during the **current** run, so it is **not**
+  the number of chunks currently missing. It **MAY** additionally carry the
+  optional, additive `failed_chunks` object (dir2mcp #939) — the **standing**
+  corpus-wide count of chunks left in a terminal embed-failure state, from any
+  run, whose absence means "unknown", not zero; see `stats.json` (df-007) for
+  the field contract and SPEC §15.6 for its full normative semantics.
 - `models` carries `embed_text`, `embed_code`, `ocr`, `stt_provider`,
   `stt_model`, `chat` (all required). `stt_provider` is **not** a closed enum —
   any STT-capable provider (e.g. `mistral | elevenlabs | openai | gemini |

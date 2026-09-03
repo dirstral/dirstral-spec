@@ -98,6 +98,13 @@ Decisions worth restating rather than rediscovering:
   rather than a list of zeros (the `skip_reasons` precedent).
 - The category vocabulary is open: a client MAY receive a value it does not
   recognise from a newer server and SHOULD render it verbatim rather than error.
+- The three counts MUST agree: by_category sums to total, and retryable is
+  the sum of the retryable entries (so retryable cannot exceed total). A
+  producer that cannot compute the breakdown MUST omit the whole object
+  rather than emit an inconsistent one, because a breakdown that does not add
+  up leaves an operator unable to tell which number to act on. Draft-07
+  cannot compare sibling fields, so this is stated normatively and enforced
+  by the producer and by conformance tests, not by schema validation.
 - No new tool, no new error code, and no change to any existing field's
   meaning, so a client that ignores the field is unaffected.
 

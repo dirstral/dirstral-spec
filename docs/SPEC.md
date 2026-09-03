@@ -513,6 +513,18 @@ category whose count would be `0` is omitted. The category vocabulary is open
 for forward compatibility: a client MAY receive a value it does not recognise
 from a newer server and **SHOULD** render it verbatim rather than error.
 
+**The three counts MUST agree.** Every failed chunk has exactly one category,
+so a producer **MUST** emit `failed_chunks` such that the `by_category` counts
+sum to `total`, and `retryable` equals the sum of the counts of the entries
+whose `retryable` is `true`. It follows that `retryable` **MUST NOT** exceed
+`total`. A breakdown that does not add up is worse than no breakdown, because
+an operator cannot tell which of the two numbers to act on; a producer that
+cannot compute the breakdown **MUST** omit the whole object rather than emit an
+inconsistent one. JSON Schema Draft-07 cannot express a comparison between
+sibling fields, so these are stated normatively here and enforced by the
+producer and by conformance tests, not by schema validation — a client
+**SHOULD NOT** assume the schema alone has checked them.
+
 A server that can derive these counts **SHOULD** emit `failed_chunks` even when
 `total` is `0`, because "zero failed chunks" and "this server does not report
 failed chunks" are different facts and reading the second as the first is the
@@ -4144,10 +4156,10 @@ honestly as `ok`, `skipped` or `error`.
         "failed_chunks": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Optional, additive (dir2mcp #939). STANDING count of chunks left in a terminal embed-failure state across the whole corpus, from ANY run — the number `errors` is not. Such a chunk is absent from BOTH retrieval paths and raises no error at query time, so without this field a silently smaller corpus reads as a healthy one (measured: 406 chunks lost to one exhausted quota while `errors` reported 0). A server that can derive these counts SHOULD emit the object even when total is 0, since 'zero failed chunks' and 'this server does not report them' are different facts. When not derivable (e.g. the ListFiles-only fallback path) the field is omitted and a client MUST treat omission as 'unknown', never as zero.",
+          "description": "Optional, additive (dir2mcp #939). STANDING count of chunks left in a terminal embed-failure state across the whole corpus, from ANY run — the number `errors` is not. Such a chunk is absent from BOTH retrieval paths and raises no error at query time, so without this field a silently smaller corpus reads as a healthy one (measured: 406 chunks lost to one exhausted quota while `errors` reported 0). A server that can derive these counts SHOULD emit the object even when total is 0, since 'zero failed chunks' and 'this server does not report them' are different facts. When not derivable (e.g. the ListFiles-only fallback path) the field is omitted and a client MUST treat omission as 'unknown', never as zero. The three counts MUST agree: the by_category counts MUST sum to total, and retryable MUST equal the sum of the counts of entries whose retryable is true (so retryable MUST NOT exceed total). A producer that cannot compute the breakdown MUST omit the whole object rather than emit an inconsistent one. Draft-07 cannot express a comparison between sibling fields, so this is enforced by the producer and by conformance tests, not by schema validation.",
           "properties": {
-            "total": { "type": "integer", "minimum": 0, "description": "Every chunk in a terminal embed-failure state, regardless of category or which run failed it." },
-            "retryable": { "type": "integer", "minimum": 0, "description": "How many of `total` a plain re-run of the embed step can plausibly clear: the failures whose fault lies with the provider or environment (exhausted quota, rejected credential, upstream outage) rather than with the chunk's stored bytes. Never greater than total." },
+            "total": { "type": "integer", "minimum": 0, "description": "Every chunk in a terminal embed-failure state, regardless of category or which run failed it. MUST equal the sum of the by_category counts." },
+            "retryable": { "type": "integer", "minimum": 0, "description": "How many of `total` a plain re-run of the embed step can plausibly clear: the failures whose fault lies with the provider or environment (exhausted quota, rejected credential, upstream outage) rather than with the chunk's stored bytes. MUST equal the sum of the by_category counts whose retryable is true, and therefore MUST NOT exceed total." },
             "by_category": {
               "type": "array",
               "description": "One entry per category present. A category whose count would be 0 is omitted, so an intact corpus carries an empty array rather than a list of zeros.",
