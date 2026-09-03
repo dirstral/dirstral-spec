@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.13.0
+- **Version:** 0.14.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -231,6 +231,21 @@ are optional.
   overflow counter whose absence means "unknown / not applicable", not zero;
   see `stats.json` (df-007) for the field contract and SPEC §15.6 for its full
   normative semantics.
+- `errors` counts failures observed during the **current** run. It resets with
+  each run, so it is **not** the number of chunks currently missing, and a
+  client **MUST NOT** read `errors: 0` as "no content is missing".
+- `indexing` **MAY** additionally carry the optional, additive `failed_chunks`
+  object (dir2mcp #939): the **standing** count of chunks left in a terminal
+  embed-failure state across the whole corpus, from **any** run. It carries
+  `total`, `retryable` (how many a plain embed retry can plausibly clear, stated
+  by the server so no client hard-codes that mapping), and a `by_category`
+  breakdown that omits zero-count categories and whose category vocabulary is
+  **open** (an unrecognised value **SHOULD** be rendered verbatim). A server
+  that can derive the counts **SHOULD** emit the object even when `total` is
+  `0`, because "zero" and "not reported" are different facts; when the counts
+  are not derivable the field is omitted and absence means **unknown**, not
+  zero. See `stats.json` (df-007) and SPEC §15.6 for the full normative
+  semantics.
 - `models` carries `embed_text`, `embed_code`, `ocr`, `stt_provider`,
   `stt_model`, `chat` (all required). `stt_provider` is **not** a closed enum —
   any STT-capable provider (e.g. `mistral | elevenlabs | openai | gemini |
@@ -454,6 +469,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
   as `ok`; a secret-withheld document publishes as `skipped` with the reason
   `secret_excluded`. Mirrors spec 0.48.0. Resolves the `status` half of
   dirstral-spec #63; unblocks dir2mcp #676.
+- **0.14.0** — `dir2mcp_stats.indexing` MAY carry the optional additive `failed_chunks` object (`total`, `retryable`, `by_category[]`): the STANDING count of terminally embed-failed chunks corpus-wide, from any run, which `errors` (current-run only) structurally cannot show. Absence = unknown, not zero; a server that can derive the counts SHOULD emit them even at zero; zero-count categories omitted; category vocabulary open. `errors` gains a description stating what it is not. Mirrors spec 0.60.0. Schema: `stats.json` (df-007). dir2mcp #932/#939.
 - **0.7.0**: tightened the `dir2mcp_ask` grounding contract (dir2mcp #403). `citations[]` is now the **in-context** set rather than the retrieved set, an evidence floor gates what may be cited, and `mode=search_only` is stated to return an empty `citations[]`. Normative rules live in SPEC §9.4.1–§9.4.3; this document only records the resulting `dir2mcp_ask` output shape.
 - **0.6.0** — added the optional `time_from_ms`/`time_to_ms` **intra-document media time-window** filter to `dir2mcp_search`/`dir2mcp_ask` (SPEC §9.8): non-negative integer millisecond offsets within a document's timeline (§5.4), orthogonal to the `date_*` document-date window (§9.6). When either bound is present only `time`-spanned hits are eligible (mirroring `speaker`); a hit is kept iff its span overlaps the window (inclusive); additive/off-by-default; `INVALID_FIELD` on a negative or inverted range; empty (not error) on no match. Schemas: `search.json`/`ask.json` (df-007).
 - **0.5.0** — `dir2mcp_stats.indexing` MAY carry an optional additive `watch_overflows` integer (fsnotify kernel event-buffer overflow count; absence = unknown/NA, not zero). Schema: `stats.json` (df-007). dir2mcp #591.

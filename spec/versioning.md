@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.59.0`
+**Current spec version:** `0.60.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,46 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.60.0: the failed chunks a run counter cannot show
+
+One optional `dir2mcp_stats.indexing` field, MINOR bump under the pre-1.0
+policy. Spec-first, like `watch_overflows` and `skip_reasons` before it.
+
+The measured failure (dir2mcp #932/#939): a provider quota ran out mid-run, the
+embed worker marked 406 chunks terminally failed, and `dir2mcp_stats` reported
+`errors: 0`. Both facts were true. `errors` counts what the CURRENT run saw, and
+the run that did the damage had ended, so the number an operator reads as "is my
+corpus healthy" is structurally incapable of showing a corpus that is already
+missing a quarter of itself. A chunk in that state is absent from BOTH retrieval
+paths and raises nothing at query time, so on the pilot corpus an entire topic
+had silently disappeared from search while every surface looked fine.
+
+New optional `indexing.failed_chunks`: `total`, `retryable`, and a `by_category`
+breakdown. The recovery already existed and took under a minute; the only thing
+missing was anything that said to run it.
+
+Decisions worth restating rather than rediscovering:
+
+- It is a STANDING corpus count, from any run, deliberately not scoped to the
+  current job. That is the whole difference from `errors`, which keeps its
+  meaning and gains a description saying what it is not.
+- The server states `retryable` per category instead of publishing a category
+  list a client would map itself. Which failures a bare retry can clear is
+  implementation policy that may change, and a client that hard-coded it would
+  mis-advise an operator after a server upgrade.
+- A server that CAN derive the counts SHOULD emit the object even when `total`
+  is 0. "Zero failed chunks" and "this server does not report failed chunks"
+  are different facts, and reading the second as the first is the exact error
+  the field exists to prevent, so silence must not be the way to say zero.
+- Omission therefore means unknown, never zero (the `watch_overflows`
+  precedent), and it is what the ListFiles-only fallback path emits.
+- Zero-count categories are omitted, so an intact corpus carries an empty array
+  rather than a list of zeros (the `skip_reasons` precedent).
+- The category vocabulary is open: a client MAY receive a value it does not
+  recognise from a newer server and SHOULD render it verbatim rather than error.
+- No new tool, no new error code, and no change to any existing field's
+  meaning, so a client that ignores the field is unaffected.
 
 ## 0.59.0: annotation attributes, the structured scope a filter can require
 
