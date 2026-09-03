@@ -41,8 +41,32 @@
             "representations": { "type": "integer" },
             "chunks_total": { "type": "integer" },
             "embedded_ok": { "type": "integer" },
-            "errors": { "type": "integer" },
-            "watch_overflows": { "type": "integer", "minimum": 0, "description": "Optional (§15.6, dir2mcp #591): count of fsnotify kernel event-buffer overflows over the watcher's lifetime. Non-zero means some filesystem changes were reconciled by a periodic rescan rather than per-event. Absent when not running the watcher / unsupported." }
+            "errors": { "type": "integer", "description": "Failures observed during the CURRENT indexing run. It resets with each run, so it is NOT the number of chunks currently missing from the corpus; see failed_chunks." },
+            "watch_overflows": { "type": "integer", "minimum": 0, "description": "Optional (§15.6, dir2mcp #591): count of fsnotify kernel event-buffer overflows over the watcher's lifetime. Non-zero means some filesystem changes were reconciled by a periodic rescan rather than per-event. Absent when not running the watcher / unsupported." },
+            "failed_chunks": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Optional, additive (§15.6, dir2mcp #939): STANDING count of chunks left in a terminal embed-failure state across the whole corpus, from ANY run — the number `errors` is not. Such a chunk is absent from BOTH retrieval paths and raises no error at query time, so without this field a silently smaller corpus reads as a healthy one (measured: 406 chunks lost to one exhausted quota while `errors` reported 0). A server that can derive these counts SHOULD emit the object even when total is 0, since 'zero failed chunks' and 'this server does not report them' are different facts. When not derivable (e.g. the ListFiles-only fallback path) the field is omitted and a client MUST treat omission as 'unknown', never as zero. The three counts MUST agree: the by_category counts MUST sum to total, and retryable MUST equal the sum of the counts of entries whose retryable is true (so retryable MUST NOT exceed total). A producer that cannot compute the breakdown MUST omit the whole object rather than emit an inconsistent one. Draft-07 cannot express a comparison between sibling fields, so this is enforced by the producer and by conformance tests, not by schema validation.",
+              "properties": {
+                "total": { "type": "integer", "minimum": 0, "description": "Every chunk in a terminal embed-failure state, regardless of category or which run failed it. MUST equal the sum of the by_category counts." },
+                "retryable": { "type": "integer", "minimum": 0, "description": "How many of `total` a plain re-run of the embed step can plausibly clear: the failures whose fault lies with the provider or environment (exhausted quota, rejected credential, upstream outage) rather than with the chunk's stored bytes. MUST equal the sum of the by_category counts whose retryable is true, and therefore MUST NOT exceed total." },
+                "by_category": {
+                  "type": "array",
+                  "description": "One entry per category present. A category whose count would be 0 is omitted, so an intact corpus carries an empty array rather than a list of zeros.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "category": { "type": "string", "description": "Failure category (e.g. rate_limit, auth, transient_net, payload_too_large, parse_error, embedding_failure, quality_gate, unknown). The vocabulary is open for forward compatibility: a client MAY receive a value it does not recognise from a newer server and SHOULD render it verbatim rather than error." },
+                      "count": { "type": "integer", "minimum": 1, "description": "Chunks failed in this category. Always >= 1 (zero-count categories are omitted)." },
+                      "retryable": { "type": "boolean", "description": "Whether a plain embed retry can clear this category. Stated by the server so a client never hard-codes a category-to-retryable mapping that is implementation policy and may change." }
+                    },
+                    "required": ["category", "count", "retryable"]
+                  }
+                }
+              },
+              "required": ["total", "retryable", "by_category"]
+            }
           },
           "required": ["job_id", "running", "mode", "scanned", "indexed", "skipped", "deleted", "representations", "chunks_total", "embedded_ok", "errors"]
         },

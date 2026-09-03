@@ -460,7 +460,14 @@ A lightweight summary:
     "chunks_total": 1480,
     "embedded_ok": 920,
     "errors": 1,
-    "watch_overflows": 0
+    "watch_overflows": 0,
+    "failed_chunks": {
+      "total": 406,
+      "retryable": 406,
+      "by_category": [
+        { "category": "rate_limit", "count": 406, "retryable": true }
+      ]
+    }
   }
 }
 ```
@@ -473,6 +480,57 @@ rescan rather than per-event — a signal that the index may briefly lag reality
 after heavy churn. It is omitted when the server is not running the watcher (e.g.
 a one-shot index) or on platforms without overflow reporting; consumers MUST treat
 its absence as "unknown / not applicable", not zero.
+
+`failed_chunks` (optional, additive; dir2mcp #939) is the **standing** count of
+chunks left in a terminal embed-failure state across the whole corpus, from
+**any** run, and it exists because `errors` is not that number. `errors` counts
+failures observed during the CURRENT indexing run, so it returns to `0` on the
+next run while previously-failed chunks stay failed. A client **MUST NOT** read
+`errors: 0` as "no content is missing".
+
+Why the distinction earns a field. A chunk in terminal embed failure is absent
+from **both** retrieval paths — it never enters the vector index, and lexical
+search excludes it — and **no error is raised at query time**, so the corpus is
+silently smaller than its `chunks_total` claims. The failure that produced this
+field is representative: a provider quota was exhausted mid-run, 406 chunks were
+marked failed, and the surface reported `errors: 0` while a whole topic had
+disappeared from search. The gap between `chunks_total` and `embedded_ok` does
+not close it either, because that same gap is the ordinary shape of a run still
+in progress.
+
+`total` is every terminally failed chunk; `retryable` is how many of those a
+plain re-run of the embed step can plausibly clear — the failures whose fault
+lies with the provider or the environment (an exhausted quota, a rejected
+credential, an upstream outage) rather than with the chunk's stored bytes, so
+re-sending the identical input can succeed. The server states this per category
+rather than leaving a client to derive it, because which categories are
+recoverable is implementation policy that may change, and a client that
+hard-coded the mapping would silently mis-advise an operator after a server
+upgrade.
+
+`by_category` explains both numbers, one entry per category present, and a
+category whose count would be `0` is omitted. The category vocabulary is open
+for forward compatibility: a client MAY receive a value it does not recognise
+from a newer server and **SHOULD** render it verbatim rather than error.
+
+**The three counts MUST agree.** Every failed chunk has exactly one category,
+so a producer **MUST** emit `failed_chunks` such that the `by_category` counts
+sum to `total`, and `retryable` equals the sum of the counts of the entries
+whose `retryable` is `true`. It follows that `retryable` **MUST NOT** exceed
+`total`. A breakdown that does not add up is worse than no breakdown, because
+an operator cannot tell which of the two numbers to act on; a producer that
+cannot compute the breakdown **MUST** omit the whole object rather than emit an
+inconsistent one. JSON Schema Draft-07 cannot express a comparison between
+sibling fields, so these are stated normatively here and enforced by the
+producer and by conformance tests, not by schema validation — a client
+**SHOULD NOT** assume the schema alone has checked them.
+
+A server that can derive these counts **SHOULD** emit `failed_chunks` even when
+`total` is `0`, because "zero failed chunks" and "this server does not report
+failed chunks" are different facts and reading the second as the first is the
+exact error this field exists to prevent. When the counts are not derivable
+(e.g. the ListFiles-only fallback path below) the field is omitted, and a client
+**MUST** treat omission as "unknown", not as zero.
 
 A per-chunk **`embedding_mode` coverage breakdown** for contextual retrieval
 (§8.1.8) — how many chunks are `contextualized` vs. `fallback` vs. pending retry —
@@ -4094,7 +4152,31 @@ honestly as `ok`, `skipped` or `error`.
           "minimum": -1,
           "description": "Chunks embedded successfully. -1 means not derivable (ListFiles-only fallback path); treat as unavailable, not as an error."
         },
-        "errors": { "type": "integer" }
+        "errors": { "type": "integer", "description": "Failures observed during the CURRENT indexing run. It resets with each run, so it is NOT the number of chunks currently missing from the corpus; see failed_chunks." },
+        "failed_chunks": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional, additive (dir2mcp #939). STANDING count of chunks left in a terminal embed-failure state across the whole corpus, from ANY run — the number `errors` is not. Such a chunk is absent from BOTH retrieval paths and raises no error at query time, so without this field a silently smaller corpus reads as a healthy one (measured: 406 chunks lost to one exhausted quota while `errors` reported 0). A server that can derive these counts SHOULD emit the object even when total is 0, since 'zero failed chunks' and 'this server does not report them' are different facts. When not derivable (e.g. the ListFiles-only fallback path) the field is omitted and a client MUST treat omission as 'unknown', never as zero. The three counts MUST agree: the by_category counts MUST sum to total, and retryable MUST equal the sum of the counts of entries whose retryable is true (so retryable MUST NOT exceed total). A producer that cannot compute the breakdown MUST omit the whole object rather than emit an inconsistent one. Draft-07 cannot express a comparison between sibling fields, so this is enforced by the producer and by conformance tests, not by schema validation.",
+          "properties": {
+            "total": { "type": "integer", "minimum": 0, "description": "Every chunk in a terminal embed-failure state, regardless of category or which run failed it. MUST equal the sum of the by_category counts." },
+            "retryable": { "type": "integer", "minimum": 0, "description": "How many of `total` a plain re-run of the embed step can plausibly clear: the failures whose fault lies with the provider or environment (exhausted quota, rejected credential, upstream outage) rather than with the chunk's stored bytes. MUST equal the sum of the by_category counts whose retryable is true, and therefore MUST NOT exceed total." },
+            "by_category": {
+              "type": "array",
+              "description": "One entry per category present. A category whose count would be 0 is omitted, so an intact corpus carries an empty array rather than a list of zeros.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "category": { "type": "string", "description": "Failure category (e.g. rate_limit, auth, transient_net, payload_too_large, parse_error, embedding_failure, quality_gate, unknown). The vocabulary is open for forward compatibility: a client MAY receive a value it does not recognise from a newer server and SHOULD render it verbatim rather than error." },
+                  "count": { "type": "integer", "minimum": 1, "description": "Chunks failed in this category. Always >= 1 (zero-count categories are omitted)." },
+                  "retryable": { "type": "boolean", "description": "Whether a plain embed retry can clear this category. Stated by the server so a client never hard-codes a category-to-retryable mapping that is implementation policy and may change." }
+                },
+                "required": ["category", "count", "retryable"]
+              }
+            }
+          },
+          "required": ["total", "retryable", "by_category"]
+        }
       },
       "required": ["job_id", "running", "mode", "scanned", "indexed", "skipped", "deleted", "representations", "chunks_total", "embedded_ok", "errors"]
     },
