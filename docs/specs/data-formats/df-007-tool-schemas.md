@@ -1,7 +1,7 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -28,7 +28,7 @@ the conformance contract. Shared shapes — [df-005 `Span`](df-005-span.md) and
 | `dir2mcp_ask` (§15.3) | `ask.json` | `citations[]` `$ref`s `Citation`; `hits[]` `$ref`s `Hit`. |
 | `dir2mcp_open_file` (§15.4) | `open_file.json` | Returns `content` + a df-005 `Span` (incl. the `document` variant). |
 | `dir2mcp_list_files` (§15.5) | `list_files.json` | |
-| `dir2mcp_stats` (§15.6) | `stats.json` | SHOULD carry `format_version` (df-000). Optional additive `skip_reasons` coverage array (reason→count; closed reason enum). |
+| `dir2mcp_stats` (§15.6) | `stats.json` | SHOULD carry `format_version` (df-000). Optional additive `skip_reasons` coverage array (reason→count; closed reason enum) and `indexing.failed_chunks` standing failure counts (open category vocabulary). |
 | `dir2mcp_transcribe` (§15.7) | `transcribe.json` | recommended tool. |
 | `dir2mcp_annotate` (§15.8) | `annotate.json` | recommended tool. |
 | `dir2mcp_transcribe_and_ask` (§15.9) | `transcribe_and_ask.json` | recommended tool. |
@@ -77,6 +77,7 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
+- **0.7.0** — `stats.json` `indexing` gains the optional additive `failed_chunks` object (`total`, `retryable`, `by_category[]` of `{category, count, retryable}`), the standing corpus-wide count of terminally embed-failed chunks; `count` has minimum 1 so zero-count categories are omitted, and unlike `skip_reasons[].reason` the `category` vocabulary is OPEN (rendered verbatim when unrecognised). `errors` gains a description distinguishing it as the current-run counter. Mirrors spec 0.60.0. dir2mcp #939.
 - **0.6.0** — `stats.json` `skip_reasons[].reason` enum gains `symlink_ignored`
   (additive; SPEC §15.2, dir2mcp #781): a discovered entry is a symbolic link and
   `ingest.follow_symlinks` is false, so the walker does not follow the link and
