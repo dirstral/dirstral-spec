@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.2.2
+- **Version:** 0.2.3
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -181,6 +181,27 @@ that a present-but-broken extractor be visible rather than reported as healthy
 - for each uncovered class, name a **remediation** — the engine/config to add
   (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393); or
   set `ingest.on_unsupported: strict` to fail instead of skip").
+
+**Basis of "present" and of the engine list.** Two readings of the report have
+proven wrong in practice and are ruled out here:
+
+* A format class is **present** when the durable document record holds at least
+  one non-deleted document of an extractable type (pdf/image/document) in that
+  class, **whatever `status` the run stamped on it**. An uncovered document is,
+  by construction, recorded as `status=skipped` (lenient) or `status=error`
+  (strict) (td-004 §B.2); a report that considers only `status=ok` documents
+  therefore cannot see the gap it exists to name. (Measured on the reference
+  implementation: once #584 recorded the lenient outcome durably, `doctor`
+  reported the coverage check healthy with an `.odt` durably skipped and a
+  `.tiff` errored in the store.) Before the first scan has recorded the corpus
+  the startup report names the formats the record already holds; a gap that
+  first scan finds is recorded durably and MUST be named by the next startup
+  and by `doctor`, not only by the run that found it.
+* The **engine list** covers every engine the `ingest.extractor` policy makes
+  eligible (td-004 §B.1), including a capability-activated secondary engine such as
+  `pandoc` under `auto`, and not only the primary engine of the cascade. An eligible
+  engine that is unavailable is listed with its reason, because its absence is
+  what leaves a format class uncovered.
 
 Under `ingest.on_unsupported: lenient` the uncovered classes are warnings, and a
 document left with no searchable representation is recorded as a durable
@@ -373,6 +394,12 @@ re-indexes it.
 
 ## Changelog
 
+- **0.2.3** (§7.7): pinned the basis of the coverage report. A format class is
+  present when the durable record holds a non-deleted extractable document in it
+  regardless of `status` (an uncovered document is recorded as skipped/error, so a
+  `status=ok`-only count cannot see the gap); the engine list covers every engine
+  the policy makes eligible, including a capability-activated secondary engine,
+  with its reason when unavailable. Clarification, no contract change (dir2mcp #395).
 - **0.2.2** — §7.7: a lenient unsupported-format skip that leaves a
   document with no searchable representation is now a durable `status=skipped`
   (not `status=ok`), so the coverage gap survives the producing run (td-004 §B.2,
