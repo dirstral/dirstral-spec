@@ -1481,8 +1481,8 @@ MUST report extraction coverage honestly, extending the existing requirement
 that a present-but-broken extractor be visible rather than reported as healthy
 (§7.4.B). The report MUST:
 
-* list the **active extraction engines** and, per engine, its availability and
-  (when unavailable) the reason;
+* list the **extraction engines the `ingest.extractor` policy makes eligible**
+  and, per engine, its availability and (when unavailable) the reason;
 * name every **corpus format class present but not covered** by any active
   engine (per the §7.4.B.1 matrix) — e.g. "`.odt`, `.tiff` present, no active
   engine covers them";
@@ -1495,10 +1495,12 @@ proven wrong in practice and are ruled out here:
 
 * A format class is **present** when the durable document record holds at least
   one non-deleted document of an extractable type (pdf/image/document) in that
-  class, **whatever `status` the run stamped on it**. An uncovered document is,
-  by construction, recorded as `status=skipped` (lenient) or `status=error`
-  (strict) (§7.4.B.2); a report that considers only `status=ok` documents
-  therefore cannot see the gap it exists to name. (Measured on the reference
+  class, **whatever `status` the run stamped on it**. An uncovered document
+  with no other searchable representation is recorded as `status=skipped`
+  (lenient) or `status=error` (strict), and one that keeps another searchable
+  representation stays `status=ok` (§7.4.B.2); a report that considers only
+  `status=ok` documents therefore cannot see the first group, which is the gap
+  it exists to name. (Measured on the reference
   implementation: once #584 recorded the lenient outcome durably, `doctor`
   reported the coverage check healthy with an `.odt` durably skipped and a
   `.tiff` errored in the store.) Before the first scan has recorded the corpus
