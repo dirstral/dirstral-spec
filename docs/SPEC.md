@@ -809,14 +809,11 @@ matchable per-language values (§9.5).
 > embed identity (§8.1.4) carries `…|off` — no reindex. `text` (the persisted,
 > displayed, and **cited** chunk text) is **never** the contextualized text.
 
-> `rune_start` / `rune_end` are **additive** columns for late chunking (§8.1.9).
-> The migration is in place and re-embeds nothing: a pre-feature row reads `-1`
-> (unknown), the embed identity is unchanged (the `late_chunking` component has
-> been recorded since it was introduced), and every existing vector is preserved.
-> The unknown value is only consulted when late chunking is enabled AND the
-> embedder exposes token embeddings; there it is a per-chunk `error` with a
-> `dir2mcp reindex` remediation (§8.1.9 "Pre-feature rows"), never a silent
-> chunk-then-embed vector inside a pooled corpus.
+> `rune_start` / `rune_end` and the `representation_texts` table (§5.2) are
+> **additive** for late chunking (§8.1.9). The in-place, no-re-embed migration
+> procedure is defined once, in
+> [df-003 §5.3 "Migration (late chunking)"](specs/data-formats/df-003-sqlite-schema.md);
+> this section does not restate it.
 
 ### 5.4 `spans` (provenance for citations)
 
@@ -1713,7 +1710,7 @@ A profile declares a `kind` (the adapter / wire protocol), a `base_url` (default
 * `gemini` — native embed (**asymmetric** via `taskType`, with Matryoshka output dimensionality — see 8.1.5/8.1.6), chat, STT (audio transcription), and TTS. The native embed surface (`models/{model}:batchEmbedContents`) is required for `taskType`/`outputDimensionality`; STT and TTS likewise use the native `models/{model}:generateContent` surface (see 8.2/8.3) — Gemini's OpenAI-compatible layer does **not** expose `/v1/audio/*`, so only chat may ride the `kind: openai` path. A `gemini` profile MAY alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint, which serves chat only and forgoes `taskType` (and thus the asymmetric/role behavior).
 * `cohere` — embed, chat, and rerank (8.4). Cohere embeddings are **asymmetric** (see 8.1.5).
 * `elevenlabs` — STT/TTS.
-* `tei` — a self-hosted [Hugging Face Text Embeddings Inference](https://github.com/huggingface/text-embeddings-inference) server on its **native** surface: `POST /embed` (pooled, normalized embeddings), `POST /embed_all` (one vector per token, no pooling), `POST /tokenize` (token offsets) and `GET /info` (served model, pooling, maximum input length). It is the first kind that exposes **token-level embeddings**, so it is the first kind that can serve late chunking (8.1.9). Embed only. Credential-optional: a Bearer token is sent only when an `api_key` is configured. No shipped default `base_url` (§8.5): the operator declares the endpoint, and the normalized endpoint is always a non-empty component of the embed identity (8.1.4). A TEI server also exposes an OpenAI-compatible `/v1/embeddings`; a `kind: openai` profile pointed at it keeps working, but it cannot serve late chunking, because that surface returns pooled vectors only.
+* `tei` — a self-hosted [Hugging Face Text Embeddings Inference](https://github.com/huggingface/text-embeddings-inference) server on its **native** surface: `POST /embed` (pooled, normalized embeddings), `POST /embed_all` (one vector per token, no pooling), `POST /tokenize` (token offsets) and `GET /info` (served model, pooling, maximum input length). It is the first kind that exposes **token-level embeddings**, so it is the first kind that can serve late chunking (8.1.9). Embed only. Credential-optional: a Bearer token is sent only when an `api_key` is configured. No shipped default `base_url` (§8.5): the operator declares the endpoint, and the normalized endpoint is always a non-empty component of the embed identity (8.1.4). **Transport.** Late chunking sends whole documents to this endpoint, so the §8.5 trust rule applies with force: a `tei` endpoint that is not loopback, link-local or private-network (RFC 1918 / RFC 4193) MUST use `https`; an `api_key` on a plain-`http` remote endpoint is `CONFIG_INVALID`. The Bearer token is sent only to the configured scheme and host, and never across a redirect that changes either (the adapter does not follow redirects, as no provider adapter does). A TEI server also exposes an OpenAI-compatible `/v1/embeddings`; a `kind: openai` profile pointed at it keeps working, but it cannot serve late chunking, because that surface returns pooled vectors only.
 
 Built-in profiles ship for common providers so operators typically only supply a credential.
 
@@ -2049,10 +2046,17 @@ chunk-then-embed with a logged reason.
 **Long documents.** A document that exceeds the model's maximum input length MAY
 be split into consecutive, non-overlapping token windows of at most that length,
 each embedded separately; a chunk then pools the tokens of the window(s) it
-overlaps. Windowing bounds the context a chunk sees to its window rather than the
-whole document; the split MUST be deterministic. An implementation that does not
-window MUST fall back to chunk-then-embed for that one document (a logged
-per-document fallback) rather than fail it.
+overlaps. Every token span a window yields MUST be rebased to **document**
+coordinates (its offset within the window plus the window's own start offset in
+the document) before it is compared with a chunk's rune span, so pooling never
+sees a window-local offset. Windowing bounds the context a chunk sees to its
+window rather than the whole document; the split MUST be deterministic. The token
+embedding of a document is **one operation**: its windows are all embedded before
+any chunk of the document is pooled or indexed, and a failure in any window fails
+the whole document's token embedding (classified below), so no partial, stale or
+mixed set of pooled vectors is ever written for one document. An implementation
+that does not window MUST fall back to chunk-then-embed for that one document (a
+logged per-document fallback) rather than fail it.
 
 **Failure classification.** A transient token-embedding failure (network, 429,
 5xx) MUST leave the chunks `pending` for a later cycle (§7.7), exactly like a
@@ -2060,6 +2064,16 @@ transient `Embed` failure. It MUST NOT produce chunk-then-embed vectors: that
 would put unpooled vectors into a pooled corpus without a trace. A non-transient
 token-embedding failure for one document falls back to chunk-then-embed for that
 document and is logged with its reason.
+
+**Capability transitions.** The identity records the configured mode, not the
+runtime capability (8.1.4, deliberately). The vectors a corpus receives therefore
+change without an identity change in exactly one case: the embed profile's
+**kind** moves between one that exposes token embeddings and one that does not
+while its name, endpoint and models stay the same. That edit is reindex-bound
+like the flag itself, and an operator MUST treat it so; an implementation MUST
+log the fallback once per run (above), so a corpus embedding chunk-then-embed
+under an `on` identity is visible, and it MAY additionally record the effective
+mode and refuse to switch it without a reindex.
 
 **Pre-feature rows.** When the mode is enabled and the embedder exposes token
 embeddings, a text chunk that has no persisted rune span, or whose representation

@@ -77,10 +77,14 @@ Defined `kind`s:
   that can serve late chunking (§8.1.9). Embed only. Credential-optional: a
   Bearer token is sent only when an `api_key` is configured. No shipped default
   `base_url` (§8.5): the operator declares the endpoint, and the normalized
-  endpoint is always a non-empty component of the embed identity (§8.1.4). A TEI
-  server also exposes an OpenAI-compatible `/v1/embeddings`; a `kind: openai`
-  profile pointed at it keeps working, but it cannot serve late chunking, because
-  that surface returns pooled vectors only.
+  endpoint is always a non-empty component of the embed identity (§8.1.4).
+  **Transport:** late chunking sends whole documents here, so a `tei` endpoint
+  that is not loopback, link-local or private-network MUST use `https`, an
+  `api_key` on a plain-`http` remote endpoint is `CONFIG_INVALID`, and the Bearer
+  token is sent only to the configured scheme and host (never across a redirect
+  that changes either). A TEI server also exposes an OpenAI-compatible
+  `/v1/embeddings`; a `kind: openai` profile pointed at it keeps working, but it
+  cannot serve late chunking, because that surface returns pooled vectors only.
 
 Built-in profiles ship for common providers so operators typically only supply a
 credential.
@@ -350,8 +354,17 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   adapter reads `GET /info` and MUST NOT return token embeddings otherwise (the
   mode falls back, with a logged reason).
 - **Long documents.** MAY be split into consecutive non-overlapping token windows
-  of at most the model's maximum input length, deterministically; an
-  implementation that does not window falls back for that document.
+  of at most the model's maximum input length, deterministically. Every window's
+  token spans are rebased to document coordinates before pooling, and a
+  document's token embedding is one operation: all windows succeed before any of
+  its chunks is pooled or indexed, so no partial or mixed pooled vectors are
+  written. An implementation that does not window falls back for that document.
+- **Capability transitions.** The identity records the configured mode (§8.1.4).
+  Moving the embed profile's kind between one that exposes token embeddings and
+  one that does not, with name, endpoint and models unchanged, is reindex-bound
+  like the flag; the once-per-run fallback log makes the state visible, and an
+  implementation MAY record the effective mode and refuse to switch it without a
+  reindex.
 - **Failures.** A transient token-embedding failure leaves the chunks `pending`
   and MUST NOT produce chunk-then-embed vectors; a non-transient one falls back for
   that document and is logged.

@@ -150,14 +150,22 @@ both are matchable per-language values (bs-003).
   pre-feature row and a media chunk (td-002) have `-1`.
 - `deleted` (boolean; tombstone)
 
-> `rune_start` / `rune_end` are **additive** columns for late chunking (SPEC
-> §8.1.9). The migration is in place and re-embeds nothing: a pre-feature row
-> reads `-1` (unknown), the embed identity is unchanged (its `late_chunking`
-> component has been recorded since it was introduced, td-001 §8.1.4), and every
-> existing vector is preserved. The unknown value is consulted only when late
-> chunking is enabled AND the embedder exposes token embeddings; there it is a
-> per-chunk `error` with a `dir2mcp reindex` remediation, never a silent
-> chunk-then-embed vector inside a pooled corpus.
+> **Migration (late chunking; SPEC §8.1.9).** `rune_start` / `rune_end` and the
+> `representation_texts` table (§5.2) are **additive**. An implementation MUST
+> migrate an existing index in place, in order: (1) **accept** a database at the
+> immediately-prior schema version (never `INDEX_VERSION_MISMATCH`,
+> [df-008](df-008-error-taxonomy.md)); (2) **add** `chunks.rune_start` and
+> `chunks.rune_end` with the default `-1`, **backfilling** every existing row with
+> `-1` (unknown); a `NULL` read from either column MUST be treated as `-1`;
+> (3) **create** `representation_texts` empty: no existing representation gains a
+> row, and a missing row means "not persisted" (never an error by itself);
+> (4) **advance** the schema fence (§5.6 / [df-000](df-000-base.md)) to the new
+> value; and (5) **preserve every existing vector**: the embed identity is
+> unchanged (its `late_chunking` component has been recorded since it was
+> introduced, td-001 §8.1.4), so nothing re-embeds. The unknown value is consulted
+> only when late chunking is enabled AND the embedder exposes token embeddings;
+> there it is a per-chunk `error` with a `dir2mcp reindex` remediation, never a
+> silent chunk-then-embed vector inside a pooled corpus.
 
 > `embedding_status` is the retrieval-eligibility gate: a chunk with status
 > `error` MUST be excluded from BM25/lexical results as well as vector results
