@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -160,11 +160,14 @@ ingest:
     mode: deep         # off|shallow|deep
   follow_symlinks: false
   max_file_mb: 20
-  # Late chunking (opt-in, off by default): embed the whole document through a
-  # long-context model, then apply chunk boundaries and pool each chunk's token
-  # vectors. Requires an embedder exposing token-level embeddings; one that
-  # cannot falls back to chunk-then-embed. Part of the corpus-lifetime embed
-  # identity (td-001 §8.1.4) — toggling it is reindex-bound.
+  # Late chunking (opt-in, off by default; td-001 §8.1.9): embed the whole
+  # document through a long-context model, then apply chunk boundaries and
+  # mean-pool each chunk's token vectors. Requires an embed provider that exposes
+  # token-level embeddings (kind: tei, td-001 §8.1.1, served with mean pooling);
+  # any other embedder falls back to chunk-then-embed and logs the reason.
+  # Mutually exclusive with retrieval.contextual.enabled (CONFIG_INVALID). Part
+  # of the corpus-lifetime embed identity (td-001 §8.1.4) — toggling it is
+  # reindex-bound (`dir2mcp reindex`).
   late_chunking: false
 
 chunking:
@@ -319,6 +322,10 @@ security:
 
 ## Changelog
 
+- **0.4.0** — ingest: `ingest.late_chunking` now names the provider kind that can
+  serve it (`kind: tei`, td-001 §8.1.1/§8.1.9), the fallback rule for every other
+  embedder, and its mutual exclusion with `retrieval.contextual.enabled`
+  (`CONFIG_INVALID`). Template comment only; no new key (dir2mcp #565/#446).
 - **0.3.0** — ingest: added `ingest.late_chunking` (opt-in, off by default) to
   the §16.2 template. It is a component of the corpus-lifetime embed identity
   (td-001 §8.1.4; dir2mcp #332/#446), so toggling it is reindex-bound rather than

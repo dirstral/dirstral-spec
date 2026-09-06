@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -66,6 +66,14 @@ other described the wire, without saying which was which.
 - `created_unix`
 - `meta_json` (MUST include provider/model for OCR/transcription/annotation when applicable)
 - `deleted` (boolean; tombstone)
+
+**`representation_texts` (additive companion table; SPEC §8.1.9).** Keyed by
+`rep_id` (FK; deleted with its representation), it holds the representation's
+**document text**: the string the chunk rune spans (§5.3) index into. It is
+written only while late chunking (`ingest.late_chunking`, bs-011) is enabled, and
+only for representations whose chunks are text; a missing row means "not
+persisted". It is never displayed or cited: `chunks.text` remains the cited text.
+Its content is deterministic from the representation (td-001 §8.1.9).
 
 **Transcript `meta_json`** — `provider` (string; the enumeration is **not closed**
 to `mistral|elevenlabs` — any STT-capable provider per td-001 is valid), `model`,
@@ -135,7 +143,21 @@ both are matchable per-language values (bs-003).
   (feature off vs. context generated vs. generation failed → embedded raw). The
   re-embed gate reads it to retry `fallback` chunks while contextualization is on,
   and to drive honest coverage. **Not** part of the embed identity (SPEC §8.1.4).
+- `rune_start`, `rune_end` (integers; `-1` = unknown) — the chunk's half-open rune
+  span `[rune_start, rune_end)` in its representation's document text (§5.2
+  `representation_texts`; SPEC §8.1.9). Unicode code points, not bytes. Written for
+  every text chunk this edition persists, whether or not late chunking is on; a
+  pre-feature row and a media chunk (td-002) have `-1`.
 - `deleted` (boolean; tombstone)
+
+> `rune_start` / `rune_end` are **additive** columns for late chunking (SPEC
+> §8.1.9). The migration is in place and re-embeds nothing: a pre-feature row
+> reads `-1` (unknown), the embed identity is unchanged (its `late_chunking`
+> component has been recorded since it was introduced, td-001 §8.1.4), and every
+> existing vector is preserved. The unknown value is consulted only when late
+> chunking is enabled AND the embedder exposes token embeddings; there it is a
+> per-chunk `error` with a `dir2mcp reindex` remediation, never a silent
+> chunk-then-embed vector inside a pooled corpus.
 
 > `embedding_status` is the retrieval-eligibility gate: a chunk with status
 > `error` MUST be excluded from BM25/lexical results as well as vector results
@@ -232,6 +254,12 @@ bounding box and **SHOULD** carry the section breadcrumb:
 
 ## Changelog
 
+- **0.6.0** — Added the additive `representation_texts` companion table (§5.2)
+  and the additive `chunks.rune_start` / `chunks.rune_end` columns (§5.3) that the
+  late-chunking pooling step needs (SPEC §8.1.9; td-001 §8.1.9; dir2mcp #565/#446).
+  The document text is written only while `ingest.late_chunking` is on; the rune
+  spans are written for every text chunk. In-place migration, no re-embed: `-1`
+  means unknown, and unknown is only an error under an active token embedder.
 - **0.5.0**: stated that the persisted `documents.status` vocabulary MAY be
   wider than the published one, named the secret-withheld and not-yet-indexed
   states, and pointed both at the normative storage-to-public projection added
