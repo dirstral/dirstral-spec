@@ -103,6 +103,12 @@ already its 8th component.
   token-embeds a document once and pools all its chunks, so the no-partial-set
   guarantee holds across the pool and a document is not re-embedded per chunk;
   per-chunk jobs for a late-chunked representation are failed.
+- Review round 3. The pooling unit is one text representation (its own document
+  text and rune coordinates), never the file. No mixed modes: windowing is
+  required, and a non-transient token-embedding failure of one document is a
+  recorded terminal failure of its chunks (7.7, 15.6 failed_chunks), not a
+  per-document chunk-then-embed fallback; the only fallback is the corpus-wide
+  capability fallback of 8.1.4.
 
 ## 0.60.1: the coverage report must count the documents it exists to name
 

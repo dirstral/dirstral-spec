@@ -2025,8 +2025,14 @@ extraction blocks, time-segmented transcripts), the document text is the chunks'
 cumulative positions in that join. Both forms are deterministic from the persisted
 chunks.
 
-**Pooling.** For each document the implementation embeds the document text once
-through the token-embedding capability. For each chunk it takes the arithmetic
+**Pooling.** The unit is the **text representation**, not the file: a document
+may hold several text representations (`raw_text` and `extracted_markdown`, for
+example), each with its own persisted document text and its own rune coordinate
+system, and each is embedded on its own. For each representation the
+implementation embeds that representation's persisted document text once through
+the token-embedding capability and pools only that representation's chunks; a
+chunk is never pooled against another representation's text. Everywhere below,
+"document" means one text representation in this sense. For each chunk it takes the arithmetic
 mean of the token vectors whose token span **overlaps** the chunk's rune span
 (half-open intersection: a token that straddles a chunk boundary contributes to
 both neighbours). The pooled vector MUST be L2-normalized before it is indexed, so
@@ -2057,16 +2063,29 @@ window rather than the whole document; the split MUST be deterministic. The toke
 embedding of a document is **one operation**: its windows are all embedded before
 any chunk of the document is pooled or indexed, and a failure in any window fails
 the whole document's token embedding (classified below), so no partial, stale or
-mixed set of pooled vectors is ever written for one document. An implementation
-that does not window MUST fall back to chunk-then-embed for that one document (a
-logged per-document fallback) rather than fail it.
+mixed set of pooled vectors is ever written for one document. Windowing is
+REQUIRED: an implementation MUST NOT write chunk-then-embed vectors for a document
+that exceeds the model's input length while the rest of the corpus is pooled (see
+the mixing rule below).
 
 **Failure classification.** A transient token-embedding failure (network, 429,
 5xx) MUST leave the chunks `pending` for a later cycle (§7.7), exactly like a
 transient `Embed` failure. It MUST NOT produce chunk-then-embed vectors: that
 would put unpooled vectors into a pooled corpus without a trace. A non-transient
-token-embedding failure for one document falls back to chunk-then-embed for that
-document and is logged with its reason.
+token-embedding failure for one document (a 4xx the provider raises for that
+input, a tokenization the adapter cannot align) MUST NOT fall back to
+chunk-then-embed for that document either: it is recorded as a terminal failure
+of every chunk of that document, with its category and reason, on the surfaces
+§7.7 and §15.6 (`indexing.failed_chunks`) already define, and requeued like any
+other failed chunk when the cause is fixed. **No mixed modes.** Under one embed
+identity with `late_chunking` on, every vector in the corpus is a pooled vector
+or the corpus as a whole runs chunk-then-embed; the only permitted fallback is
+the corpus-wide capability fallback of 8.1.4 (the kind or the served model cannot
+provide token embeddings, logged once per run). A per-document, per-window or
+per-chunk fallback is non-conforming. The two vector forms share a model, a
+pooling and a normalization, so they are not a vector-space mix in the 8.1.4
+sense; the rule exists because a corpus that is silently part pooled and part
+not cannot be reasoned about, measured or reindexed selectively.
 
 **Capability transitions.** The identity records the configured mode, not the
 runtime capability (8.1.4, deliberately). The vectors a corpus receives therefore

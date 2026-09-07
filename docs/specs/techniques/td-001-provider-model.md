@@ -346,6 +346,9 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   Unicode code points. A windowed chunker (raw text, code) records the exact
   trimmed window in the source string; any other chunker records positions in the
   chunks' `text` joined in ordinal order with `\n`.
+- **Unit.** One text representation (`raw_text`, `extracted_markdown`, ...): its own
+  persisted document text, its own rune coordinates, its own token embedding; a
+  chunk is pooled only against its own representation's text.
 - **Pooling.** Arithmetic mean of the token vectors whose span overlaps the chunk's
   span (half-open intersection), then **L2-normalized** before indexing. A span no
   token overlaps is embedded chunk-then-embed (per chunk, logged).
@@ -370,7 +373,8 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   token spans are rebased to document coordinates before pooling, and a
   document's token embedding is one operation: all windows succeed before any of
   its chunks is pooled or indexed, so no partial or mixed pooled vectors are
-  written. An implementation that does not window falls back for that document.
+  written. Windowing is required; a document over the input length is never
+  written chunk-then-embed while the rest of the corpus is pooled.
 - **Distributed (§8.7).** While the mode is on, embedding jobs are enqueued per
   document representation, not per chunk (SPEC §8.1.9): one worker token-embeds
   the document once and pools every chunk of it, so the no-partial-set guarantee
@@ -384,8 +388,11 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   implementation MAY record the effective mode and refuse to switch it without a
   reindex.
 - **Failures.** A transient token-embedding failure leaves the chunks `pending`
-  and MUST NOT produce chunk-then-embed vectors; a non-transient one falls back for
-  that document and is logged.
+  and MUST NOT produce chunk-then-embed vectors; a non-transient one is recorded as
+  a terminal failure of every chunk of that document (category + reason; SPEC §7.7,
+  §15.6 failed_chunks), never a per-document fallback. No mixed modes: under one
+  identity the corpus is all pooled or, by the corpus-wide 8.1.4 capability
+  fallback, all chunk-then-embed.
 - **Pre-feature rows.** With the mode enabled and a token embedder active, a chunk
   without a persisted rune span or document text is marked
   `embedding_status=error` with a `dir2mcp reindex` remediation, never silently
