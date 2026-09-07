@@ -353,12 +353,30 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   one space. For `tei` this requires a served model with `mean` pooling; the
   adapter reads `GET /info` and MUST NOT return token embeddings otherwise (the
   mode falls back, with a logged reason).
+- **TEI wire contract (pinned; authoritative for SPEC §8.1.1/§8.1.9).** Verified
+  against the published TEI OpenAPI `1.9.3`; the supported floor is TEI 1.9.
+  `GET /info` returns `model_type` as one of `{"classifier": …}`,
+  `{"embedding": {"pooling": <string>}}` or `{"reranker": …}`. The adapter requires
+  the `embedding` variant with `pooling` equal to `mean`; a classifier or reranker
+  variant, any other pooling value, or an `/info` without `model_type` (a server
+  older than the floor) all mean "no token embeddings" and the mode falls back with
+  a logged reason. `POST /embed_all` takes `{"inputs", "truncate",
+  "truncation_direction"}` and returns, per input, an array of per-token float
+  vectors (no pooling, no normalization); `POST /tokenize` supplies the token
+  offsets the pooling step aligns against a chunk's rune span. `/info` also carries
+  `max_input_length`, which bounds the long-document windows below.
 - **Long documents.** MAY be split into consecutive non-overlapping token windows
   of at most the model's maximum input length, deterministically. Every window's
   token spans are rebased to document coordinates before pooling, and a
   document's token embedding is one operation: all windows succeed before any of
   its chunks is pooled or indexed, so no partial or mixed pooled vectors are
   written. An implementation that does not window falls back for that document.
+- **Distributed (§8.7).** While the mode is on, embedding jobs are enqueued per
+  document representation, not per chunk (SPEC §8.1.9): one worker token-embeds
+  the document once and pools every chunk of it, so the no-partial-set guarantee
+  holds across the worker pool and a document is never token-embedded once per
+  chunk. A per-chunk job for a late-chunked representation is failed, not served.
+  §8.7.3 idempotency applies per document job (identical vectors on redelivery).
 - **Capability transitions.** The identity records the configured mode (§8.1.4).
   Moving the embed profile's kind between one that exposes token embeddings and
   one that does not, with name, endpoint and models unchanged, is reindex-bound
@@ -526,6 +544,9 @@ it MUST NOT make ingestion fail.
   pre-feature rows, mutual exclusion with contextual retrieval, and the
   distributed-worker rule. Unblocks dir2mcp #565/#446 (the pooling path was a
   library with no production caller and no provider).
+  Pinned the TEI wire contract (OpenAPI 1.9.3: `/info` `model_type.embedding.pooling`,
+  `/embed_all`, `/tokenize`, floor TEI 1.9) and made late-chunking jobs per document
+  representation under §8.7 (document ownership; per-chunk jobs are failed).
 - **0.5.0** — §8.1.4: recorded `late_chunking` as the 8th embed-identity field,
   between `multimodal` and `contextual` (SPEC §8.1.4; dir2mcp #332/#446). The
   reference implementation has recorded it since #446 but it was never specified,

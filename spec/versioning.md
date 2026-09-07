@@ -95,6 +95,15 @@ forbids, so the missing normative pieces land here first:
 The embed identity tuple (§6.4, §8.1.4) does not change: `late_chunking` was
 already its 8th component.
 
+- Review round 2. The TEI wire contract is pinned in td-001 (verified against
+  the published OpenAPI 1.9.3: `/info` `model_type` is one of classifier |
+  embedding | reranker and the embedding variant carries `pooling`; floor TEI
+  1.9), and SPEC 8.1.9 points at it rather than restating it. Under 8.7,
+  late-chunking jobs are per document representation, not per chunk: one worker
+  token-embeds a document once and pools all its chunks, so the no-partial-set
+  guarantee holds across the pool and a document is not re-embedded per chunk;
+  per-chunk jobs for a late-chunked representation are failed.
+
 ## 0.60.1: the coverage report must count the documents it exists to name
 
 Clarification of §7.7 (bs-002), so a PATCH bump. No field, tool, or error code

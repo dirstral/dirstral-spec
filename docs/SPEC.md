@@ -2039,9 +2039,12 @@ chunk-then-embed; this is a per-chunk event and is logged.
 `query`, 8.1.5, produced by the provider's ordinary pooled embedding) MUST share
 one vector space. For a `tei` backend this holds when the served model's pooling
 is `mean`: the pooled query vector is then the normalized mean of the same token
-states. A `tei` adapter MUST read the served pooling (`GET /info`) and MUST NOT
-return token embeddings when it is not `mean`; the mode then falls back to
-chunk-then-embed with a logged reason.
+states. A `tei` adapter MUST read the served pooling from `GET /info` (the
+`model_type.embedding.pooling` field; the pinned wire contract, including the
+supported TEI release and the `/embed_all` and `/tokenize` shapes, is td-001
+"Late chunking", which is authoritative for it) and MUST NOT return token
+embeddings when it is not `mean`; the mode then falls back to chunk-then-embed
+with a logged reason.
 
 **Long documents.** A document that exceeds the model's maximum input length MAY
 be split into consecutive, non-overlapping token windows of at most that length,
@@ -2091,13 +2094,23 @@ position in the document and cannot be applied consistently. The two techniques
 address the same problem (a chunk that lost its document context) by incompatible
 means; an operator picks one.
 
-**Distributed workers (8.7).** The rule is unchanged: the job carries the embed
-identity, whose `late_chunking` component a worker MUST match (8.7.3). A worker
-that runs the pooling path reads the document text and rune spans from the shared
-store (8.7.4) for the chunks it leases. A chunk's pooled vector depends only on the
-document text and its own span, not on which sibling chunks share the batch, so
-any partition of a document's chunks across workers or batches yields identical
-vectors.
+**Distributed workers (8.7).** The job carries the embed identity, whose
+`late_chunking` component a worker MUST match (8.7.3). Because the token embedding
+of a document is one operation (above), the unit of work changes with the mode:
+while `ingest.late_chunking` is on, the coordinator MUST enqueue embedding jobs
+per **document representation**, one job carrying every pending chunk of that
+representation, rather than per chunk, so exactly one worker token-embeds the
+document and pools all of its chunks from that single operation. This is the
+document-ownership rule: no two workers pool chunks of one representation
+concurrently, so the no-partial-set guarantee above holds across the pool and not
+only within one worker, and a document is token-embedded once rather than once
+per chunk. A worker that receives a per-chunk job for a late-chunked
+representation MUST fail it (return it for redelivery or dead-letter it) rather
+than token-embed the whole document for one chunk. 8.7.3 idempotency applies at
+that granularity: a re-delivered document job re-pools every chunk and overwrites
+identical vectors, because a chunk's pooled vector depends only on the document
+text and its own span, so at-least-once delivery cannot leave a mixed set. The
+worker reads the document text and rune spans from the shared store (8.7.4).
 
 ### 8.2 STT providers
 
