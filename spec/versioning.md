@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.60.0`
+**Current spec version:** `0.60.1`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,34 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.60.1: the coverage report must count the documents it exists to name
+
+Clarification of §7.7 (bs-002), so a PATCH bump. No field, tool, or error code
+changes; no schema touched.
+
+The measured failure (dir2mcp #395): 0.32.0 made a lenient unsupported-format
+outcome a durable `status=skipped` and strict mode records `status=error`, both
+so the gap survives the run that found it. The reference implementation's
+`doctor` coverage check counted extractable documents at `status=ok` only. The
+moment the gap was recorded honestly it left that set, and `doctor` reported the
+coverage check healthy with an `.odt` durably skipped and a `.tiff` errored in
+the store. Each rule was correct alone; together they hid the exact documents
+the report exists to name.
+
+Two readings are now ruled out in the normative text:
+
+- "Present" means the durable record holds a non-deleted extractable document in
+  the class, regardless of `status`. A `status=ok`-only basis is non-conforming.
+  Before the first scan has recorded the corpus, the startup report names what
+  the record already holds; a gap the first scan finds MUST be named by the next
+  startup and by `doctor`, not only by the run that produced it.
+- The engine list covers every engine the `ingest.extractor` policy makes
+  eligible, including a capability-activated secondary engine such as `pandoc`
+  under `auto`, and an eligible engine that is unavailable is listed with its
+  reason. Listing only the primary engine of the cascade leaves the operator
+  unable to tell why `.odt` is uncovered on an install where `pandoc` would
+  cover it.
 
 ## 0.60.0: the failed chunks a run counter cannot show
 
