@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.60.1`
+**Current spec version:** `0.61.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,55 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.61.0: late chunking can run: the `tei` kind and the inputs the pooling step needs
+
+One new provider kind, one new companion table, two new chunk columns and one
+new normative section. MINOR bump under the pre-1.0 policy (new optional
+surface; nothing existing changes shape). Spec-first, ahead of dir2mcp #565.
+
+The state this fixes: `ingest.late_chunking` has been a config key since 0.3.0
+of bs-011 and an embed-identity component since td-001 0.5.0, but no provider
+could serve it and no spec text said how it runs. The reference implementation
+therefore held a complete, tested pooling library with no production caller
+(dir2mcp #446), and the config key was inert. dir2mcp #565 refuses to wire it
+half-way, because partial wiring is exactly the vector-space mixing §8.1.4
+forbids, so the missing normative pieces land here first:
+
+- `tei` (§8.1.1, §8.1.2; td-001): a self-hosted Hugging Face Text Embeddings
+  Inference server on its native surface (`/embed`, `/embed_all`, `/tokenize`,
+  `/info`). It is the first kind that returns one vector per token with token
+  offsets, which is the input late chunking pools. Embed only, credential-optional,
+  no shipped default endpoint.
+- §8.1.9 Late chunking (new; td-001 §8.1.9): the runtime contract. Token-embedding
+  capability with fallback and honest logging; the persisted document text and
+  rune spans the pooling step reads; mean pooling with L2 normalization; the
+  one-vector-space requirement (a `tei` model must use `mean` pooling, read from
+  `/info`); deterministic windowing for long documents; transient failures stay
+  `pending` and never degrade to chunk-then-embed; pre-feature rows are an error
+  with a `dir2mcp reindex` remediation, not a silent unpooled vector; mutual
+  exclusion with contextual retrieval; under distributed workers, one job per
+  document representation (below).
+- `representation_texts` (§5.2; df-003) and `chunks.rune_start` /
+  `chunks.rune_end` (§5.3; df-003): additive, in-place, no re-embed.
+
+The embed identity tuple (§6.4, §8.1.4) does not change: `late_chunking` was
+already its 8th component.
+
+- Review round 2. The TEI wire contract is pinned in td-001 (verified against
+  the published OpenAPI 1.9.3: `/info` `model_type` is one of classifier |
+  embedding | reranker and the embedding variant carries `pooling`; floor TEI
+  1.9), and SPEC 8.1.9 points at it rather than restating it. Under 8.7,
+  late-chunking jobs are per document representation, not per chunk: one worker
+  token-embeds a document once and pools all its chunks, so the no-partial-set
+  guarantee holds across the pool and a document is not re-embedded per chunk;
+  per-chunk jobs for a late-chunked representation are failed.
+- Review round 3. The pooling unit is one text representation (its own document
+  text and rune coordinates), never the file. No mixed modes: windowing is
+  required, and a non-transient token-embedding failure of one document is a
+  recorded terminal failure of its chunks (7.7, 15.6 failed_chunks), not a
+  per-document chunk-then-embed fallback; the only fallback is the corpus-wide
+  capability fallback of 8.1.4.
 
 ## 0.60.1: the coverage report must count the documents it exists to name
 

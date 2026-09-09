@@ -620,6 +620,14 @@ The exact SQL types may vary; semantics must match.
 * `meta_json` (must include provider/model for OCR/transcription/annotations when applicable)
 * `deleted` (boolean; tombstone)
 
+**`representation_texts` (additive companion table, §8.1.9).** Keyed by `rep_id`
+(FK; deleted with its representation), it holds the representation's **document
+text**: the string the chunk rune spans (§5.3) index into. It is written only
+while late chunking (`ingest.late_chunking`) is enabled, and only for
+representations whose chunks are text; a missing row means "not persisted". It is
+never displayed or cited: `chunks.text` remains the cited text. Its content is
+deterministic from the representation (§8.1.9 "Persisted inputs").
+
 **Transcript meta_json requirements**
 
 * `provider`: string — the STT/transcription provider. The enumeration is **not
@@ -792,6 +800,7 @@ matchable per-language values (§9.5).
 * `embedding_error` (nullable)
 * `chunk_context` (nullable)  # the generated document-aware context (§8.1.8); prepended to the EMBED input only, never to `text`. NULL when contextual retrieval is off or the chunk fell back to raw.
 * `embedding_mode` (`disabled|contextualized|fallback`)  # per-chunk contextualization state (§8.1.8). Disambiguates a NULL `chunk_context`: feature off vs. context generated vs. generation failed (embedded raw). Not part of the embed identity (§8.1.4).
+* `rune_start`, `rune_end` (integers; `-1` = unknown)  # the chunk's half-open rune span `[rune_start, rune_end)` in its representation's document text (§5.2 `representation_texts`, §8.1.9). Unicode code points, not bytes. Written for every text chunk this edition persists, whether or not late chunking is on; a pre-feature row has `-1`. Media chunks have `-1`.
 * `deleted` (boolean; tombstone)
 
 > `chunk_context` and `embedding_mode` are **additive** columns for contextual
@@ -799,6 +808,12 @@ matchable per-language values (§9.5).
 > treated as `embedding_mode = disabled` with a NULL `chunk_context`, and its
 > embed identity (§8.1.4) carries `…|off` — no reindex. `text` (the persisted,
 > displayed, and **cited** chunk text) is **never** the contextualized text.
+
+> `rune_start` / `rune_end` and the `representation_texts` table (§5.2) are
+> **additive** for late chunking (§8.1.9). The in-place, no-re-embed migration
+> procedure is defined once, in
+> [df-003 §5.3 "Migration (late chunking)"](specs/data-formats/df-003-sqlite-schema.md);
+> this section does not restate it.
 
 ### 5.4 `spans` (provenance for citations)
 
@@ -1695,6 +1710,7 @@ A profile declares a `kind` (the adapter / wire protocol), a `base_url` (default
 * `gemini` — native embed (**asymmetric** via `taskType`, with Matryoshka output dimensionality — see 8.1.5/8.1.6), chat, STT (audio transcription), and TTS. The native embed surface (`models/{model}:batchEmbedContents`) is required for `taskType`/`outputDimensionality`; STT and TTS likewise use the native `models/{model}:generateContent` surface (see 8.2/8.3) — Gemini's OpenAI-compatible layer does **not** expose `/v1/audio/*`, so only chat may ride the `kind: openai` path. A `gemini` profile MAY alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint, which serves chat only and forgoes `taskType` (and thus the asymmetric/role behavior).
 * `cohere` — embed, chat, and rerank (8.4). Cohere embeddings are **asymmetric** (see 8.1.5).
 * `elevenlabs` — STT/TTS.
+* `tei` — a self-hosted [Hugging Face Text Embeddings Inference](https://github.com/huggingface/text-embeddings-inference) server on its **native** surface: `POST /embed` (pooled, normalized embeddings), `POST /embed_all` (one vector per token, no pooling), `POST /tokenize` (token offsets) and `GET /info` (served model, pooling, maximum input length). It is the first kind that exposes **token-level embeddings**, so it is the first kind that can serve late chunking (8.1.9). Embed only. Credential-optional: a Bearer token is sent only when an `api_key` is configured. No shipped default `base_url` (§8.5): the operator declares the endpoint, and the normalized endpoint is always a non-empty component of the embed identity (8.1.4). **Transport.** Late chunking sends whole documents to this endpoint, so the §8.5 trust rule applies with force: a `tei` endpoint that is not loopback, link-local or private-network (RFC 1918 / RFC 4193) MUST use `https`; an `api_key` on a plain-`http` remote endpoint is `CONFIG_INVALID`. The Bearer token is sent only to the configured scheme and host, and never across a redirect that changes either (the adapter does not follow redirects, as no provider adapter does). A TEI server also exposes an OpenAI-compatible `/v1/embeddings`; a `kind: openai` profile pointed at it keeps working, but it cannot serve late chunking, because that surface returns pooled vectors only.
 
 Built-in profiles ship for common providers so operators typically only supply a credential.
 
@@ -1708,6 +1724,7 @@ Built-in profiles ship for common providers so operators typically only supply a
 | `gemini` | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| `tei` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 Binding a capability to a `kind` whose cell is `❌` MUST be rejected as `CONFIG_INVALID` (static validation). ³ = `kind: openai` audio (STT/TTS) is **endpoint-dependent** and cannot be statically validated (an arbitrary OpenAI-compatible `base_url` may omit `/v1/audio/*`). The adapter implements it; if the configured endpoint lacks it, the failure surfaces **at first use** as a provider error — a required STT path fails that ingest item, optional TTS fails open (8.3) — never as `CONFIG_INVALID`. All other `✅` cells are statically valid.
 
@@ -1731,7 +1748,7 @@ For each capability, with `<cap>.provider`:
 
 #### 8.1.4 Embeddings are a corpus-lifetime invariant
 
-Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)**, **the late-chunking mode (`ingest.late_chunking`, §16)** **and the contextual-retrieval mode (8.1.8)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
+Vectors from different embed providers/models — **or from the same provider/model served at a different endpoint** — are not comparable. The embed **identity** — provider, **the normalized embed endpoint `base_url` (8.1.1)**, per-axis model, **and the requested output dimension** (8.1.6, recorded as `embed_text_dim`/`embed_code_dim`, §5.5) — is bound to the index at first build and recorded in the config snapshot. On load, if the configured embed identity differs from the index's, the server MUST refuse to mix vector spaces — either erroring (`CONFIG_INVALID`) or triggering a full reindex. `embed.provider`/**the normalized `base_url`**/`embed.text_model`/`embed.code_model`/`embed.text_dim`/`embed.code_dim` — **and the multimodal mode (8.1.7)**, **the late-chunking mode (`ingest.late_chunking`, 8.1.9)** **and the contextual-retrieval mode (8.1.8)** — are therefore deploy-time, reindex-bound choices; `chat`/`ocr`/`stt`/`rerank` providers are runtime-swappable. The input role (8.1.5) is **not** part of this identity.
 
 **The identity tuple (ordered).** The full pipe-delimited identity is:
 
@@ -1741,7 +1758,7 @@ provider|base_url|text_model|code_model|text_dim|code_dim|multimodal|late_chunki
 
 `contextual` (8.1.8) is the terminal field; `late_chunking` sits between `multimodal` (8.1.7) and `contextual`. New fields are **appended**, never inserted, so every extension is a backward-compatible migration (below).
 
-**Why `late_chunking` is part of the identity.** Late chunking (`ingest.late_chunking`, §16) embeds the **whole document** through a long-context model to obtain contextually-enriched **token** embeddings, then applies the chunk boundaries and pools the token vectors within each chunk's span. The resulting **context-pooled** chunk vectors are **not** comparable to the chunk-then-embed vectors the same provider and model produce with the mode off. A corpus partly built with the mode on and partly with it off — or a heterogeneous worker pool (8.7.3) running different settings — would therefore silently mix two vector spaces. Toggling `ingest.late_chunking` MUST re-derive (reindex / `CONFIG_INVALID`) rather than mix, and implementations MUST fold the mode into the identity. Two properties of this component are deliberate:
+**Why `late_chunking` is part of the identity.** Late chunking (`ingest.late_chunking`, 8.1.9) embeds the **whole document** through a long-context model to obtain contextually-enriched **token** embeddings, then applies the chunk boundaries and pools the token vectors within each chunk's span. The resulting **context-pooled** chunk vectors are **not** comparable to the chunk-then-embed vectors the same provider and model produce with the mode off. A corpus partly built with the mode on and partly with it off — or a heterogeneous worker pool (8.7.3) running different settings — would therefore silently mix two vector spaces. Toggling `ingest.late_chunking` MUST re-derive (reindex / `CONFIG_INVALID`) rather than mix, and implementations MUST fold the mode into the identity. Two properties of this component are deliberate:
 
 * **It derives from a *config* key, not a provider attribute.** Unlike every other component, `late_chunking` is not read off the resolved embed profile; it is the resolved value of `ingest.late_chunking`. The identity is a statement about the vectors in the index, and this is a pipeline knob that changes those vectors, so it belongs here even though it is not a provider property.
 * **The gate is conservative: it records the configured mode, not the runtime capability.** Late chunking requires the active embedder to expose token-level/long-context embeddings; an embedder that cannot MUST gracefully fall back to chunk-then-embed rather than fail. The recorded component nevertheless reflects the **config flag**, so toggling the flag re-derives even in a deployment where the fallback means no vector actually changed. This is the safe direction — it MAY cost one avoidable reindex, but it can never let pooled and unpooled vectors share an index. (This is the one component that records intent rather than effective mode; `contextual` (8.1.8) records the **effective** mode, because there the fallback is observable per chunk and its identity token also names the generator.)
@@ -1974,6 +1991,145 @@ choose reject-at-startup; fail-open-to-`off` is the default.
 
 The §8.1.2 capability matrix is unchanged: the context generator reuses the
 existing **chat** capability binding (8.1.3), not a new capability cell.
+
+#### 8.1.9 Late chunking (optional)
+
+Late chunking (Günther et al., Jina AI, 2024) embeds a **whole document** through a
+long-context model once, obtains one contextualized embedding per **token**, then
+applies the chunk boundaries and **mean-pools** the token vectors inside each
+chunk's span. Each chunk vector therefore carries document context that
+chunk-then-embed loses. It is **opt-in, off by default** (`ingest.late_chunking`,
+§16.2) and a component of the corpus-lifetime embed identity (8.1.4).
+
+**Token-embedding capability.** Late chunking needs an embedder that exposes
+token-level embeddings **with each token's offsets into the input text**. This is
+an OPTIONAL property of an embed provider, not a new cell in the 8.1.2 matrix: it
+rides the `embed` binding (8.1.3). The `tei` kind (8.1.1) is the first kind that
+provides it. Every other kind falls back per 8.1.4 ("an embedder that cannot MUST
+gracefully fall back to chunk-then-embed rather than fail"). The fallback and its
+reason MUST be logged once per run, and an implementation MUST NOT report the mode
+as active unless the pooling path actually runs.
+
+**Persisted inputs (§5.2, §5.3).** The pooling step needs the document text the
+chunks were cut from and each chunk's position in it. While the mode is enabled,
+ingest MUST persist, for every text representation, the representation's
+**document text** (§5.2 `representation_texts`) and each chunk's **rune span**
+`[rune_start, rune_end)` into that text (§5.3). Offsets are in Unicode code points
+(runes), not bytes, so they are independent of the provider's tokenizer; a
+provider that reports byte offsets MUST convert them. For a representation whose
+chunker windows one source string (raw text, code), the document text is that
+string and each span is the chunk's exact window after whitespace trimming. For a
+representation whose chunks are not windows of one string (OCR pages, structured
+extraction blocks, time-segmented transcripts), the document text is the chunks'
+`text` joined in ordinal order with a single `\n`, and the spans are the
+cumulative positions in that join. Both forms are deterministic from the persisted
+chunks.
+
+**Pooling.** The unit is the **text representation**, not the file: a document
+may hold several text representations (`raw_text` and `extracted_markdown`, for
+example), each with its own persisted document text and its own rune coordinate
+system, and each is embedded on its own. For each representation the
+implementation embeds that representation's persisted document text once through
+the token-embedding capability and pools only that representation's chunks; a
+chunk is never pooled against another representation's text. Everywhere below,
+"document" means one text representation in this sense. For each chunk it takes the arithmetic
+mean of the token vectors whose token span **overlaps** the chunk's rune span
+(half-open intersection: a token that straddles a chunk boundary contributes to
+both neighbours). The pooled vector MUST be L2-normalized before it is indexed, so
+a corpus vector is unit-norm like the provider's pooled `Embed` output and stays
+comparable to a query vector under both cosine and inner-product distance. A chunk
+whose span no token overlaps (a whitespace-only span, for example) is embedded
+chunk-then-embed; this is a per-chunk event and is logged.
+
+**Vector-space requirement.** Late-chunked corpus vectors and query vectors (role
+`query`, 8.1.5, produced by the provider's ordinary pooled embedding) MUST share
+one vector space. For a `tei` backend this holds when the served model's pooling
+is `mean`: the pooled query vector is then the normalized mean of the same token
+states. A `tei` adapter MUST read the served pooling from `GET /info` (the
+`model_type.embedding.pooling` field; the pinned wire contract, including the
+supported TEI release and the `/embed_all` and `/tokenize` shapes, is td-001
+"Late chunking", which is authoritative for it) and MUST NOT return token
+embeddings when it is not `mean`; the mode then falls back to chunk-then-embed
+with a logged reason.
+
+**Long documents.** A document that exceeds the model's maximum input length MAY
+be split into consecutive, non-overlapping token windows of at most that length,
+each embedded separately; a chunk then pools the tokens of the window(s) it
+overlaps. Every token span a window yields MUST be rebased to **document**
+coordinates (its offset within the window plus the window's own start offset in
+the document) before it is compared with a chunk's rune span, so pooling never
+sees a window-local offset. Windowing bounds the context a chunk sees to its
+window rather than the whole document; the split MUST be deterministic. The token
+embedding of a document is **one operation**: its windows are all embedded before
+any chunk of the document is pooled or indexed, and a failure in any window fails
+the whole document's token embedding (classified below), so no partial, stale or
+mixed set of pooled vectors is ever written for one document. Windowing is
+REQUIRED: an implementation MUST NOT write chunk-then-embed vectors for a document
+that exceeds the model's input length while the rest of the corpus is pooled (see
+the mixing rule below).
+
+**Failure classification.** A transient token-embedding failure (network, 429,
+5xx) MUST leave the chunks `pending` for a later cycle (§7.7), exactly like a
+transient `Embed` failure. It MUST NOT produce chunk-then-embed vectors: that
+would put unpooled vectors into a pooled corpus without a trace. A non-transient
+token-embedding failure for one document (a 4xx the provider raises for that
+input, a tokenization the adapter cannot align) MUST NOT fall back to
+chunk-then-embed for that document either: it is recorded as a terminal failure
+of every chunk of that document, with its category and reason, on the surfaces
+§7.7 and §15.6 (`indexing.failed_chunks`) already define, and requeued like any
+other failed chunk when the cause is fixed. **No mixed modes.** Under one embed
+identity with `late_chunking` on, every vector in the corpus is a pooled vector
+or the corpus as a whole runs chunk-then-embed; the only permitted fallback is
+the corpus-wide capability fallback of 8.1.4 (the kind or the served model cannot
+provide token embeddings, logged once per run). A per-document, per-window or
+per-chunk fallback is non-conforming. The two vector forms share a model, a
+pooling and a normalization, so they are not a vector-space mix in the 8.1.4
+sense; the rule exists because a corpus that is silently part pooled and part
+not cannot be reasoned about, measured or reindexed selectively.
+
+**Capability transitions.** The identity records the configured mode, not the
+runtime capability (8.1.4, deliberately). The vectors a corpus receives therefore
+change without an identity change in exactly one case: the embed profile's
+**kind** moves between one that exposes token embeddings and one that does not
+while its name, endpoint and models stay the same. That edit is reindex-bound
+like the flag itself, and an operator MUST treat it so; an implementation MUST
+log the fallback once per run (above), so a corpus embedding chunk-then-embed
+under an `on` identity is visible, and it MAY additionally record the effective
+mode and refuse to switch it without a reindex.
+
+**Pre-feature rows.** When the mode is enabled and the embedder exposes token
+embeddings, a text chunk that has no persisted rune span, or whose representation
+has no persisted document text (a row written before §5.3 gained these columns),
+MUST NOT be silently embedded chunk-then-embed. The chunk MUST be marked
+`embedding_status=error` with a reason that names the remediation
+(`dir2mcp reindex`, which re-derives the representation and persists both). Media
+chunks (8.1.7) are outside this mode: they embed from bytes and are unaffected.
+
+**Mutual exclusion with contextual retrieval (8.1.8).** `ingest.late_chunking:
+true` together with `retrieval.contextual.enabled: true` is `CONFIG_INVALID`.
+Contextual retrieval changes the text that is embedded per chunk; late chunking
+embeds the document's own text and pools it, so a generated context has no
+position in the document and cannot be applied consistently. The two techniques
+address the same problem (a chunk that lost its document context) by incompatible
+means; an operator picks one.
+
+**Distributed workers (8.7).** The job carries the embed identity, whose
+`late_chunking` component a worker MUST match (8.7.3). Because the token embedding
+of a document is one operation (above), the unit of work changes with the mode:
+while `ingest.late_chunking` is on, the coordinator MUST enqueue embedding jobs
+per **document representation**, one job carrying every pending chunk of that
+representation, rather than per chunk, so exactly one worker token-embeds the
+document and pools all of its chunks from that single operation. This is the
+document-ownership rule: no two workers pool chunks of one representation
+concurrently, so the no-partial-set guarantee above holds across the pool and not
+only within one worker, and a document is token-embedded once rather than once
+per chunk. A worker that receives a per-chunk job for a late-chunked
+representation MUST fail it (return it for redelivery or dead-letter it) rather
+than token-embed the whole document for one chunk. 8.7.3 idempotency applies at
+that granularity: a re-delivered document job re-pools every chunk and overwrites
+identical vectors, because a chunk's pooled vector depends only on the document
+text and its own span, so at-least-once delivery cannot leave a mixed set. The
+worker reads the document text and rune spans from the shared store (8.7.4).
 
 ### 8.2 STT providers
 
@@ -4660,6 +4816,9 @@ providers:
   local:
     kind: openai
     base_url: http://localhost:11434/v1    # Ollama / vLLM / LM Studio
+  tei:                                     # self-hosted TEI on its native surface
+    kind: tei                              #   (8.1.1); the only kind that can
+    base_url: ${TEI_BASE_URL}              #   serve late chunking (8.1.9)
 
 # Per-capability bindings. `provider` unset => auto-select the first
 # credentialed profile that can serve the capability (8.1.3).
@@ -4765,12 +4924,15 @@ ingest:
   # To re-index a directory that `security.path_excludes` also lists, clear the
   # name from BOTH keys: the two gates compose by AND.
   exclude_dirs: [".git", ".dir2mcp", "node_modules", "vendor", "__pycache__", "dist", "build", ".venv"]
-  # Late chunking (opt-in, off by default): embed the WHOLE document through a
-  # long-context model to get token-level embeddings, then apply the chunk
-  # boundaries and pool each chunk's token vectors, so every chunk vector carries
-  # document context. Requires an embedder that exposes token-level/long-context
-  # embeddings; one that cannot falls back to chunk-then-embed. It is a component
-  # of the corpus-lifetime embed identity (§8.1.4) — toggling it is reindex-bound.
+  # Late chunking (opt-in, off by default, 8.1.9): embed the WHOLE document
+  # through a long-context model to get token-level embeddings, then apply the
+  # chunk boundaries and mean-pool each chunk's token vectors, so every chunk
+  # vector carries document context. Requires an embed provider that exposes
+  # token-level embeddings (kind: tei, 8.1.1, served with mean pooling); any other
+  # embedder falls back to chunk-then-embed and logs the reason. Mutually
+  # exclusive with retrieval.contextual.enabled (CONFIG_INVALID). It is a
+  # component of the corpus-lifetime embed identity (8.1.4) — toggling it is
+  # reindex-bound (`dir2mcp reindex`).
   late_chunking: false
 
 chunking:

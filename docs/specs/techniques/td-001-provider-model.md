@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -68,6 +68,23 @@ Defined `kind`s:
 * `cohere` — embed, chat, and rerank (8.4). Cohere embeddings are **asymmetric**
   (see 8.1.5).
 * `elevenlabs` — STT/TTS.
+* `tei` — a self-hosted [Hugging Face Text Embeddings
+  Inference](https://github.com/huggingface/text-embeddings-inference) server on
+  its **native** surface: `POST /embed` (pooled, normalized embeddings),
+  `POST /embed_all` (one vector per token, no pooling), `POST /tokenize` (token
+  offsets) and `GET /info` (served model, pooling, maximum input length). It is
+  the first kind that exposes **token-level embeddings**, so it is the first kind
+  that can serve late chunking (§8.1.9). Embed only. Credential-optional: a
+  Bearer token is sent only when an `api_key` is configured. No shipped default
+  `base_url` (§8.5): the operator declares the endpoint, and the normalized
+  endpoint is always a non-empty component of the embed identity (§8.1.4).
+  **Transport:** late chunking sends whole documents here, so a `tei` endpoint
+  that is not loopback, link-local or private-network MUST use `https`, an
+  `api_key` on a plain-`http` remote endpoint is `CONFIG_INVALID`, and the Bearer
+  token is sent only to the configured scheme and host (never across a redirect
+  that changes either). A TEI server also exposes an OpenAI-compatible
+  `/v1/embeddings`; a `kind: openai` profile pointed at it keeps working, but it
+  cannot serve late chunking, because that surface returns pooled vectors only.
 
 Built-in profiles ship for common providers so operators typically only supply a
 credential.
@@ -82,6 +99,7 @@ credential.
 | `gemini` | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| `tei` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 Binding a capability to a `kind` whose cell is `❌` MUST be rejected as
 `CONFIG_INVALID` (static validation). ³ = `kind: openai` audio (STT/TTS) is
@@ -308,6 +326,83 @@ audio/video time-window) — are specified in **td-002** (migrated from SPEC.md
 §8.1.7). The 8.1.2 capability matrix is unchanged: multimodality is a property of
 the chosen embed model, not a new capability cell.
 
+#### 8.1.9 Late chunking (optional)
+
+Late chunking embeds a **whole document** once through a long-context model,
+obtains one contextualized embedding per **token**, then applies the chunk
+boundaries and **mean-pools** the token vectors inside each chunk's span, so each
+chunk vector carries document context that chunk-then-embed loses. It is opt-in,
+off by default (`ingest.late_chunking`, bs-011) and a component of the embed
+identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
+
+- **Capability.** Late chunking needs token-level embeddings **with token
+  offsets**. This is an optional property of an embed provider, not a new matrix
+  cell; `tei` (§8.1.1) is the first kind that provides it. Any other kind falls
+  back to chunk-then-embed per §8.1.4, the fallback and its reason are logged once
+  per run, and the mode is never reported active unless the pooling path runs.
+- **Persisted inputs.** While the mode is enabled, ingest persists each text
+  representation's **document text** (df-003 `representation_texts`) and each
+  chunk's **rune span** `[rune_start, rune_end)` into it (df-003 §5.3), in
+  Unicode code points. A windowed chunker (raw text, code) records the exact
+  trimmed window in the source string; any other chunker records positions in the
+  chunks' `text` joined in ordinal order with `\n`.
+- **Unit.** One text representation (`raw_text`, `extracted_markdown`, ...): its own
+  persisted document text, its own rune coordinates, its own token embedding; a
+  chunk is pooled only against its own representation's text.
+- **Pooling.** Arithmetic mean of the token vectors whose span overlaps the chunk's
+  span (half-open intersection), then **L2-normalized** before indexing. A span no
+  token overlaps is embedded chunk-then-embed (per chunk, logged).
+- **One vector space.** Pooled corpus vectors and `Embed` query vectors MUST share
+  one space. For `tei` this requires a served model with `mean` pooling; the
+  adapter reads `GET /info` and MUST NOT return token embeddings otherwise (the
+  mode falls back, with a logged reason).
+- **TEI wire contract (pinned; authoritative for SPEC §8.1.1/§8.1.9).** Verified
+  against the published TEI OpenAPI `1.9.3`; the supported floor is TEI 1.9.
+  `GET /info` returns `model_type` as one of `{"classifier": …}`,
+  `{"embedding": {"pooling": <string>}}` or `{"reranker": …}`. The adapter requires
+  the `embedding` variant with `pooling` equal to `mean`; a classifier or reranker
+  variant, any other pooling value, or an `/info` without `model_type` (a server
+  older than the floor) all mean "no token embeddings" and the mode falls back with
+  a logged reason. `POST /embed_all` takes `{"inputs", "truncate",
+  "truncation_direction"}` and returns, per input, an array of per-token float
+  vectors (no pooling, no normalization); `POST /tokenize` supplies the token
+  offsets the pooling step aligns against a chunk's rune span. `/info` also carries
+  `max_input_length`, which bounds the long-document windows below.
+- **Long documents.** MAY be split into consecutive non-overlapping token windows
+  of at most the model's maximum input length, deterministically. Every window's
+  token spans are rebased to document coordinates before pooling, and a
+  document's token embedding is one operation: all windows succeed before any of
+  its chunks is pooled or indexed, so no partial or mixed pooled vectors are
+  written. Windowing is required; a document over the input length is never
+  written chunk-then-embed while the rest of the corpus is pooled.
+- **Distributed (§8.7).** While the mode is on, embedding jobs are enqueued per
+  document representation, not per chunk (SPEC §8.1.9): one worker token-embeds
+  the document once and pools every chunk of it, so the no-partial-set guarantee
+  holds across the worker pool and a document is never token-embedded once per
+  chunk. A per-chunk job for a late-chunked representation is failed, not served.
+  §8.7.3 idempotency applies per document job (identical vectors on redelivery).
+- **Capability transitions.** The identity records the configured mode (§8.1.4).
+  Moving the embed profile's kind between one that exposes token embeddings and
+  one that does not, with name, endpoint and models unchanged, is reindex-bound
+  like the flag; the once-per-run fallback log makes the state visible, and an
+  implementation MAY record the effective mode and refuse to switch it without a
+  reindex.
+- **Failures.** A transient token-embedding failure leaves the chunks `pending`
+  and MUST NOT produce chunk-then-embed vectors; a non-transient one is recorded as
+  a terminal failure of every chunk of that document (category + reason; SPEC §7.7,
+  §15.6 failed_chunks), never a per-document fallback. No mixed modes: under one
+  identity the corpus is all pooled or, by the corpus-wide 8.1.4 capability
+  fallback, all chunk-then-embed.
+- **Pre-feature rows.** With the mode enabled and a token embedder active, a chunk
+  without a persisted rune span or document text is marked
+  `embedding_status=error` with a `dir2mcp reindex` remediation, never silently
+  embedded chunk-then-embed. Media chunks (td-002) are unaffected.
+- **Mutual exclusion.** `ingest.late_chunking: true` with
+  `retrieval.contextual.enabled: true` is `CONFIG_INVALID` (SPEC §8.1.8).
+- **Distributed workers** (td-005) match the job's `late_chunking` identity
+  component as before and read the document text and spans from the shared store;
+  a chunk's pooled vector does not depend on which siblings share its batch.
+
 ### 8.2 STT providers
 
 * STT provider is selected per 8.1.3 among STT-capable profiles (8.1.2):
@@ -446,6 +541,19 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.6.0** — §8.1.1/§8.1.2: added the `tei` kind (self-hosted Hugging Face Text
+  Embeddings Inference on its native surface; embed only; credential-optional),
+  the first kind that exposes token-level embeddings. §8.1.9 (new): the
+  late-chunking runtime contract that §8.1.4 only referenced: the
+  token-embedding capability, the persisted document text and rune spans
+  (df-003), mean pooling with L2 normalization, the one-vector-space requirement
+  (`tei` needs `mean` pooling), long-document windowing, failure classification,
+  pre-feature rows, mutual exclusion with contextual retrieval, and the
+  distributed-worker rule. Unblocks dir2mcp #565/#446 (the pooling path was a
+  library with no production caller and no provider).
+  Pinned the TEI wire contract (OpenAPI 1.9.3: `/info` `model_type.embedding.pooling`,
+  `/embed_all`, `/tokenize`, floor TEI 1.9) and made late-chunking jobs per document
+  representation under §8.7 (document ownership; per-chunk jobs are failed).
 - **0.5.0** — §8.1.4: recorded `late_chunking` as the 8th embed-identity field,
   between `multimodal` and `contextual` (SPEC §8.1.4; dir2mcp #332/#446). The
   reference implementation has recorded it since #446 but it was never specified,
