@@ -79,12 +79,17 @@ because the context stayed a bag of eight-second snippets.
 
 - `media.transcript_chunk_sec` (default **40**) and
   `media.transcript_chunk_gap_sec` (default **6**), §8.6.1 / bs-011: consecutive
-  provider segments merge into a chunk window, which closes on the duration rule
-  or on a silence longer than the gap. The merged window is what retrieval scores
-  and what a `time`-span citation names. `0` restores one chunk per segment.
-- §8.6.3 now states that subtitle export keeps the **provider** segments. A
-  forty-second cue is unreadable, and the word "segment" was ambiguous once the
-  chunk window existed.
+  transcript segments merge into a chunk window, which closes on the duration
+  rule, on a silence longer than the gap, or at a speaker change. The merged
+  window is what retrieval scores and what a `time`-span citation names. `0`
+  restores one chunk per segment. "Transcript segment" covers both an STT breath
+  group and a sidecar's authored cue (§8.6.4), which merge under the same rules.
+- §8.6.3: subtitle export does **not** inherit the window. A merged chunk records
+  the boundaries of the segments it merged, and export cuts the text back into
+  exactly those segments, so the exported subtitles are byte-identical to a
+  corpus indexed without the window. That is what lets an authored sidecar cue
+  survive a round trip instead of being re-cut at forty seconds. A chunk with no
+  record, or a record that does not describe its text, is exported whole.
 - §8.6.9 is unweakened: word timing still adds no chunks and changes no text. A
   merged window's `words` array is its members' arrays concatenated.
 
