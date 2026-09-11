@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -196,6 +196,12 @@ stt:
 # Domain-general: no built-in language list, no default target language.
 media:
   # language: ""              # optional pin; omit => auto-detect source language
+  transcript_chunk_sec: 40    # merge consecutive transcript segments into retrieval
+                              #   chunks of up to this many seconds (td-003).
+                              #   0 => one chunk per provider segment (pre-0.62 behavior).
+  transcript_chunk_gap_sec: 6 # a silence longer than this closes the current chunk
+                              #   window, so a chunk does not span a turn boundary.
+                              #   Subtitle export keeps the provider segments (td-003).
   translate:
     enabled: false            # opt-in; off by default (td-003)
     target_langs: []          # NO default; enabling with [] is CONFIG_INVALID
@@ -326,6 +332,11 @@ security:
   serve it (`kind: tei`, td-001 §8.1.1/§8.1.9), the fallback rule for every other
   embedder, and its mutual exclusion with `retrieval.contextual.enabled`
   (`CONFIG_INVALID`). Template comment only; no new key (dir2mcp #565/#446).
+- **0.5.0** — media: added `media.transcript_chunk_sec` (default 40) and
+  `media.transcript_chunk_gap_sec` (default 6) to the §16.2 template. They set
+  the transcript chunk window of td-003 §8.6.1, the unit retrieval scores and a
+  `time`-span citation names. `transcript_chunk_sec: 0` restores one chunk per
+  provider segment. Subtitle export keeps the provider segments (dir2mcp #955).
 - **0.3.0** — ingest: added `ingest.late_chunking` (opt-in, off by default) to
   the §16.2 template. It is a component of the corpus-lifetime embed identity
   (td-001 §8.1.4; dir2mcp #332/#446), so toggling it is reindex-bound rather than

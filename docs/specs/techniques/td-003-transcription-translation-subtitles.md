@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -55,6 +55,39 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
 * **Deterministic windowing.** Segment/window boundaries MUST be deterministic so
   `time`-span citations are stable across re-indexing (consistent with td-002
   windowing).
+* **Transcript chunk window.** A provider segment is a breath group, about eight
+  seconds of speech, which is too fine a retrieval unit for a spoken recording: a
+  sentence splits across two chunks, and a retrieved set of ten chunks covers
+  eighty seconds of a three-hour recording. An implementation **MUST** therefore
+  merge consecutive transcript segments into **chunk windows** under two rules,
+  both operator-configurable (`media.transcript_chunk_sec`,
+  `media.transcript_chunk_gap_sec`, bs-011):
+  * a window closes when adding the next segment would make it longer than
+    `transcript_chunk_sec`;
+  * a window closes when the silence before the next segment is longer than
+    `transcript_chunk_gap_sec`, so a window does not span a turn boundary.
+
+  The window's span keeps the **first segment's `start_ms` and the last
+  segment's `end_ms`**, and the window's `text` is the member segments' text
+  joined by a single space. This is the transcript **chunk** unit: it is the unit
+  a `time`-span citation names and the unit retrieval scores. Merging is
+  deterministic given the same segments and the same two values, so the
+  determinism rule above still holds.
+
+  `media.transcript_chunk_sec: 0` **disables** merging and restores one chunk per
+  provider segment. Word timing (§8.6.9) is unaffected: merging removes chunk
+  boundaries and concatenates text, so the `words` array of a merged window is
+  the concatenation of its members' arrays, and the §8.6.9 rule that word timing
+  MUST NOT add chunks or change text is not weakened. **Subtitle export
+  (§8.6.3) MUST keep using the provider segments**, not the merged windows: a
+  forty-second subtitle cue is unreadable. An implementation therefore retains
+  the segment boundaries it merged.
+
+  **Upgrade note.** An implementation that previously emitted one chunk per
+  segment produces coarser chunks and different `time`-span citation boundaries
+  for already-indexed media after its next re-index. The text and the timing of
+  the underlying speech do not change, only the boundaries the chunks are cut
+  at. Operators who need the old spans MUST pin `transcript_chunk_sec: 0`.
 
 ### 8.6.2 Language: detection and optional translation
 
@@ -75,6 +108,9 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
 
 * **VTT and SRT MUST always be available** for any transcribed media: they are
   **derived from the transcript segment spans** (no re-transcription required).
+  "Segment" here means the **provider segment**, not the merged retrieval chunk
+  window of §8.6.1: a cue must stay readable on screen, so subtitle export is not
+  affected by `media.transcript_chunk_sec`.
 * **TTML and SMIL are OPTIONAL and off by default**
   (`media.subtitles.ttml.enabled: false`). Producing them MAY require additional
   codec/track metadata (e.g. via `ffprobe`); when that metadata is absent the
@@ -357,6 +393,13 @@ languages in one document**.
   manifests and progress are reproducible across runs of an unchanged corpus.
 
 ## Changelog
+
+- **0.2.0** — §8.6.1: added the **transcript chunk window**. Consecutive provider
+  segments merge into retrieval chunks under a duration rule
+  (`media.transcript_chunk_sec`, default 40 s) and a silence rule
+  (`media.transcript_chunk_gap_sec`, default 6 s); `0` restores one chunk per
+  segment. §8.6.3 now says subtitle export keeps the provider segments
+  (dir2mcp #955).
 
 - **0.1.0** — Migrated from SPEC.md §8.6 (subsections 8.6.1–8.6.11), preserving
   every normative requirement verbatim. External cross-references rewired to
