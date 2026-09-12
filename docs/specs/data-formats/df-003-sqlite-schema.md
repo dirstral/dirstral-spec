@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -80,7 +80,11 @@ to `mistral|elevenlabs` — any STT-capable provider per td-001 is valid), `mode
 optional `model_version` (part of the derivation identity, td-003), `timestamps`
 (bool), optional `timing` (`provider` default | `estimated` fallback), optional
 `words` (per-word timing captured), optional `language` (source language),
-optional `source` (`stt` | `sidecar`), optional `duration_ms`.
+optional `source` (`stt` | `sidecar`), optional `duration_ms`, conditional
+`coverage` (REQUIRED on every transcript decoded in two or more windows, absent on
+a single-request decode and on a sidecar; which part of the recording it covered:
+`windows_attempted`, `windows_decoded`, coalesced `ranges`, `decoded_ms`,
+`duration_ms`; td-003 §8.6.13. Absent = no assertion, never "complete").
 
 A **translated** transcript also records `source_language`, `translate_provider`,
 `translate_model`. A **diarized** transcript (td-003) also records `diarized`
@@ -262,6 +266,11 @@ bounding box and **SHOULD** carry the section breadcrumb:
 
 ## Changelog
 
+- **0.7.0** — Transcript `meta_json` gains the optional `coverage` object: which
+  part of the recording a multi-window decode actually covered (td-003 §8.6.13).
+  Additive; absent means no assertion, so a single-request decode and a sidecar
+  are unchanged. Distinct from the `summary` `meta_json` `coverage` linkage, which
+  is a parent→child chunk range (dir2mcp #961).
 - **0.6.0** — Added the additive `representation_texts` companion table (§5.2)
   and the additive `chunks.rune_start` / `chunks.rune_end` columns (§5.3) that the
   late-chunking pooling step needs (SPEC §8.1.9; td-001 §8.1.9; dir2mcp #565/#446).

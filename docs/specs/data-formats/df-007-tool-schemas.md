@@ -1,7 +1,7 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.7.0
+- **Version:** 0.8.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -77,6 +77,13 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
+- **0.8.0** — `stats.json` `skip_reasons[].reason` enum gains `transcript_partial`:
+  media whose windowed decode covered less of the recording than
+  `media.stt.min_coverage` requires, dropped under
+  `media.stt.on_partial_transcript=skip` (td-003 §8.6.13) instead of indexed as a
+  complete transcript. Additive and closed-per-minor as before, so a client MAY
+  receive it from a newer server and SHOULD render it verbatim. Mirrors spec
+  0.63.0. dir2mcp #961.
 - **0.7.0** — `stats.json` `indexing` gains the optional additive `failed_chunks` object (`total`, `retryable`, `by_category[]` of `{category, count, retryable}`), the standing corpus-wide count of terminally embed-failed chunks; `count` has minimum 1 so zero-count categories are omitted, and unlike `skip_reasons[].reason` the `category` vocabulary is OPEN (rendered verbatim when unrecognised). `errors` gains a description distinguishing it as the current-run counter. Mirrors spec 0.60.0. dir2mcp #939.
 - **0.6.0** — `stats.json` `skip_reasons[].reason` enum gains `symlink_ignored`
   (additive; SPEC §15.2, dir2mcp #781): a discovered entry is a symbolic link and

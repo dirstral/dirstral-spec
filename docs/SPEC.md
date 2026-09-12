@@ -305,7 +305,7 @@ file, right now". `file_skip.data` MUST include:
 * `doc_type`
 * `reason` — a value from the `skip_reasons` enum (§15.2): `unsupported_format`,
   `binary_ignored`, `archive`, `ignore_rule`, `secret_excluded`, `path_excluded`,
-  `size_cap`, `language_uncovered`, `symlink_ignored`. New reasons are added only by a minor version
+  `size_cap`, `language_uncovered`, `transcript_partial`, `symlink_ignored`. New reasons are added only by a minor version
   bump; a client MAY receive an unrecognized value from a newer server and SHOULD
   render it verbatim rather than error.
 
@@ -647,6 +647,16 @@ deterministic from the representation (§8.1.9 "Persisted inputs").
   subtitle ingested per §8.6.4). Sidecar transcripts are not model-derived
   (§8.6.7).
 * `duration_ms`: optional
+* `coverage`: **conditional**. It is REQUIRED on every transcript produced by a
+  decode of **two or more** windows (§8.6.13), including a fully decoded one, and
+  is absent otherwise: on a single-request decode, on a sidecar, and from an
+  implementation that does not window. **Which part of the recording the
+  transcript actually covers.** Its fields are `windows_attempted`, `windows_decoded`,
+  `decoded_ms`, `duration_ms` and `ranges` (§8.6.13 defines each). Absent means
+  **no assertion** (a single-request decode, a sidecar, or an implementation that
+  does not window), and MUST NOT be read as "complete". It is unrelated to the
+  `coverage` key a `summary` representation records below, which is a
+  parent→child chunk linkage.
 
 A **translated** transcript additionally records:
 
@@ -2767,6 +2777,115 @@ languages in one document**.
   The two are orthogonal: variant selection picks the canonical file, then
   `media.stt.tracks` selects tracks within it.
 
+#### 8.6.13 Windowed decode and partial-transcript coverage
+
+A recording longer than a provider will accept in one request is decoded in
+**several windows** and the results merged into one transcript (§8.6.1 timing
+rules are unchanged: the merged transcript is still time-spanned segments in
+absolute time). Windowing is derived from the media and the provider, not
+configured, and a recording that fits in one request is still one request.
+
+Windowing introduces a failure mode a single request does not have: **some
+windows decode and some do not**. A 73-minute recording scheduled as eight
+windows, of which one decoded, yields a transcript of the first ten minutes.
+Merged, that transcript is indistinguishable from a complete one: the document
+is `ok`, its chunks are returned by `search` and `ask`, and nothing says the
+other 88% of the audio was never transcribed. An editor then reads "not found"
+for minute eleven onward and cannot tell it from "not said". That is the silence
+the honest-coverage contract (§7.7) exists to forbid, and it applies to a
+transcript exactly as it applies to an unreadable format.
+
+* **Coverage MUST be recorded.** When a transcript is produced by a decode of
+  **two or more** windows, the implementation **MUST** record a `coverage` object
+  on the `transcript` representation's `meta_json` (§5.2):
+  * `windows_attempted`: integer ≥ 2, the scheduled windows.
+  * `windows_decoded`: integer ≥ 0, those that yielded transcript content.
+  * `ranges`: the decoded time ranges as `{start_ms, end_ms}` objects in
+    **absolute** recording time. They MUST be **coalesced** (adjacent or
+    overlapping windows merge into one range), **non-overlapping**, and in
+    **ascending** `start_ms` order, so a fully decoded recording records exactly
+    one range and a consumer reads the gaps directly.
+  * `decoded_ms`: the summed length of `ranges`.
+  * `duration_ms`: the recording's length, when known (0 when the duration
+    probe failed).
+
+  A decode that took **one** request records nothing: absence is "no assertion"
+  (§5.2), never "complete". Recording the object for a **fully** decoded
+  multi-window transcript is REQUIRED, not optional. `windows_decoded ==
+  windows_attempted` with one full-length range is a positive statement of
+  completeness, and an implementation that recorded coverage only on failure
+  would make absence ambiguous again.
+
+* **Partial-transcript floor.** The decoded fraction is
+  `decoded_ms / duration_ms` when `duration_ms > 0`, else
+  `windows_decoded / windows_attempted`. When it falls **below**
+  `media.stt.min_coverage` (a fraction in `[0,1]`, default `0`), the item trips
+  the **partial-transcript floor** and the response is governed by
+  **`media.stt.on_partial_transcript`** (`warn | skip`, default `warn`), the same
+  shape as the §8.2.1 language floor:
+  * **`warn`** (default, **fail-open**): persist the transcript and emit a
+    warning naming the decoded fraction. The coverage object is recorded either
+    way; `warn` adds the operator-visible signal. The §8.6.6 quality gate remains
+    the backstop for degenerate output.
+  * **`skip`** (strict): **do not persist** the partial transcript. Record the
+    item as `status=skipped` with `skip_reason="transcript_partial"` (§15.6), so
+    the gap surfaces in the `skip_reasons` honest-coverage aggregate rather than
+    as a transcript that silently answers "no" for the audio it never saw. No
+    transcript representation is produced for that track.
+
+  `min_coverage: 0` (the default) means **the floor never trips**, so the shipped
+  default behavior is unchanged except that coverage is now recorded. A partial
+  transcript is genuinely useful to some operators; what is not acceptable is a
+  partial transcript that does not say so. The floor is the opt-in for operators
+  who would rather have a declared gap than a partial answer.
+
+* **The floor is not the quality gate.** §8.6.6 screens the text that WAS
+  decoded for degeneracy. This floor measures how much of the recording was
+  decoded at all. Text that never existed cannot be screened, so one cannot
+  substitute for the other.
+
+* **All windows failed is still an error.** When **no** window decodes, the
+  recording produced no transcript and the existing per-document rules apply
+  unchanged (§7.7, and §8.6.12 for the per-track scoping): it is a transcription
+  failure recorded as `documents.status=error`, not a coverage record. The
+  distinction is the point: a failure is retried on the next run, a `skip` is a
+  decision the daemon already made.
+
+* **Coverage survives the transcript cache.** An implementation that caches
+  transcripts (§7.6/§8.6.7) MUST persist the coverage alongside the cached text
+  and restore it on a cache hit. A cache hit that dropped the coverage would
+  re-index the same partial transcript as a complete one on the next run, which
+  is the defect this section exists to prevent. The coverage record MUST be
+  written before the cached text it describes is published, and a coverage it
+  cannot write MUST leave the text uncached: a cached transcript with no coverage
+  claims to be whole. A **single-request** decode of bytes an earlier windowed
+  decode cached MUST clear that entry's coverage record rather than inherit it.
+
+* **A refusal retires what an earlier run indexed.** `skip` is evaluated on every
+  run, not only the first. An operator who indexes a corpus with the floor off and
+  then turns it on has transcript representations and chunks already persisted
+  from the partial decode. Recording `status=skipped` while those stay live would
+  produce the worst of both readings: a document that reports itself not indexed
+  and still answers from the audio it never heard. On a refusal the implementation
+  therefore MUST retire (tombstone) the refused track's transcript representations
+  and their chunks, including any translations derived from that transcript
+  (§8.6.2), before recording the skip. Representations from other sources
+  (media chunks, recognition, a sidecar) are untouched: the refusal is scoped to
+  the transcript it refused.
+
+  The transcript **cache** entry is deliberately NOT purged. It is not a retrieval
+  surface, and keeping it makes the refusal cheap and deterministic: the next run
+  reads the same text and the same coverage, reaches the same verdict, and does
+  not re-decode a recording the operator already declined.
+
+* **A cache entry with no coverage record asserts nothing.** A transcript cached
+  before an implementation recorded coverage has no coverage to restore, and
+  nothing distinguishes it from a single-request decode. Such an entry records no
+  `coverage` (§5.2 absence, "no assertion") and the floor **MUST NOT** be applied
+  to it: an unknown fraction is not evidence of a low one, exactly as §8.2.1's
+  floor does not apply when language coverage is undeclared. An implementation MAY
+  re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
+
 ### 8.7 Distributed embedding (coordinator + workers)
 
 > **Status: Planned.** This subsection defines the **optional** contract for
@@ -4449,8 +4568,8 @@ honestly as `ok`, `skipped` or `error`.
         "properties": {
           "reason": {
             "type": "string",
-            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "symlink_ignored"],
-            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "transcript_partial", "symlink_ignored"],
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
           },
           "count": {
             "type": "integer",
@@ -5026,6 +5145,13 @@ media:
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;
                               #   skip records status=skipped (skip_reason=language_uncovered).
+    min_coverage: 0.0         # 0..1: the fraction of a windowed recording that must decode
+                              #   (§8.6.13). 0 (default) => the partial-transcript floor never
+                              #   trips; coverage is recorded on meta_json either way.
+    on_partial_transcript: warn  # warn|skip: response when the decoded fraction is below
+                              #   min_coverage. warn (default, fail-open) indexes the partial
+                              #   transcript and warns; skip drops it and records
+                              #   status=skipped (skip_reason=transcript_partial).
     tracks: first             # first|all|[indices]: which audio tracks to transcribe (§8.6.12).
                               #   first (default) = today's behavior; all = every audio track;
                               #   [0,2] = those 0-based tracks. Additional tracks -> transcript@t<N>.
