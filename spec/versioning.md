@@ -64,9 +64,18 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 ## 0.64.0: a config references a shipped prompt rule instead of copying it
 
 One new config subsection, §16.1.2, and one new substitution namespace inside
-one existing key. MINOR bump under the pre-1.0 policy (new optional surface;
-every existing `rag.system_prompt` keeps its current meaning). Spec-first, ahead
-of dir2mcp #965.
+one existing key. MINOR bump under the pre-1.0 policy. Spec-first, ahead of
+dir2mcp #965.
+
+**One config that was valid becomes invalid, and this says so rather than
+claiming otherwise.** Closing the `${rag.*}` namespace means a prompt that
+today writes a literal `${rag.anything_else}` is passed through as prompt text
+and will be `CONFIG_INVALID` at load. Nothing else changes: a prompt with no
+`${rag.*}` in it keeps its exact current meaning, and `${...}` outside the
+namespace is untouched. The pre-1.0 policy above puts a breaking change of this
+size in a MINOR bump; the alternative, leaving an unknown reference as literal
+text, reproduces the silent loss this section exists to remove and was rejected
+for that reason.
 
 The state this fixes: `rag.system_prompt` replaces the shipped domain rules, and
 two of those rules are matched by the server rather than read by a human. The
