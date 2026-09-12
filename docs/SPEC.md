@@ -4956,6 +4956,24 @@ For credential material (API keys/tokens), the runtime resolves sources in this 
 
 The config snapshot (`.dir2mcp.yaml.snapshot`) MUST record secret source metadata (env/keychain/file/session) and MUST NOT contain plaintext secrets.
 
+### 16.1.2 Prompt rule references in `rag.system_prompt`
+
+`rag.system_prompt` replaces the server's shipped domain rules (§16.2). Two of those rules are not editorial, because server behavior keys on their exact text: the **answer-language rule**, which the server matches to decide whether it may restate the rule after the context, and the **citation-format rule**, whose bracketed tag a client parses out of the answer to build a link or a playable moment. An operator who keeps either rule under a custom prompt has had to reproduce the server's wording, and that wording changes between releases. A copy therefore stops matching at the release that rewords the rule, in silence: the config still loads, the server still answers, and only the answer quality changes.
+
+A prompt MAY **reference** a shipped rule instead of copying it:
+
+* `${rag.answer_language_rule}` expands to the server's current answer-language rule.
+* `${rag.citation_rule}` expands to the server's current citation-format rule.
+
+Rules:
+
+1. A server MUST expand these references in `rag.system_prompt` before the prompt reaches a model, and MUST NOT expand them in any other key. Expansion resolves against the rules the RUNNING server ships, so an upgrade changes the expansion with no config edit.
+2. A server MUST NOT write an expansion back to configuration. The value persisted to `.dir2mcp.yaml` and recorded in the snapshot (§16.1.1) MUST be the text as the operator wrote it, references included. An expansion written back would be a copy again, pinned to the version that wrote it.
+3. A reference in the `${rag.*}` namespace that names no rule this server ships is `CONFIG_INVALID` at load. The namespace is closed: left as literal text, a near-miss name would reach the model in place of the rule and the behavior keyed on it would stand down unannounced. `${...}` text outside this namespace is prompt text and MUST be left as written. (This namespace is distinct from the secret reference of §16.1.1, which names an environment variable; an environment variable name cannot contain a dot.)
+4. A `rag.system_prompt` that reproduces PART of a shipped rule verbatim, but not the whole of it, SHOULD produce a warning at load. That is the signature of a copy taken from an earlier release. The warning SHOULD name the rule, the behavior that no longer applies, and the reference to use instead. It MUST NOT change what the prompt does: detection only, so a prompt the operator wrote themselves is never altered by a heuristic.
+
+A server that generates configuration (a setup wizard, an `init` command) SHOULD write a reference rather than a copy, for the same reason.
+
 ### 16.2 Minimal config template (dual STT, 2025-11-25)
 
 ```yaml
@@ -5042,9 +5060,16 @@ index:
 rag:
   generate_answer: true
   k_default: 15
+  # Replaces the shipped domain rules. Keep a shipped rule by REFERENCE, never
+  # by copy (§16.1.2): `${rag.answer_language_rule}` and `${rag.citation_rule}`
+  # expand to the rules the RUNNING server ships, so a release that rewords one
+  # reaches this config with no edit. A copy stops matching at that release and
+  # nothing says so. The reference is expanded on the way to the model and never
+  # written back, so this file keeps the token.
   system_prompt: |
     You are a retrieval-augmented assistant.
-    Use citations and never invent sources.
+    ${rag.citation_rule}
+    ${rag.answer_language_rule}
   max_context_chars: 20000
   oversample_factor: 5
 

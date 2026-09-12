@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.63.0`
+**Current spec version:** `0.64.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,49 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.64.0: a config references a shipped prompt rule instead of copying it
+
+One new config subsection, §16.1.2, and one new substitution namespace inside
+one existing key. MINOR bump under the pre-1.0 policy (new optional surface;
+every existing `rag.system_prompt` keeps its current meaning). Spec-first, ahead
+of dir2mcp #965.
+
+The state this fixes: `rag.system_prompt` replaces the shipped domain rules, and
+two of those rules are matched by the server rather than read by a human. The
+answer-language rule gates the reminder the server restates after the context.
+The citation rule states the bracketed tag a client parses back into a link or a
+playable moment. An operator who wants either behavior under a custom prompt has
+had to reproduce our wording, so the match is against text we change. dir2mcp
+#963 added one clause to the answer-language rule; on the four deployments
+measured right after that commit, three had reproduced the previous wording
+precisely, and all three stopped matching. Nothing warned at any layer: config
+load passed, the daemon started, ask answered, and only the answer quality
+changed.
+
+- §16.1.2: `rag.system_prompt` MAY write `${rag.answer_language_rule}` or
+  `${rag.citation_rule}` in place of the rule text. A server MUST expand them
+  before the prompt reaches a model, and MUST NOT write an expansion back to the
+  config or the snapshot, so the file keeps the reference and the next release's
+  wording arrives with no edit.
+- An unknown name in the `${rag.*}` namespace is `CONFIG_INVALID` at load. The
+  namespace is closed because a near miss left as literal text reproduces the
+  exact silent loss this section removes. `${...}` outside the namespace stays
+  prompt text, so the secret reference of §16.1.1 and any other `${...}` an
+  operator writes are untouched.
+- A prompt that reproduces PART of a shipped rule SHOULD warn at load, naming
+  the rule, the behavior that no longer applies, and the reference to use. It
+  MUST NOT change what the prompt does. The detection may match on a fragment
+  precisely because it decides nothing: gating the reminder itself on a fragment
+  would risk contradicting an operator who fixed a different answer language,
+  and that error is one the operator cannot see.
+- A server that GENERATES config (a setup wizard, an `init` command) SHOULD
+  write the reference. A generator that writes a copy is a generator of stale
+  configs.
+
+**No behavior changes for an existing config.** A prompt that holds no `${rag.`
+text is read exactly as before. The new warning is additive and advisory, and
+the new error can only fire on syntax that had no meaning before this version.
 
 ## 0.63.0: a transcript that decoded one window of eight says so
 
