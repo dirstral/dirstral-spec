@@ -479,13 +479,46 @@ transcript exactly as it applies to an unreadable format.
 
 * **All windows failed is still an error.** When **no** window decodes, the
   recording produced no transcript and the existing per-document rules apply
-  unchanged (§8.6.7): it is a transcription failure, not a coverage record.
+  unchanged (bs-002 §7.7): it is a transcription failure recorded as
+  `documents.status=error`, not a coverage record. The distinction is the point: a
+  failure is retried on the next run, a `skip` is a decision the daemon already
+  made.
 
 * **Coverage survives the transcript cache.** An implementation that caches
   transcripts (bs-002 §7.6; §8.6.7) MUST persist the coverage alongside the
   cached text and restore it on a cache hit. A cache hit that dropped the
   coverage would re-index the same partial transcript as a complete one on the
-  next run, which is the defect this section exists to prevent.
+  next run, which is the defect this section exists to prevent. The coverage
+  record MUST be written before the cached text it describes is published, and a
+  coverage it cannot write MUST leave the text uncached: a cached transcript with
+  no coverage claims to be whole. A **single-request** decode of bytes an earlier
+  windowed decode cached MUST clear that entry's coverage record rather than
+  inherit it.
+
+* **A refusal retires what an earlier run indexed.** `skip` is evaluated on every
+  run, not only the first. An operator who indexes a corpus with the floor off and
+  then turns it on has transcript representations and chunks already persisted
+  from the partial decode. Recording `status=skipped` while those stay live would
+  produce the worst of both readings: a document that reports itself not indexed
+  and still answers from the audio it never heard. On a refusal the implementation
+  therefore MUST retire (tombstone) the refused track's transcript representations
+  and their chunks, including any translations derived from that transcript
+  (§8.6.2), before recording the skip. Representations from other sources
+  (media chunks, recognition, a sidecar) are untouched: the refusal is scoped to
+  the transcript it refused.
+
+  The transcript **cache** entry is deliberately NOT purged. It is not a retrieval
+  surface, and keeping it makes the refusal cheap and deterministic: the next run
+  reads the same text and the same coverage, reaches the same verdict, and does
+  not re-decode a recording the operator already declined.
+
+* **A cache entry with no coverage record asserts nothing.** A transcript cached
+  before an implementation recorded coverage has no coverage to restore, and
+  nothing distinguishes it from a single-request decode. Such an entry records no
+  `coverage` (§5.2 absence, "no assertion") and the floor **MUST NOT** be applied
+  to it: an unknown fraction is not evidence of a low one, exactly as SPEC.md §8.2.1's
+  floor does not apply when language coverage is undeclared. An implementation MAY
+  re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
 
 ## Changelog
 
@@ -496,8 +529,10 @@ transcript exactly as it applies to an unreadable format.
   eight is no longer indexed as a complete transcript. The optional floor
   (`media.stt.min_coverage`, default `0`; `media.stt.on_partial_transcript`,
   `warn|skip`, default `warn`) drops a transcript below the fraction as
-  `skip_reason=transcript_partial`. Coverage MUST survive the transcript cache
-  (dir2mcp #961).
+  `skip_reason=transcript_partial`, retiring what an earlier run indexed from it.
+  Coverage MUST survive the transcript cache, written before the text it
+  describes; a cache entry with no record asserts nothing and the floor does not
+  apply to it (dir2mcp #961).
 
 - **0.2.0** — §8.6.1: added the **transcript chunk window**. Consecutive
   transcript segments (an STT breath group or a sidecar's authored cue) merge

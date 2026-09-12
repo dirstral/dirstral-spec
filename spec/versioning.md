@@ -89,12 +89,20 @@ no engine reads; nothing extended it to audio no window decoded.
   indexes the partial transcript and says so, `skip` drops it. The pair mirrors
   the §8.2.1 language floor exactly (a declaration key and an action key), so an
   operator learns one shape, not two.
-- §15.1 / `stats.json` / df-007: the `skip_reasons` enum gains
+- §15.6 / `stats.json` / df-007: the `skip_reasons` enum gains
   `transcript_partial`, the reason a `skip` records. Additive and
   closed-per-minor as before.
-- §8.6.13 requires the coverage to **survive the transcript cache**. Without that
-  rule the next run reads the cached text, records no coverage, and re-indexes
-  the same partial transcript as a complete one.
+- §8.6.13 requires the coverage to **survive the transcript cache**, written
+  before the text it describes. Without that rule the next run reads the cached
+  text, records no coverage, and re-indexes the same partial transcript as a
+  complete one. A cache entry written before coverage existed has none to restore,
+  so it asserts nothing and the floor does not apply to it: an unknown fraction is
+  not evidence of a low one, exactly as §8.2.1 treats undeclared language coverage.
+- §8.6.13 also requires a refusal to **retire what an earlier run indexed** from
+  the refused transcript. The floor is evaluated every run, and the likely adoption
+  path is "index with it off, discover the gap, turn it on". Recording
+  `status=skipped` over live chunks would give a document that reports itself not
+  indexed and still answers from audio it never heard.
 - bs-011 also gains the `media.stt` block itself. It was missing, so
   `language_providers`, `on_uncovered_language` and `tracks` are synced from
   SPEC.md §16.2 here for the first time.
