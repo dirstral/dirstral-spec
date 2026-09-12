@@ -83,15 +83,19 @@ A corpus can therefore be 100% indexed, report no skips and no errors, and still
 be missing hours of speech.
 
 - §7.7: startup diagnostics and `doctor` MUST report the number of transcripts
-  whose recorded coverage is incomplete (`windows_decoded < windows_attempted`),
-  the summed decoded length against the summed recorded length, and a
-  remediation naming the STT endpoint and the re-index that re-decodes.
+  whose recorded coverage does not state completeness, the summed decoded length
+  against the summed recorded length, and a remediation naming the STT endpoint
+  and the re-index that re-decodes.
 - A `duration_ms` of 0 (the §8.6.13 duration probe failed) counts toward the
   file total and is excluded from the length total, and the number excluded MUST
   be reported. An unknown length summed as zero reports a shortfall of nothing,
   which is the silence this change removes.
 - "Partial" is defined on the coverage record and NOT on document status,
-  because the default path leaves status `ok`. A complete multi-window record, a
+  because the default path leaves status `ok`. It is also the MEASURED question
+  wherever it can be asked: with a known `duration_ms`, completeness is
+  `decoded_ms` reaching that length, and only an unknown duration falls back to
+  the window counts. Every window can come back while the decoded time still
+  falls short, and that gap is invisible to the counts. A complete multi-window record, a
   single-request decode that records nothing, and a pre-coverage cache entry are
   all NOT partial: §5.2 absence is no assertion, in either direction.
 - A record with no partial transcript MUST be reported positively. An omitted

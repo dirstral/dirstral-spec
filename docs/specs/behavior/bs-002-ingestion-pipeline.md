@@ -213,8 +213,8 @@ representation's `meta_json` ([td-003](../techniques/td-003-transcription-transl
 §8.6.13) and nowhere else. Startup diagnostics and `dir2mcp doctor` MUST
 therefore also report, over the durable document record:
 
-- the **number of transcripts whose recorded coverage is incomplete**
-  (`windows_decoded < windows_attempted`, td-003 §8.6.13);
+- the **number of transcripts whose recorded coverage does not state
+  completeness** (td-003 §8.6.13);
 - the **decoded audio length against the recorded length** those transcripts
   total (summed `decoded_ms` against summed `duration_ms`), so the report states
   how much speech the corpus is missing and not only how many files are
@@ -226,10 +226,16 @@ therefore also report, over the durable document record:
 - a **remediation**, as the extraction report requires — the STT endpoint whose
   windows did not decode, and that a re-index re-decodes them.
 
-**Basis of "partial".** A transcript is partial when the td-003 §8.6.13
-`coverage` object on its representation records
-`windows_decoded < windows_attempted`, **whatever `status` the document
-carries**. Under `media.stt.on_partial_transcript: skip` an item left with no
+**Basis of "partial".** A transcript is partial when the td-003 §8.6.13 `coverage`
+object on its representation does not state completeness, **whatever `status`
+the document carries**. Completeness is the measured question wherever it can
+be asked: with a known `duration_ms` a transcript is complete when its
+`decoded_ms` reaches that length, and only when `duration_ms` is `0` do the
+window counts decide (`windows_decoded == windows_attempted`). The two normally
+agree, because the scheduled windows tile the recording. Where they disagree the
+measured answer is the one to report: every window came back and the decoded
+time still falls short of the recording, which is a gap the window counts cannot
+see and therefore the gap most worth naming. Under `media.stt.on_partial_transcript: skip` an item left with no
 other searchable representation is recorded `status=skipped` with
 `skip_reason=transcript_partial`, and that path already aggregates through
 `skip_reasons`. Under `warn`, which is the **default**, the document stays
@@ -237,7 +243,7 @@ other searchable representation is recorded `status=skipped` with
 this report exists for: nothing aggregates it today, so a corpus can hold hours
 of undecoded speech behind documents that every other report calls healthy.
 
-A transcript that records `windows_decoded == windows_attempted` is NOT partial.
+A transcript whose record states completeness is NOT partial.
 Neither is a single-request decode, which records no `coverage` at all, nor a
 cache entry predating the coverage record (td-003 §8.6.13). Absence is "no
 assertion" ([df-003](../data-formats/df-003-sqlite-schema.md) §5.2), and MUST
