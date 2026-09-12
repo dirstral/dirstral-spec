@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -202,6 +202,23 @@ media:
   transcript_chunk_gap_sec: 6 # a silence longer than this closes the current chunk
                               #   window, so a chunk does not span a turn boundary.
                               #   Subtitle export keeps the provider segments (td-003).
+  stt:                        # language-coverage-aware STT selection (td-001 8.2.1)
+    language_providers: {}    # NO default; map BCP-47 lang => STT provider profile name
+                              #   (e.g. route a language the default model covers poorly
+                              #    to one that covers it). Empty => single-provider behavior.
+    on_uncovered_language: warn  # warn|skip: response when the source language is outside
+                              #   the model's declared stt_languages and no route covers it.
+                              #   warn (default, fail-open) transcribes + records covered=false;
+                              #   skip records status=skipped (skip_reason=language_uncovered).
+    min_coverage: 0.0         # 0..1: the fraction of a windowed recording that must decode
+                              #   (td-003 8.6.13). 0 (default) => the partial-transcript floor
+                              #   never trips; coverage is recorded on meta_json either way.
+    on_partial_transcript: warn  # warn|skip: response when the decoded fraction is below
+                              #   min_coverage. warn (default, fail-open) indexes the partial
+                              #   transcript and warns; skip drops it and records
+                              #   status=skipped (skip_reason=transcript_partial).
+    tracks: first             # first|all|[indices]: which audio tracks to transcribe
+                              #   (SPEC.md 8.6.12; not yet migrated to td-003).
   translate:
     enabled: false            # opt-in; off by default (td-003)
     target_langs: []          # NO default; enabling with [] is CONFIG_INVALID
@@ -328,6 +345,15 @@ security:
 
 ## Changelog
 
+- **0.6.0** — media: added the `media.stt` sub-block to the 16.2 template. It was
+  missing entirely, so `language_providers`, `on_uncovered_language` and `tracks`
+  are synced from SPEC.md 16.2 here for the first time, and the two new keys join
+  them: `media.stt.min_coverage` (default `0.0`) and
+  `media.stt.on_partial_transcript` (`warn|skip`, default `warn`). They set the
+  partial-transcript floor of td-003 8.6.13, so a recording whose windowed decode
+  covered less than `min_coverage` is either indexed with a warning or dropped as
+  `skip_reason=transcript_partial`. `min_coverage: 0.0` keeps the floor off
+  (dir2mcp #961).
 - **0.4.0** — ingest: `ingest.late_chunking` now names the provider kind that can
   serve it (`kind: tei`, td-001 §8.1.1/§8.1.9), the fallback rule for every other
   embedder, and its mutual exclusion with `retrieval.contextual.enabled`

@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.62.0`
+**Current spec version:** `0.63.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,51 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.63.0: a transcript that decoded one window of eight says so
+
+One new subsection (§8.6.13), one new `meta_json` object, two new config keys and
+one new `skip_reasons` value. MINOR bump under the pre-1.0 policy. Spec-first,
+ahead of dir2mcp #961. It changes no default: the floor ships off.
+
+The state this fixes, measured 2026-09-11 on a multilingual validation corpus: a
+73-minute recording was scheduled as eight decode windows. Seven failed. The
+daemon logged `1/8 windows decoded` and then indexed the merged result as a
+transcript. The document status was `ok`, the representation recorded no
+coverage, and `search` and `ask` returned its chunks with nothing to say that 88%
+of the audio was never transcribed. An editor searching that corpus gets "not
+found" for everything after minute ten and cannot tell it from "not said". The
+honest-coverage report (§7.7) exists to forbid exactly that silence for a format
+no engine reads; nothing extended it to audio no window decoded.
+
+- §8.6.13 (new) / §5.2 / td-003 / df-003: a transcript merged from **two or more**
+  decode windows MUST record a `coverage` object on its `meta_json`:
+  `windows_attempted`, `windows_decoded`, `decoded_ms`, `duration_ms`, and the
+  decoded `ranges` in absolute time, coalesced and ascending. A full decode
+  records it too, so `windows_decoded == windows_attempted` is a positive
+  statement of completeness and absence keeps its §5.2 meaning of "no assertion".
+  A single-request decode and a sidecar record nothing and are unchanged.
+- `media.stt.min_coverage` (default **0.0**) and `media.stt.on_partial_transcript`
+  (`warn|skip`, default **warn**), §8.6.13 / bs-011: below the fraction, `warn`
+  indexes the partial transcript and says so, `skip` drops it. The pair mirrors
+  the §8.2.1 language floor exactly (a declaration key and an action key), so an
+  operator learns one shape, not two.
+- §15.1 / `stats.json` / df-007: the `skip_reasons` enum gains
+  `transcript_partial`, the reason a `skip` records. Additive and
+  closed-per-minor as before.
+- §8.6.13 requires the coverage to **survive the transcript cache**. Without that
+  rule the next run reads the cached text, records no coverage, and re-indexes
+  the same partial transcript as a complete one.
+- bs-011 also gains the `media.stt` block itself. It was missing, so
+  `language_providers`, `on_uncovered_language` and `tracks` are synced from
+  SPEC.md §16.2 here for the first time.
+
+**No default change, and that is a choice.** `min_coverage: 0.0` leaves the floor
+off, so the only behavior delta is a recorded fact. A non-zero default was
+rejected: a partial transcript is genuinely useful to some operators, and the
+defect reported was never "the partial transcript exists" but "the index does not
+say it is partial". Recording is therefore mandatory and refusing is opt-in. The
+`warn` action carries the same fail-open reasoning §8.2.1 uses.
 
 ## 0.62.0: a transcript chunk is a turn, not a breath group
 
