@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.61.0`
+**Current spec version:** `0.62.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,47 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.62.0: a transcript chunk is a turn, not a breath group
+
+One new rule in §8.6.1 and two new config keys. MINOR bump under the pre-1.0
+policy. Spec-first, ahead of dir2mcp #955. This one changes a default, and says
+so in the spec text rather than only here.
+
+The state this fixes: §8.6.1 has always made the transcript chunk equal to the
+provider segment, and a whisper-class provider emits one segment per breath
+group. Measured on a three-hour spoken recording, that gave 1,271 chunks of
+about eight seconds each. Retrieval over speech then fails in the way the unit
+predicts: the most quoted line in the recording was cut between two chunks, so
+the answer quoted half of it and cited the half; a two-minute continuous speech
+came back as fragments, because ten retrieved chunks covered eighty seconds of
+a three-hour recording. Raising `k` and the context budget did not repair it,
+because the context stayed a bag of eight-second snippets.
+
+- `media.transcript_chunk_sec` (default **40**) and
+  `media.transcript_chunk_gap_sec` (default **6**), §8.6.1 / bs-011: consecutive
+  transcript segments merge into a chunk window, which closes on the duration
+  rule, on a silence longer than the gap, or at a speaker change. The merged
+  window is what retrieval scores and what a `time`-span citation names. `0`
+  restores one chunk per segment. "Transcript segment" covers both an STT breath
+  group and a sidecar's authored cue (§8.6.4), which merge under the same rules.
+- §8.6.3: subtitle export does **not** inherit the window. A merged chunk records
+  the boundaries of the segments it merged, and export cuts the text back into
+  exactly those segments, so the exported subtitles are byte-identical to a
+  corpus indexed without the window. That is what lets an authored sidecar cue
+  survive a round trip instead of being re-cut at forty seconds. A chunk with no
+  record, or a record that does not describe its text, is exported whole.
+- §8.6.9 is unweakened: word timing still adds no chunks and changes no text. A
+  merged window's `words` array is its members' arrays concatenated.
+
+**Default change, stated plainly.** An implementation that shipped one chunk per
+segment produces different `time`-span citation boundaries for already-indexed
+media after its next re-index. The speech, its text and its timing do not
+change; only the boundary positions do. `transcript_chunk_sec: 0` pins the old
+behavior. The pre-1.0 policy puts a behavior change of this kind in a MINOR
+bump, and the alternative (default `0`) was rejected: it leaves the shipped
+default measurably wrong for every spoken corpus and asks each operator to
+discover the knob.
 
 ## 0.61.0: late chunking can run: the `tei` kind and the inputs the pooling step needs
 

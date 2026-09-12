@@ -2287,6 +2287,51 @@ stable across re-indexing.
 * **Deterministic windowing.** Segment/window boundaries MUST be deterministic so
   `time`-span citations are stable across re-indexing (consistent with §8.1.7
   windowing).
+* **Transcript chunk window.** A **transcript segment** is the unit the
+  transcript arrives in: one breath group of about eight seconds from an STT
+  provider, or one authored cue from a subtitle sidecar (§8.6.4). Either is too
+  fine a retrieval unit for a spoken recording: a sentence splits across two
+  chunks, and a retrieved set of ten chunks covers eighty seconds of a three-hour
+  recording. An implementation **MUST** therefore merge consecutive transcript
+  segments into **chunk windows** under three rules, two of them
+  operator-configurable (`media.transcript_chunk_sec`,
+  `media.transcript_chunk_gap_sec`, §16):
+  * a window closes when adding the next segment would make it longer than
+    `transcript_chunk_sec`;
+  * a window closes when the silence before the next segment is longer than
+    `transcript_chunk_gap_sec`, so a window does not span a pause;
+  * a window closes at a **speaker change** (§8.6.8), which is already a chunk
+    boundary. A window that crossed one would attribute a chunk to a speaker who
+    did not say half of it.
+
+  The window's span keeps the **first segment's `start_ms` and the last
+  segment's `end_ms`**, and the window's `text` is the member segments' text
+  joined by a single space. This is the transcript **chunk** unit: it is the unit
+  a `time`-span citation names and the unit retrieval scores. Merging is
+  deterministic given the same segments and the same values, so the determinism
+  rule above still holds.
+
+  `media.transcript_chunk_sec: 0` **disables** merging and restores one chunk per
+  transcript segment. Word timing (§8.6.9) is unaffected: merging removes chunk
+  boundaries and concatenates text, so the `words` array of a merged window is
+  the concatenation of its members' arrays, and the §8.6.9 rule that word timing
+  MUST NOT add chunks or change text is not weakened.
+
+  **Subtitle export MUST NOT inherit the window** (§8.6.3). A forty-second cue is
+  unreadable, and re-cutting a sidecar's authored cues would destroy editorial
+  work that a round-trip through the implementation has no right to touch. A
+  merged chunk therefore **MUST record the boundaries of the segments it merged**
+  (each member's start, duration and text length, in order), and export cuts the
+  merged text back into exactly those segments. A chunk with no such record, or
+  one whose record does not describe its text, is exported whole: an ugly cue is
+  recoverable, text cut at the wrong offset is not.
+
+  **Upgrade note.** An implementation that previously emitted one chunk per
+  segment produces coarser chunks and different `time`-span citation boundaries
+  for already-indexed media after its next re-index. Subtitle output does not
+  change. The text and the timing of the underlying speech do not change either,
+  only the boundaries the chunks are cut at. Operators who need the old spans
+  MUST pin `transcript_chunk_sec: 0`.
 
 #### 8.6.2 Language: detection and optional translation
 
@@ -2325,6 +2370,11 @@ stable across re-indexing.
 
 * **VTT and SRT MUST always be available** for any transcribed media: they are
   **derived from the transcript segment spans** (no re-transcription required).
+  "Segment" here means the **transcript segment** (an STT breath group, or a
+  sidecar's authored cue), not the merged retrieval chunk window of §8.6.1. A cue
+  must stay readable on screen and an authored cue must survive a round trip, so
+  subtitle export is **not** affected by `media.transcript_chunk_sec`: a merged
+  chunk is cut back at the segment boundaries recorded on it.
 * **TTML and SMIL are OPTIONAL and off by default**
   (`media.subtitles.ttml.enabled: false`). Producing them MAY require additional
   codec/track metadata (e.g. via `ffprobe`); when that metadata is absent the
@@ -4962,6 +5012,12 @@ stt:
 # Domain-general: no built-in language list, no default target language.
 media:
   # language: ""              # optional pin; omit => auto-detect source language
+  transcript_chunk_sec: 40    # merge consecutive transcript segments into retrieval
+                              #   chunks of up to this many seconds (§8.6.1).
+                              #   0 => one chunk per provider segment (pre-0.62 behavior).
+  transcript_chunk_gap_sec: 6 # a silence longer than this closes the current chunk
+                              #   window, so a chunk does not span a turn boundary.
+                              #   Subtitle export keeps the provider segments (§8.6.3).
   stt:                        # language-coverage-aware STT selection (§8.2.1)
     language_providers: {}    # NO default; map BCP-47 lang => STT provider profile name
                               #   (e.g. route a language the default model covers poorly
