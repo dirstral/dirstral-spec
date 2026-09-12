@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.64.0`
+**Current spec version:** `0.65.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,50 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.65.0: the coverage report says how much of the corpus was never heard
+
+Two new paragraphs in §7.7, extending the honest-coverage report that section
+already makes normative. No new field, no new config key, no wire change: it
+reports a record §8.6.13 already requires. MINOR bump under the pre-1.0 policy.
+Spec-first, ahead of dir2mcp #972.
+
+0.63.0 made a partial transcript record its own coverage, per representation.
+That closed the per-document silence and left the aggregate one. An operator
+learns that a corpus holds partial transcripts by reading one representation's
+`meta_json` at a time, or by catching a per-document warning in a log that
+scrolls away. §7.7's report is the place that question belongs, and it answers
+only the extraction half.
+
+The default is what makes this a gap rather than a nicety.
+`media.stt.on_partial_transcript` defaults to `warn`, so a partial transcript is
+**persisted and indexed** and its document stays `status=ok`. The `skip` path
+aggregates already, through `skip_reasons`. The default path aggregates nowhere.
+A corpus can therefore be 100% indexed, report no skips and no errors, and still
+be missing hours of speech.
+
+- §7.7: startup diagnostics and `doctor` MUST report the number of transcripts
+  whose recorded coverage is incomplete (`windows_decoded < windows_attempted`),
+  the summed decoded length against the summed recorded length, and a
+  remediation naming the STT endpoint and the re-index that re-decodes.
+- A `duration_ms` of 0 (the §8.6.13 duration probe failed) counts toward the
+  file total and is excluded from the length total, and the number excluded MUST
+  be reported. An unknown length summed as zero reports a shortfall of nothing,
+  which is the silence this change removes.
+- "Partial" is defined on the coverage record and NOT on document status,
+  because the default path leaves status `ok`. A complete multi-window record, a
+  single-request decode that records nothing, and a pre-coverage cache entry are
+  all NOT partial: §5.2 absence is no assertion, in either direction.
+- A record with no partial transcript MUST be reported positively. An omitted
+  line and a clean corpus read identically to the operator.
+- §7.7's existing rule that a coverage gap MUST never be reported as an indexed
+  document is scoped, in text, to a document left with no searchable
+  representation. A partial transcript IS indexed on purpose under `warn`; what
+  must never be silent is the shortfall.
+
+**No behavior changes for an existing corpus.** Nothing is recorded that was not
+recorded at 0.63.0, no default moves, and an implementation that has not yet
+built the aggregate reports the same extraction verdict it reports today.
 
 ## 0.64.0: a config references a shipped prompt rule instead of copying it
 
