@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.2.3
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -205,6 +205,63 @@ proven wrong in practice and are ruled out here:
   engine that is unavailable is listed with its reason, because its absence is
   what leaves a format class uncovered.
 
+**Transcript coverage in the same report (normative).** The report above names
+what could not be READ. A corpus can also be missing what was never HEARD, and
+that gap hides for the opposite reason: the document is `ok`, its chunks answer
+`search` and `ask`, and the audio that was never decoded is recorded on one
+representation's `meta_json` ([td-003](../techniques/td-003-transcription-translation-subtitles.md)
+§8.6.13) and nowhere else. Startup diagnostics and `dir2mcp doctor` MUST
+therefore also report, over the durable document record:
+
+- the **number of transcripts whose recorded coverage does not state
+  completeness** (td-003 §8.6.13);
+- the **decoded audio length against the recorded length** those transcripts
+  total (summed `decoded_ms` against summed `duration_ms`), so the report states
+  how much speech the corpus is missing and not only how many files are
+  affected. A transcript whose `duration_ms` is `0` (td-003 §8.6.13: the
+  duration probe failed) counts toward the file total, is excluded from the
+  length total, and the count of those excluded MUST be reported rather than
+  summed as zero: an unknown length reported as no shortfall is the silence this
+  section removes;
+- a **remediation**, as the extraction report requires — the STT endpoint whose
+  windows did not decode, and that a re-index re-decodes them.
+
+**Basis of "partial".** A transcript is partial when the td-003 §8.6.13 `coverage`
+object on its representation does not state completeness, **whatever `status`
+the document carries**. Completeness is the measured question wherever it can
+be asked: with a known `duration_ms` a transcript is complete when its
+`decoded_ms` reaches that length, and only when `duration_ms` is `0` do the
+window counts decide (`windows_decoded == windows_attempted`). The two normally
+agree, because the scheduled windows tile the recording. Where they disagree the
+measured answer is the one to report: every window came back and the decoded
+time still falls short of the recording, which is a gap the window counts cannot
+see and therefore the gap most worth naming. Under `media.stt.on_partial_transcript: skip` an item left with no
+other searchable representation is recorded `status=skipped` with
+`skip_reason=transcript_partial`, and that path already aggregates through
+`skip_reasons`. Under `warn`, which is the **default**, the document stays
+`status=ok` and its partial transcript is indexed. The `warn` path is the one
+this report exists for: nothing aggregates it today, so a corpus can hold hours
+of undecoded speech behind documents that every other report calls healthy.
+
+A transcript whose record states completeness is NOT partial.
+Neither is a single-request decode, which records no `coverage` at all, nor a
+cache entry predating the coverage record (td-003 §8.6.13). Absence is "no
+assertion" ([df-003](../data-formats/df-003-sqlite-schema.md) §5.2), and MUST
+NOT be counted as either complete or partial; td-003 §8.6.13 requires the object
+on every multi-window decode precisely so that absence means "not a windowed
+decode" rather than "complete enough".
+
+When the record holds no partial transcript the report MUST say so positively
+rather than omit the line. An omitted line and a clean corpus read identically,
+and the operator this report serves is deciding whether to trust a search result
+over an archive.
+
+The closing rule below ("MUST never be reported as an indexed document") governs
+a document left with **no** searchable representation. A partial transcript is a
+different case and `warn` indexes it deliberately: ten decoded minutes of a
+73-minute recording are worth having, and the operator asked for them. What MUST
+never be silent is the **shortfall**, which is what this report states.
+
 Under `ingest.on_unsupported: lenient` the uncovered classes are warnings, and a
 document left with no searchable representation is recorded as a durable
 `status=skipped` (unsupported-format `skip_reason`) so the gap survives the run
@@ -396,6 +453,18 @@ re-indexes it.
 
 ## Changelog
 
+- **0.3.0** (§7.7): the honest-coverage report also reports transcript
+  coverage. 0.63.0 of the spec made a partial transcript record its own
+  coverage, per representation; nothing summed it. `media.stt.on_partial_transcript`
+  defaults to `warn`, which persists and indexes the partial transcript and
+  leaves the document `status=ok`, so the default path aggregates nowhere and a
+  corpus can report no skips, no errors and 100% indexed while missing hours of
+  speech. The report MUST now name the count of incompletely covered
+  transcripts, the summed decoded length against the summed recorded length
+  (with unknown durations counted as files, excluded from the length, and their
+  number reported), and a remediation. "Partial" is defined on the coverage
+  record, not on document status. A record with no partial transcript MUST be
+  reported positively (dir2mcp #972).
 - **0.2.3** (§7.7): pinned the basis of the coverage report. A format class is
   present when the durable record holds a non-deleted extractable document in it
   regardless of `status` (an uncovered document with no other searchable
