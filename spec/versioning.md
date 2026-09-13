@@ -83,9 +83,21 @@ A corpus can therefore be 100% indexed, report no skips and no errors, and still
 be missing hours of speech.
 
 - §7.7: startup diagnostics and `doctor` MUST report the number of transcripts
-  whose recorded coverage does not state completeness, the summed decoded length
-  against the summed recorded length, and a remediation naming the STT endpoint
-  and the re-index that re-decodes.
+  whose recorded coverage does not state completeness, the summed
+  `coverage.decoded_ms` against the summed `coverage.duration_ms` (qualified: a
+  transcript `meta_json` carries its own top-level `duration_ms`, the media's
+  length), and a remediation.
+- The remediation MUST name the STT **provider and model** recorded on the
+  transcript, and MUST NOT claim to name the endpoint: one provider may be
+  routed to several endpoints and the record does not hold which one served a
+  window.
+- The remediation MUST name an action that actually re-decodes, and "re-index"
+  is not one. §8.6.13 keys the transcript cache on the media bytes and the STT
+  derivation identity and restores the coverage on a hit, so a repaired endpoint
+  changes neither key component and an ordinary re-index returns the same partial
+  transcript. An implementation with no cache-bypassing re-decode MUST say that
+  the transcripts cannot be repaired without clearing their cache entries, rather
+  than name a re-index that will not repair them.
 - A `duration_ms` of 0 (the §8.6.13 duration probe failed) counts toward the
   file total and is excluded from the length total, and the number excluded MUST
   be reported. An unknown length summed as zero reports a shortfall of nothing,

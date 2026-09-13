@@ -1548,14 +1548,31 @@ representation's `meta_json` (§8.6.13) and nowhere else. Startup diagnostics an
 * the **number of transcripts whose recorded coverage does not state
   completeness** (§8.6.13);
 * the **decoded audio length against the recorded length** those transcripts
-  total (summed `decoded_ms` against summed `duration_ms`), so the report states
+  total (summed `coverage.decoded_ms` against summed
+  `coverage.duration_ms`, both qualified: a transcript `meta_json` carries its
+  own top-level `duration_ms`, which is the media's length and not a decode
+  result), so the report states
   how much speech the corpus is missing and not only how many files are
-  affected. A transcript whose `duration_ms` is `0` (§8.6.13: the duration probe
+  affected. A transcript whose `coverage.duration_ms` is `0` (§8.6.13: the duration probe
   failed) counts toward the file total, is excluded from the length total, and
   the count of those excluded MUST be reported rather than summed as zero: an
   unknown length reported as no shortfall is the silence this section removes;
-* a **remediation**, as the extraction report requires — the STT endpoint whose
-  windows did not decode, and that a re-index re-decodes them.
+* a **remediation**, as the extraction report requires. It MUST name the STT
+  **provider and model recorded on the transcript** (§8.6.7 derivation identity),
+  which is what the record holds: a deployment MAY route one provider to several
+  endpoints, and the endpoint that served a given window is not recorded, so a
+  report MUST NOT claim to name it.
+
+**A remediation MUST name an action that re-decodes.** "Re-index" is not one,
+and this is stated because it is the obvious thing to write. §8.6.13 keys the
+transcript cache on the media bytes and the STT derivation identity, and
+requires a cache hit to restore the recorded coverage with the text. A repaired
+endpoint changes neither key component, so an ordinary re-index restores the
+same partial transcript, reports the same shortfall, and decodes nothing. The
+report MUST therefore name the implementation's own way of forcing a re-decode;
+an implementation that has none MUST say that the affected transcripts cannot be
+repaired without clearing their cache entries, rather than name a re-index that
+will not repair them.
 
 **Basis of "partial".** A transcript is partial when the §8.6.13 `coverage`
 object on its representation does not state completeness, **whatever `status`
