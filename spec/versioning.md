@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.65.0`
+**Current spec version:** `0.66.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,43 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.66.0: two optional media keys, both off by default
+
+Two new optional config keys, one paragraph each in §8.6.2 and §8.6.3 and two
+lines in the §16.2 template. No new tool, tool-schema field, or error code
+(the one new validation case reuses `CONFIG_INVALID`). MINOR bump under the
+pre-1.0 policy. Spec-first, ahead of the dir2mcp ports of #904 and #985 from
+the retired `integration/rfe-batch` branch to `main`.
+
+Both features were built and measured on a broadcast archive and shipped on a
+side branch without a spec entry. This entry ratifies the general form and
+draws the line the implementation must hold.
+
+- §8.6.2 **`media.translate.name_hints`** (default `false`): with the chat
+  translate engine, the implementation derives `<source name> -> <target
+  spelling>` pairs from a deterministic transliteration convention and
+  prepends them to the translate prompt. Scope is a (source language, target
+  language) pair the implementation carries a convention for; the reference
+  implementation carries Russian to English (BGN/PCGN). An unknown source
+  matches no pair. A name the implementation cannot normalise with confidence
+  MUST yield no hint: a wrong hint overrides the model, an absent one does not.
+  Guidance only; MUST NOT rewrite output; MUST be deterministic per line.
+- §8.6.3 **export-time cue cleaning** is now a named family under
+  `media.subtitles.*`, every filter off by default. New member
+  **`expect_script`** (default `""`): a cue with at least one letter and none of
+  the declared Unicode script is dropped; a digit or one matching letter keeps
+  the cue; an unknown script name is `CONFIG_INVALID` with the accepted names
+  listed. Script-level, not language-level; no phrase list ships. An
+  implementation that also cleans the indexed transcript MUST use the same rules
+  at both points.
+- §16.2 template: `media.translate.name_hints: false`,
+  `media.subtitles.expect_script: ""`.
+- Known gap, not closed here: the §16.2 template still lacks the other members
+  of the cleaning family that dir2mcp `main` already ships
+  (`media.subtitles.glossary`, `drop_phrases`, `scrub_phrases`,
+  `collapse_repeats`, `drop_urls`, `segmentation`) and `media.translate.engine`.
+  §8.6.2 already references two of them. A separate entry should ratify them.
 
 ## 0.65.0: the coverage report says how much of the corpus was never heard
 

@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -115,6 +115,30 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   representations of the same document). A translated transcript MUST record its
   `source_language` plus the **translation provider/model** that produced it
   (df-003 §5.2; §8.6.7).
+* **Proper-noun spelling hints (optional, off by default).** When translation
+  runs on a chat provider, the operator MAY set `media.translate.name_hints:
+  true`. The implementation then detects the proper nouns in each source line
+  and prepends a list of `<source name> -> <target spelling>` pairs to the
+  translate prompt, with the instruction to use those spellings exactly. A
+  translation model tends to **regenerate** a name rather than transliterate
+  it, and that is the dominant named-entity error; the hint pins the spelling
+  before the model sees the text. A hint is **derived, not configured**: it
+  comes from a deterministic transliteration convention, so the operator
+  maintains no per-name list (the operator-maintained list is
+  `media.translate.glossary`, and the two MAY be combined; a glossary entry
+  wins over a derived hint for the same name). Scope is a **(source language,
+  target language) pair**: an implementation MUST emit a hint only for a pair
+  for which it carries a transliteration convention and MUST emit none for any
+  other pair. The reference implementation carries Russian source to English
+  target (BGN/PCGN). An **unknown** source language (td-001 §8.8) matches no pair. A
+  name the implementation cannot normalise with confidence (an ambiguous
+  inflection, an indeclinable form, a compound it cannot render part by part,
+  a word that opens a sentence) MUST produce **no hint** rather than a doubtful
+  one: a wrong hint overrides the model, an absent hint leaves it its own
+  rendering. Hints are **guidance, not post-processing**: they MUST NOT rewrite
+  model output. They apply to both the per-line and the windowed translate
+  prompts, and the hint list for a given line MUST be deterministic so a
+  re-derivation reproduces the prompt (§8.6.7). No built-in names ship.
 
 ### 8.6.3 Subtitle export
 
@@ -134,6 +158,29 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
 * The **exported language is selectable** (any language for which a transcript
   exists, §8.6.2). Requesting an export for a language with no transcript is
   `INVALID_FIELD`.
+* **Export-time cue cleaning (optional, every filter off by default).** Before
+  cues are written, an implementation MAY apply operator-configured,
+  deterministic filters under `media.subtitles.*` to the rendered cue text.
+  Each filter is independent; unset or empty means no-op.
+  `media.subtitles.glossary`, the export-time find/replace that §8.6.2
+  distinguishes from the translate-prompt glossary, is one of them and is
+  defined here. This version adds
+  **`media.subtitles.expect_script`**: the name of the Unicode script the
+  track's text is written in, one of `cyrillic`, `latin`, `greek`, `arabic`,
+  `hebrew`, `georgian`, `armenian`, `han`, `hangul`, `devanagari`. When set, a
+  cue that contains at least one letter and **not one letter of that script**
+  MUST be dropped: an STT decoder emits wrong-script gibberish over non-speech
+  audio (music, crosstalk, B-roll), and such a cue is machine output by
+  construction. Two guards keep real content: a cue that contains **any digit**
+  MUST be kept (`COVID-19`), and a cue that contains **one letter of the
+  expected script** MUST be kept (a foreign brand name inside a sentence
+  survives). An unknown script name is `CONFIG_INVALID` and the error MUST list
+  the accepted names; it MUST NOT degrade to a silent no-op. The filter is
+  **script-level, not language-level**: it ships no per-language phrase list
+  and applies the same way to every track whose script is in the table. An
+  implementation that also applies these filters to the **indexed** transcript
+  MUST apply the same rule set at both points, so the export and the retrieval
+  index agree on which cues exist.
 
 ### 8.6.4 Sidecar ingestion
 
@@ -521,6 +568,17 @@ transcript exactly as it applies to an unreadable format.
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
 
 ## Changelog
+
+- **0.4.0**: §8.6.2: added **proper-noun spelling hints**
+  (`media.translate.name_hints`, default `false`): derived `<source> -> <target>`
+  spelling pairs prepended to the chat translate prompt, scoped to a (source,
+  target) language pair the implementation carries a convention for, refused
+  for an unknown source and for any name it cannot normalise with confidence.
+  §8.6.3: named the **export-time cue cleaning** family and added
+  **`media.subtitles.expect_script`** (default `""`): a cue with letters but none
+  of the declared Unicode script is dropped; digits and one matching letter keep
+  a cue; an unknown script name is `CONFIG_INVALID`. Spec-first, ahead of the
+  dir2mcp ports of #904 and #985 to `main`.
 
 - **0.3.0** — added **§8.6.13**: windowed decode and partial-transcript coverage.
   A transcript merged from several decode windows MUST record a `coverage` object
