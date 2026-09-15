@@ -2493,8 +2493,10 @@ stable across re-indexing.
 * **Export-time cue cleaning (optional, every filter off by default).** Before
   cues are written, an implementation MAY apply operator-configured,
   deterministic filters under `media.subtitles.*` to the rendered cue text.
-  Each filter is independent; unset or empty means no-op. `glossary` (§8.6.2's
-  export-time find/replace) is one of them. This version adds
+  Each filter is independent; unset or empty means no-op.
+  `media.subtitles.glossary`, the export-time find/replace that §8.6.2
+  distinguishes from the translate-prompt glossary, is one of them and is
+  defined here. This version adds
   **`media.subtitles.expect_script`**: the name of the Unicode script the
   track's text is written in, one of `cyrillic`, `latin`, `greek`, `arabic`,
   `hebrew`, `georgian`, `armenian`, `han`, `hangul`, `devanagari`. When set, a
