@@ -2447,6 +2447,30 @@ stable across re-indexing.
   find/replace on already-rendered cue text; the two MAY be used together (prompt
   guidance during translation, a regex safety-net at export). It is **domain-general**:
   no built-in terms ship; the map is entirely operator-provided.
+* **Proper-noun spelling hints (optional, off by default).** When translation
+  runs on a chat provider, the operator MAY set `media.translate.name_hints:
+  true`. The implementation then detects the proper nouns in each source line
+  and prepends a list of `<source name> -> <target spelling>` pairs to the
+  translate prompt, with the instruction to use those spellings exactly. A
+  translation model tends to **regenerate** a name rather than transliterate
+  it, and that is the dominant named-entity error; the hint pins the spelling
+  before the model sees the text. A hint is **derived, not configured**: it
+  comes from a deterministic transliteration convention, so the operator
+  maintains no per-name list (the operator-maintained list is
+  `media.translate.glossary`, and the two MAY be combined; a glossary entry
+  wins over a derived hint for the same name). Scope is a **(source language,
+  target language) pair**: an implementation MUST emit a hint only for a pair
+  for which it carries a transliteration convention and MUST emit none for any
+  other pair. The reference implementation carries Russian source to English
+  target (BGN/PCGN). An **unknown** source language (§8.8) matches no pair. A
+  name the implementation cannot normalise with confidence (an ambiguous
+  inflection, an indeclinable form, a compound it cannot render part by part,
+  a word that opens a sentence) MUST produce **no hint** rather than a doubtful
+  one: a wrong hint overrides the model, an absent hint leaves it its own
+  rendering. Hints are **guidance, not post-processing**: they MUST NOT rewrite
+  model output. They apply to both the per-line and the windowed translate
+  prompts, and the hint list for a given line MUST be deterministic so a
+  re-derivation reproduces the prompt (§8.6.7). No built-in names ship.
 
 #### 8.6.3 Subtitle export
 
@@ -2466,6 +2490,27 @@ stable across re-indexing.
 * The **exported language is selectable** (any language for which a transcript
   exists, §8.6.2). Requesting an export for a language with no transcript is
   `INVALID_FIELD`.
+* **Export-time cue cleaning (optional, every filter off by default).** Before
+  cues are written, an implementation MAY apply operator-configured,
+  deterministic filters under `media.subtitles.*` to the rendered cue text.
+  Each filter is independent; unset or empty means no-op. `glossary` (§8.6.2's
+  export-time find/replace) is one of them. This version adds
+  **`media.subtitles.expect_script`**: the name of the Unicode script the
+  track's text is written in, one of `cyrillic`, `latin`, `greek`, `arabic`,
+  `hebrew`, `georgian`, `armenian`, `han`, `hangul`, `devanagari`. When set, a
+  cue that contains at least one letter and **not one letter of that script**
+  MUST be dropped: an STT decoder emits wrong-script gibberish over non-speech
+  audio (music, crosstalk, B-roll), and such a cue is machine output by
+  construction. Two guards keep real content: a cue that contains **any digit**
+  MUST be kept (`COVID-19`), and a cue that contains **one letter of the
+  expected script** MUST be kept (a foreign brand name inside a sentence
+  survives). An unknown script name is `CONFIG_INVALID` and the error MUST list
+  the accepted names; it MUST NOT degrade to a silent no-op. The filter is
+  **script-level, not language-level**: it ships no per-language phrase list
+  and applies the same way to every track whose script is in the table. An
+  implementation that also applies these filters to the **indexed** transcript
+  MUST apply the same rule set at both points, so the export and the retrieval
+  index agree on which cues exist.
 
 #### 8.6.4 Sidecar ingestion
 
@@ -5258,8 +5303,14 @@ media:
     glossary: {}              # optional terminology guidance for the chat translator (§8.6.2);
                               #   keyed per target language: { <lang>: { "<source term>": "<rendering>" } }
                               #   guides the prompt (handles morphology); distinct from subtitles.glossary
+    name_hints: false         # derived proper-noun spelling hints in the chat translate prompt (§8.6.2);
+                              #   off by default; only for a (source, target) pair the implementation
+                              #   carries a transliteration convention for (reference impl: ru -> en)
   subtitles:
     formats: [vtt, srt]       # always available, derived from segment spans (§8.6.3)
+    expect_script: ""         # export-time cue cleaning (§8.6.3): drop a cue with letters but none of
+                              #   this Unicode script (cyrillic|latin|greek|arabic|hebrew|georgian|
+                              #   armenian|han|hangul|devanagari); "" => off; unknown name => CONFIG_INVALID
     ttml:
       enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
       align_tolerance_ms: 2500 # bilingual cue cross-language alignment tolerance (§8.6.10)
