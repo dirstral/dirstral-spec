@@ -2429,6 +2429,16 @@ stable across re-indexing.
   representations of the same document). A translated transcript MUST record its
   `source_language` plus the **translation provider/model** that produced it
   (§5.2, §8.6.7).
+* **Translate engine.** `media.translate.engine` selects HOW a transcript is
+  translated: `chat` (default) translates the transcript text line by line, or
+  in windows of consecutive cues, through the chat generator; `whisper`
+  re-decodes the source audio with Whisper's native translate task (one pass,
+  audio to English), which keeps names and terms in the acoustic model's
+  context and yields its own segment timings. `whisper` REQUIRES an STT profile
+  of `kind: whisper` and an English-only `target_langs`; any other combination
+  is `CONFIG_INVALID`. Any other value is `CONFIG_INVALID`. The key is read only
+  when translation is enabled. The prompt-side keys below (`glossary`,
+  `name_hints`) apply to the `chat` engine only.
 * **Terminology guidance (optional).** When translation runs on a chat provider
   (`media.translate.engine: chat`), the operator MAY supply a
   **`media.translate.glossary`** — a mapping of source term/phrase → preferred
@@ -2490,13 +2500,52 @@ stable across re-indexing.
 * The **exported language is selectable** (any language for which a transcript
   exists, §8.6.2). Requesting an export for a language with no transcript is
   `INVALID_FIELD`.
+* **Cue segmentation (VTT and SRT only).** `media.subtitles.segmentation`
+  selects HOW time-coded cues are built: `chunk` (default) emits one cue per
+  stored transcript segment; `broadcast` re-segments from the per-word timings
+  (§8.6.9) into legible cues (at most 6 s, at most two lines of 42 characters,
+  reading-speed aware). A span with no word timings falls back to the `chunk`
+  builder, so output is unchanged where the timings are absent. Any other value
+  is `CONFIG_INVALID`. The key never affects ingest, and never affects TTML:
+  the TTML cue region is the alignment unit of bilingual packaging (§8.6.10)
+  and MUST stay the stored transcript segment span.
 * **Export-time cue cleaning (optional, every filter off by default).** Before
   cues are written, an implementation MAY apply operator-configured,
   deterministic filters under `media.subtitles.*` to the rendered cue text.
-  Each filter is independent; unset or empty means no-op.
-  `media.subtitles.glossary`, the export-time find/replace that §8.6.2
-  distinguishes from the translate-prompt glossary, is one of them and is
-  defined here. This version adds
+  Each filter is independent; unset or empty means no-op. The family:
+  * **`glossary`**: a list of `pattern=>replacement` entries; `pattern` is a
+    case-insensitive regular expression matched on whole words with
+    Unicode-aware boundaries, so a rule applies to any script. A glossary
+    REWRITES cue text and never drops a cue. It is the export-time find/replace
+    that §8.6.2 distinguishes from the translate-prompt glossary, and it is
+    **export-only**: indexed and cited transcript text is not rewritten, so a
+    search matches the pre-glossary spelling while every exported artifact
+    shows the post-glossary one. A malformed entry or regular expression is
+    `CONFIG_INVALID`.
+  * **`drop_urls`** (default `false`): drop a cue whose text is a URL, a bare
+    domain or a credit line, which an STT decoder emits over silence or music.
+    It is a whole-cue verdict, which is why it is opt-in.
+  * **`drop_phrases`**: a list of regular expressions; a cue composed ENTIRELY
+    of matches plus punctuation is dropped (decoder keyword-spam over
+    non-speech). Real speech that merely mentions a listed word is kept.
+  * **`scrub_phrases`**: a list of regular expressions EXCISED from a cue that
+    also carries real speech (a hallucinated phrase that leaked into a genuine
+    cue). A cue that scrubs to empty is dropped. Operators configure the full
+    contiguous phrase so a legitimate single word is untouched.
+  * **`collapse_repeats`** (default `0` = off): in a run of identical
+    consecutive cues, drop the Nth and later; a value below 2 disables the
+    pass so short legitimate repeats survive.
+  * **`expect_script`** (0.66.0): defined below.
+
+  Order is normative because the passes do not commute: `drop_urls`, then
+  `expect_script`, then `drop_phrases`, then `scrub_phrases`, then
+  `collapse_repeats` on the post-scrub text, then `glossary` last. An
+  implementation that also cleans the **indexed** transcript MUST apply the
+  same drop, script, scrub and collapse rules at both points, so the export and
+  the retrieval index agree on which cues exist, and MUST NOT rewrite indexed
+  text with `glossary`. No filter ships a built-in list: every pattern is
+  operator-provided, and no language or broadcaster is assumed.
+
   **`media.subtitles.expect_script`**: the name of the Unicode script the
   track's text is written in, one of `cyrillic`, `latin`, `greek`, `arabic`,
   `hebrew`, `georgian`, `armenian`, `han`, `hangul`, `devanagari`. When set, a
@@ -5302,6 +5351,8 @@ media:
   translate:
     enabled: false            # opt-in; off by default (§8.6.2)
     target_langs: []          # NO default; enabling with [] is CONFIG_INVALID
+    engine: chat              # chat (default) | whisper (§8.6.2); whisper needs kind: whisper STT and
+                              #   English-only target_langs; the prompt keys below are chat-only
     glossary: {}              # optional terminology guidance for the chat translator (§8.6.2);
                               #   keyed per target language: { <lang>: { "<source term>": "<rendering>" } }
                               #   guides the prompt (handles morphology); distinct from subtitles.glossary
@@ -5313,6 +5364,14 @@ media:
     expect_script: ""         # export-time cue cleaning (§8.6.3): drop a cue with letters but none of
                               #   this Unicode script (cyrillic|latin|greek|arabic|hebrew|georgian|
                               #   armenian|han|hangul|devanagari); "" => off; unknown name => CONFIG_INVALID
+    segmentation: chunk       # chunk (default) | broadcast: re-segment VTT/SRT from word timings (§8.6.3);
+                              #   never affects ingest or TTML
+    glossary: []              # export-time cue cleaning (§8.6.3): ["pattern=>replacement", ...]; rewrites,
+                              #   never drops; export-only, the index keeps the pre-glossary spelling
+    drop_urls: false          # drop a cue that is a URL / bare domain / credit line (whole-cue verdict)
+    drop_phrases: []          # regexps; a cue made ENTIRELY of matches (+ punctuation) is dropped
+    scrub_phrases: []         # regexps EXCISED from a cue that also carries speech; empty result => dropped
+    collapse_repeats: 0       # drop the Nth+ cue of an identical run; < 2 => off
     ttml:
       enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
       align_tolerance_ms: 2500 # bilingual cue cross-language alignment tolerance (§8.6.10)
