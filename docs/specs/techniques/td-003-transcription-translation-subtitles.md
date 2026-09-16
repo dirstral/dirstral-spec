@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.5.0
+- **Version:** 0.5.1
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -139,8 +139,17 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   wins over a derived hint for the same name). Scope is a **(source language,
   target language) pair**: an implementation MUST emit a hint only for a pair
   for which it carries a transliteration convention and MUST emit none for any
-  other pair. The reference implementation carries Russian source to English
-  target (BGN/PCGN). An **unknown** source language (td-001 §8.8) matches no pair. A
+  other pair. The reference implementation carries two: Russian to English
+  (BGN/PCGN) and Ukrainian to English (the Ukrainian national system, Cabinet
+  of Ministers resolution 55 of 2010, adopted by UNGEGN in 2012 and by
+  BGN/PCGN in 2020). The two disagree on the same letters, which is the point
+  of the rule: Гриценко is "Gritsenko" under the first and "Hrytsenko" under
+  the second, so a source language resolved to the wrong pair produces a
+  confidently wrong pin. A convention also governs which oblique forms the
+  implementation may restore, since that is language-specific grammar, and the
+  derivation identity of a translated transcript MUST record which convention
+  produced it (§8.6.7), so a translation cached under one is not served after
+  the source language changes to the other. An **unknown** source language (td-001 §8.8) matches no pair. A
   name the implementation cannot normalise with confidence (an ambiguous
   inflection, an indeclinable form, a compound it cannot render part by part,
   a word that opens a sentence) MUST produce **no hint** rather than a doubtful
@@ -617,6 +626,14 @@ transcript exactly as it applies to an unreadable format.
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
 
 ## Changelog
+
+- **0.5.1**: §8.6.2 clarification, no contract change. The (source, target)
+  pair rule already required a hint to come from a convention the
+  implementation carries; the prose named only Russian to English, which stopped
+  being the whole list when dir2mcp added Ukrainian to English (the national
+  system of 2010). It now names both, states that a wrong pair produces a
+  confidently wrong pin, and says that the convention joins the translated
+  transcript's derivation identity.
 
 - **0.5.0**: ratified, impl to spec, the keys dir2mcp `main` already ships
   without an entry: §8.6.2 **`media.translate.engine`** (`chat` default,

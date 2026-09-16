@@ -2471,8 +2471,17 @@ stable across re-indexing.
   wins over a derived hint for the same name). Scope is a **(source language,
   target language) pair**: an implementation MUST emit a hint only for a pair
   for which it carries a transliteration convention and MUST emit none for any
-  other pair. The reference implementation carries Russian source to English
-  target (BGN/PCGN). An **unknown** source language (§8.8) matches no pair. A
+  other pair. The reference implementation carries two: Russian to English
+  (BGN/PCGN) and Ukrainian to English (the Ukrainian national system, Cabinet
+  of Ministers resolution 55 of 2010, adopted by UNGEGN in 2012 and by
+  BGN/PCGN in 2020). The two disagree on the same letters, which is the point
+  of the rule: Гриценко is "Gritsenko" under the first and "Hrytsenko" under
+  the second, so a source language resolved to the wrong pair produces a
+  confidently wrong pin. A convention also governs which oblique forms the
+  implementation may restore, since that is language-specific grammar, and the
+  derivation identity of a translated transcript MUST record which convention
+  produced it (§8.6.7), so a translation cached under one is not served after
+  the source language changes to the other. An **unknown** source language (§8.8) matches no pair. A
   name the implementation cannot normalise with confidence (an ambiguous
   inflection, an indeclinable form, a compound it cannot render part by part,
   a word that opens a sentence) MUST produce **no hint** rather than a doubtful
@@ -5358,7 +5367,7 @@ media:
                               #   guides the prompt (handles morphology); distinct from subtitles.glossary
     name_hints: false         # derived proper-noun spelling hints in the chat translate prompt (§8.6.2);
                               #   off by default; only for a (source, target) pair the implementation
-                              #   carries a transliteration convention for (reference impl: ru -> en)
+                              #   carries a transliteration convention for (reference impl: ru, uk -> en)
   subtitles:
     formats: [vtt, srt]       # always available, derived from segment spans (§8.6.3)
     expect_script: ""         # export-time cue cleaning (§8.6.3): drop a cue with letters but none of

@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.67.0`
+**Current spec version:** `0.67.1`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,30 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.67.1: the reference implementation carries a second name-hint convention
+
+A clarification, not a contract change: PATCH under the pre-1.0 policy. §8.6.2
+already scoped proper-noun spelling hints to a "(source language, target
+language) pair for which the implementation carries a transliteration
+convention", and already required none for any other pair. What changed is the
+list: dir2mcp added Ukrainian to English (the Ukrainian national system,
+Cabinet of Ministers resolution 55 of 2010, adopted by UNGEGN in 2012 and by
+BGN/PCGN in 2020) beside Russian to English (BGN/PCGN). The prose named only
+the first and would have read as a limit rather than an example.
+
+- §8.6.2: name both pairs; state that the two systems disagree on the same
+  letters (Гриценко is "Gritsenko" under one and "Hrytsenko" under the other),
+  so resolving a source to the wrong pair is a confidently wrong pin rather
+  than a near miss; state that a convention also governs which oblique forms
+  may be restored, since that is language-specific grammar; and require the
+  convention to join the translated transcript's derivation identity (§8.6.7),
+  so a translation cached under one convention is not served after the source
+  language changes to the other.
+- §16.2 template: the comment on `media.translate.name_hints` names both pairs.
+- td-003 0.5.0 -> 0.5.1.
+
+No new tool, schema field, error code or config key.
 
 ## 0.67.0: ratify the cleaning family, cue segmentation and the translate engine
 
