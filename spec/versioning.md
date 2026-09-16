@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.66.0`
+**Current spec version:** `0.67.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -60,6 +60,37 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.67.0: ratify the cleaning family, cue segmentation and the translate engine
+
+Seven config keys that dir2mcp `main` has shipped for weeks had no line in
+§16.2 and no normative text: `media.translate.engine`,
+`media.subtitles.segmentation`, and the export-time cleaning members
+`glossary`, `drop_urls`, `drop_phrases`, `scrub_phrases`, `collapse_repeats`.
+The 0.66.0 entry recorded the gap; this entry closes it. Resolved impl to spec
+under the "spec ratifies shipped behaviour" rule: the text states what the
+reference implementation does and draws the lines it must keep holding. No new
+tool, schema field or error code (`CONFIG_INVALID` is reused). MINOR bump under
+the pre-1.0 policy.
+
+- §8.6.2 **`media.translate.engine`**: `chat` (default) or `whisper`; `whisper`
+  requires a `kind: whisper` STT profile and English-only targets, otherwise
+  `CONFIG_INVALID`; the prompt-side keys (`glossary`, `name_hints`) are
+  chat-only.
+- §8.6.3 **`media.subtitles.segmentation`**: `chunk` (default) or `broadcast`
+  (re-segment from word timings, at most 6 s and 2x42 characters, reading-speed
+  aware, falls back to `chunk` without timings); VTT/SRT only; never ingest,
+  never TTML, whose cue region is the bilingual alignment unit (§8.6.10).
+- §8.6.3 **export-time cleaning family**: `glossary` (regex `pattern=>replacement`
+  rewrite, never drops, export-only), `drop_urls`, `drop_phrases`,
+  `scrub_phrases`, `collapse_repeats`, plus `expect_script` from 0.66.0. Pass
+  order is normative (`drop_urls`, `expect_script`, `drop_phrases`,
+  `scrub_phrases`, `collapse_repeats`, `glossary`). An implementation that also
+  cleans the indexed transcript MUST apply the same drop, script, scrub and
+  collapse rules at both points and MUST NOT rewrite indexed text with
+  `glossary`. No built-in list; no language or broadcaster assumed.
+- §16.2 template: the seven lines.
+- td-003 0.4.0 -> 0.5.0.
 
 ## 0.66.0: two optional media keys, both off by default
 

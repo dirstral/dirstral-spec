@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -115,6 +115,16 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   representations of the same document). A translated transcript MUST record its
   `source_language` plus the **translation provider/model** that produced it
   (df-003 §5.2; §8.6.7).
+* **Translate engine.** `media.translate.engine` selects HOW a transcript is
+  translated: `chat` (default) translates the transcript text line by line, or
+  in windows of consecutive cues, through the chat generator; `whisper`
+  re-decodes the source audio with Whisper's native translate task (one pass,
+  audio to English), which keeps names and terms in the acoustic model's
+  context and yields its own segment timings. `whisper` REQUIRES an STT profile
+  of `kind: whisper` and an English-only `target_langs`; any other combination
+  is `CONFIG_INVALID`. Any other value is `CONFIG_INVALID`. The key is read only
+  when translation is enabled. The prompt-side keys below (`glossary`,
+  `name_hints`) apply to the `chat` engine only.
 * **Proper-noun spelling hints (optional, off by default).** When translation
   runs on a chat provider, the operator MAY set `media.translate.name_hints:
   true`. The implementation then detects the proper nouns in each source line
@@ -158,13 +168,52 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
 * The **exported language is selectable** (any language for which a transcript
   exists, §8.6.2). Requesting an export for a language with no transcript is
   `INVALID_FIELD`.
+* **Cue segmentation (VTT and SRT only).** `media.subtitles.segmentation`
+  selects HOW time-coded cues are built: `chunk` (default) emits one cue per
+  stored transcript segment; `broadcast` re-segments from the per-word timings
+  (§8.6.9) into legible cues (at most 6 s, at most two lines of 42 characters,
+  reading-speed aware). A span with no word timings falls back to the `chunk`
+  builder, so output is unchanged where the timings are absent. Any other value
+  is `CONFIG_INVALID`. The key never affects ingest, and never affects TTML:
+  the TTML cue region is the alignment unit of bilingual packaging (§8.6.10)
+  and MUST stay the stored transcript segment span.
 * **Export-time cue cleaning (optional, every filter off by default).** Before
   cues are written, an implementation MAY apply operator-configured,
   deterministic filters under `media.subtitles.*` to the rendered cue text.
-  Each filter is independent; unset or empty means no-op.
-  `media.subtitles.glossary`, the export-time find/replace that §8.6.2
-  distinguishes from the translate-prompt glossary, is one of them and is
-  defined here. This version adds
+  Each filter is independent; unset or empty means no-op. The family:
+  * **`glossary`**: a list of `pattern=>replacement` entries; `pattern` is a
+    case-insensitive regular expression matched on whole words with
+    Unicode-aware boundaries, so a rule applies to any script. A glossary
+    REWRITES cue text and never drops a cue. It is the export-time find/replace
+    that §8.6.2 distinguishes from the translate-prompt glossary, and it is
+    **export-only**: indexed and cited transcript text is not rewritten, so a
+    search matches the pre-glossary spelling while every exported artifact
+    shows the post-glossary one. A malformed entry or regular expression is
+    `CONFIG_INVALID`.
+  * **`drop_urls`** (default `false`): drop a cue whose text is a URL, a bare
+    domain or a credit line, which an STT decoder emits over silence or music.
+    It is a whole-cue verdict, which is why it is opt-in.
+  * **`drop_phrases`**: a list of regular expressions; a cue composed ENTIRELY
+    of matches plus punctuation is dropped (decoder keyword-spam over
+    non-speech). Real speech that merely mentions a listed word is kept.
+  * **`scrub_phrases`**: a list of regular expressions EXCISED from a cue that
+    also carries real speech (a hallucinated phrase that leaked into a genuine
+    cue). A cue that scrubs to empty is dropped. Operators configure the full
+    contiguous phrase so a legitimate single word is untouched.
+  * **`collapse_repeats`** (default `0` = off): in a run of identical
+    consecutive cues, drop the Nth and later; a value below 2 disables the
+    pass so short legitimate repeats survive.
+  * **`expect_script`** (0.66.0): defined below.
+
+  Order is normative because the passes do not commute: `drop_urls`, then
+  `expect_script`, then `drop_phrases`, then `scrub_phrases`, then
+  `collapse_repeats` on the post-scrub text, then `glossary` last. An
+  implementation that also cleans the **indexed** transcript MUST apply the
+  same drop, script, scrub and collapse rules at both points, so the export and
+  the retrieval index agree on which cues exist, and MUST NOT rewrite indexed
+  text with `glossary`. No filter ships a built-in list: every pattern is
+  operator-provided, and no language or broadcaster is assumed.
+
   **`media.subtitles.expect_script`**: the name of the Unicode script the
   track's text is written in, one of `cyrillic`, `latin`, `greek`, `arabic`,
   `hebrew`, `georgian`, `armenian`, `han`, `hangul`, `devanagari`. When set, a
@@ -568,6 +617,16 @@ transcript exactly as it applies to an unreadable format.
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
 
 ## Changelog
+
+- **0.5.0**: ratified, impl to spec, the keys dir2mcp `main` already ships
+  without an entry: §8.6.2 **`media.translate.engine`** (`chat` default,
+  `whisper` with its STT and target constraints); §8.6.3 **`segmentation`**
+  (`chunk` default, `broadcast` from word timings, VTT/SRT only, never TTML or
+  ingest) and the export-time cleaning family (`glossary`, `drop_urls`,
+  `drop_phrases`, `scrub_phrases`, `collapse_repeats`) with a normative pass
+  order and the ingest-parity rule (same drop/script/scrub/collapse rules at
+  both points; `glossary` export-only). No behaviour change for dir2mcp; the
+  gap was recorded in the 0.66.0 entry.
 
 - **0.4.0**: §8.6.2: added **proper-noun spelling hints**
   (`media.translate.name_hints`, default `false`): derived `<source> -> <target>`
