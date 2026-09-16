@@ -2473,15 +2473,17 @@ stable across re-indexing.
   for which it carries a transliteration convention and MUST emit none for any
   other pair. The reference implementation carries two: Russian to English
   (BGN/PCGN) and Ukrainian to English (the Ukrainian national system, Cabinet
-  of Ministers resolution 55 of 2010, adopted by UNGEGN in 2012 and by
-  BGN/PCGN in 2020). The two disagree on the same letters, which is the point
-  of the rule: Гриценко is "Gritsenko" under the first and "Hrytsenko" under
+  of Ministers resolution 55 of 2010, recommended for international use by
+  resolution X/9 of the Tenth United Nations Conference on the Standardization
+  of Geographical Names in 2012, and adopted by BGN/PCGN in its 2019
+  Agreement). The two disagree on the same letters, which is the point of the
+  rule: Гриценко is "Gritsenko" under the first and "Hrytsenko" under
   the second, so a source language resolved to the wrong pair produces a
   confidently wrong pin. A convention also governs which oblique forms the
   implementation may restore, since that is language-specific grammar, and the
   derivation identity of a translated transcript MUST record which convention
-  produced it (§8.6.7), so a translation cached under one is not served after
-  the source language changes to the other. An **unknown** source language (§8.8) matches no pair. A
+  produced it (§8.6.7). An **unknown** source language (§8.8) matches no
+  pair. A
   name the implementation cannot normalise with confidence (an ambiguous
   inflection, an indeclinable form, a compound it cannot render part by part,
   a word that opens a sentence) MUST produce **no hint** rather than a doubtful
@@ -2620,6 +2622,15 @@ stable across re-indexing.
   re-chunked, and re-embedded**. This is the runtime analogue of the
   embed-identity → reindex rule (§8.1.4), but **scoped to a single
   representation** rather than the whole index.
+* **A derived representation that carries a transliteration convention records
+  it.** When proper-noun spelling hints (§8.6.2) contributed to a translated
+  transcript, the convention that produced them is part of that representation's
+  derivation identity, because two conventions render the same source text
+  differently. A cache or re-derivation gate that ignored it would serve a
+  translation produced under one convention after the source language
+  resolved to another. The recorded value MUST be stable per convention; the
+  reference implementation records the source-language tag the convention is
+  keyed by.
 * **Sidecar-sourced transcripts are NOT model-derived** (§8.6.4): they have no
   STT provider/model derivation identity and MUST NOT be invalidated by an STT
   model change. (A change to the sidecar file itself still re-ingests via the

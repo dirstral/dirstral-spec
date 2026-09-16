@@ -68,18 +68,23 @@ already scoped proper-noun spelling hints to a "(source language, target
 language) pair for which the implementation carries a transliteration
 convention", and already required none for any other pair. What changed is the
 list: dir2mcp added Ukrainian to English (the Ukrainian national system,
-Cabinet of Ministers resolution 55 of 2010, adopted by UNGEGN in 2012 and by
-BGN/PCGN in 2020) beside Russian to English (BGN/PCGN). The prose named only
-the first and would have read as a limit rather than an example.
+Cabinet of Ministers resolution 55 of 2010, recommended for international use
+by resolution X/9 of the Tenth United Nations Conference on the Standardization
+of Geographical Names in 2012, and adopted by BGN/PCGN in its 2019 Agreement)
+beside Russian to English (BGN/PCGN). The prose named only the first and would
+have read as a limit rather than an example.
 
 - §8.6.2: name both pairs; state that the two systems disagree on the same
   letters (Гриценко is "Gritsenko" under one and "Hrytsenko" under the other),
   so resolving a source to the wrong pair is a confidently wrong pin rather
   than a near miss; state that a convention also governs which oblique forms
   may be restored, since that is language-specific grammar; and require the
-  convention to join the translated transcript's derivation identity (§8.6.7),
-  so a translation cached under one convention is not served after the source
-  language changes to the other.
+  convention to join the translated transcript's derivation identity.
+- §8.6.7: state the matching provenance rule. A translated transcript that
+  carried hints records the convention that produced them, because two
+  conventions render the same source text differently and a gate that ignored
+  the convention would serve a translation across a source-language change. The
+  recorded value MUST be stable per convention.
 - §16.2 template: the comment on `media.translate.name_hints` names both pairs.
 - td-003 0.5.0 -> 0.5.1.
 
