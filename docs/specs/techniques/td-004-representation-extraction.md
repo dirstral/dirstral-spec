@@ -81,13 +81,14 @@ routing are persisted per
 
 **Markup boundary (html).** `html` is a *dual-path* format: it MAY be handled
 here as flat `raw_text`, or routed to a structured extraction engine (§B.1) that
-preserves headings/tables/links. §B.1 lists `html` as structured-capable, and
-best-available selection promotes it. Under `extractor: auto` the default html
-routing is the §B.1 fidelity order for the markup row: docling (T1), then pandoc
-(T2), then `raw_text` (T4). `raw_text` is the last tier, not an unconstrained
-default. §B.1 states that a higher-fidelity *active* engine is never bypassed,
-so html falls back to `raw_text` only when no higher tier is active. dir2mcp
-#556 is closed. It is the defect this rule fixes, not pending work.
+preserves headings/tables/links. §B.1 lists `html` as structured-capable, so
+best-available selection promotes it whenever a higher-tier engine is active.
+Under `extractor: auto` the default html routing is the §B.1 fidelity order for
+the markup row: docling (T1), then pandoc (T2), then `raw_text` (T4).
+`raw_text` is the last tier, not an unconstrained default. §B.1 states that a
+higher-fidelity *active* engine is never bypassed, so html falls back to
+`raw_text` only when no higher tier is active. dir2mcp #556 is closed. It is
+the defect this rule fixes, not pending work.
 
 ### B) PDF / image / document
 
