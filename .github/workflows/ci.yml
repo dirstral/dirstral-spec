@@ -48,7 +48,9 @@ jobs:
           for f in spec/tools/schemas/*.json; do
             base=$(basename "$f")
             if [ "$base" = "common.json" ]; then continue; fi
-            n=$(grep -c -F "(schemas/$base)" spec/tools/schemas.md || true)
+            # grep -o, not grep -c: -c counts matching LINES, so two links on
+            # one line would read as one and a duplicate row would pass.
+            n=$(grep -o -F "(schemas/$base)" spec/tools/schemas.md | wc -l | tr -d "[:space:]")
             if [ "$n" != "1" ]; then
               echo "::error file=spec/tools/schemas.md::schemas/$base is linked $n time(s); expected exactly 1 (dirstral-spec#74)"
               fail=1
