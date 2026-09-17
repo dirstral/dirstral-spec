@@ -47,21 +47,23 @@ healthy.
 **HTML.** HTML **MAY** be routed through structured extraction rather than flat
 `raw_text`:
 
-- When a structured extraction engine that accepts HTML is *available* — the
-  docling family of §B, under the same `ingest.extractor` selection and the
-  *Extractor availability* rules of §B — the pipeline **SHOULD** route HTML
-  through it, producing an `extracted_markdown` representation and the
-  structured `region` spans of §B (heading hierarchy → section breadcrumb;
-  tables rendered atomically to Markdown; element labels in
-  `extra_json.label`). HTML carries no page/`bbox` provenance, so its `region`
-  spans carry the section breadcrumb and `label` and fall back to no page span,
-  per the provenance-unavailable rule in §B.
-- When no structured HTML engine is available — including `extractor: off`, an
-  explicitly disabled/unavailable extractor
-  ([bs-002](../behavior/bs-002-ingestion-pipeline.md)), or an engine that does
-  not accept HTML — HTML **MUST** fall back to `raw_text`, exactly as before.
-  `raw_text` remains the guaranteed baseline: HTML is never dropped and behavior
-  **MUST NOT** regress when docling is absent.
+- When an **active** extraction engine of §B.1 reads HTML, the pipeline
+  **SHOULD** route HTML through it, under the same `ingest.extractor` selection
+  and the *Extractor availability* rules of §B. The §B.1 markup row marks two:
+  docling (T1) and pandoc (T2). The result is an `extracted_markdown`
+  representation and the structured `region` spans of §B (heading hierarchy
+  → section breadcrumb; tables rendered atomically to Markdown; element labels
+  in `extra_json.label`). Under pandoc those span attributes are the
+  progressive enhancement of the pandoc output-shape rules in §B, not a
+  structured-model guarantee. HTML carries no page/`bbox` provenance either
+  way, so its `region` spans carry the section breadcrumb and `label` and fall
+  back to no page span, per the provenance-unavailable rule in §B.
+- When no **active** engine of §B.1 reads HTML (`extractor: off`, an explicitly
+  disabled/unavailable engine
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md)), or a pinned engine that
+  does not accept HTML), HTML **MUST** fall back to `raw_text`, exactly as
+  before. `raw_text` remains the guaranteed baseline: HTML is never dropped and
+  behavior **MUST NOT** regress when no structured engine is present.
 - Either path routes to `index_kind=text`; the choice does not change the index
   kind and follows the re-indexing semantics of
   [bs-002](../behavior/bs-002-ingestion-pipeline.md) — a document previously
@@ -430,18 +432,24 @@ A page-separated OCR fallback span:
 ## Changelog
 
 - **0.5.1**: §A clarification, no contract change. The markup boundary still
-  deferred the **default** html routing to dir2mcp #556 and let an implementation
-  keep routing html to `raw_text` "until #556 lands". #556 is closed, and §B.1
-  already ranks the markup row docling (T1), pandoc (T2), `raw_text` (T4) and
-  never bypasses a higher-fidelity active engine, so the two sections gave
-  opposite conformance answers for `extractor: auto`. §A now states the fidelity
-  order and defers the rule to §B.1; the §B.1 markup cell is annotated
-  "fallback tier" instead of "#556". The §A scope note pointed the cross-format
-  matrix at dir2mcp #395 as separate future work; #395 is closed and the matrix
-  is §B.1 of this document, so the note points there. The #394/#556 reference
-  in the §B.1 best-available paragraph is left alone: it names the defects the
-  rule fixes and is history, not a pending condition. Mirrored in SPEC.md
-  §7.4.A, which carries the same paragraph while this document is Draft.
+  deferred the **default** html routing to dir2mcp #556 and let an
+  implementation keep routing html to `raw_text` "until #556 lands". #556 is
+  closed, and §B.1 already ranks the markup row docling (T1), pandoc (T2),
+  `raw_text` (T4) and never bypasses a higher-fidelity active engine, so the
+  two sections gave opposite conformance answers for `extractor: auto`. §A now
+  states the fidelity order and defers the rule to §B.1; the §B.1 markup cell
+  is annotated "fallback tier" instead of "#556". The two §A bullets named
+  only "the docling family" as the structured HTML path, which predates the
+  0.4.0 pandoc binding and made html with docling absent and pandoc active
+  fall to `raw_text`, bypassing an active T2 engine. Both bullets now key on
+  an **active** §B.1 engine that reads HTML, and the first records that
+  pandoc's span attributes are the §B progressive enhancement, not a
+  structured-model guarantee. The §A scope note pointed the cross-format
+  matrix at dir2mcp #395 as future work; #395 is closed and the matrix is §B.1
+  of this document, so the note points there. The #394/#556 reference in the
+  §B.1 best-available paragraph is left alone: it names the defects the rule
+  fixes and is history, not a pending condition. Mirrored in SPEC.md §7.4.A,
+  which carries the same paragraph while this document is Draft.
 - **0.5.0** — §B.2 lenient: a document a lenient unsupported-format skip leaves
   with **no searchable representation** MUST now be recorded as a **durable skip**
   (`documents.status=skipped`, unsupported-format `skip_reason`) — counting toward

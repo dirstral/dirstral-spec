@@ -100,7 +100,12 @@ canonical text it was supposed to track.
   the two sections gave opposite conformance answers for the same
   `extractor: auto` configuration: an implementer following §A could emit
   lower-fidelity representations and believe it conformed. §A now states the
-  fidelity order and defers the rule to §B.1. The §A scope note also deferred
+  fidelity order and defers the rule to §B.1. The two §A bullets had a second
+  copy of the same drift: each named only "the docling family" as the structured
+  HTML path, wording that predates the 0.4.0 pandoc binding. Read literally they
+  sent html to `raw_text` whenever docling was absent, even with an active
+  pandoc that reads html. Both bullets now key on an **active** §B.1 engine
+  that reads HTML. The §A scope note also deferred
   the cross-format matrix to dir2mcp #395 as separate future work; #395 is
   closed and that matrix is §B.1 of this document, so the note points there.
   td-004 0.5.0 -> 0.5.1.

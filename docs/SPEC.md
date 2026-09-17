@@ -1133,20 +1133,23 @@ preserves headings/tables/links. Which path applies is governed by the §7.4.B.1
 capability matrix (which lists `html` as structured-capable) and the *Extractor
 availability* rules there:
 
-* **When a structured extraction engine that accepts HTML is available** — the
-  docling family of §7.4.B, subject to the same `ingest.extractor` selection and
-  the *Extractor availability* rules — the pipeline SHOULD route HTML through it,
-  producing an `extracted_markdown` representation and the structured `region`
-  spans of §7.4.B (heading hierarchy → section breadcrumb; tables rendered
-  atomically to Markdown; element labels in `extra_json.label`). HTML carries no
-  page/`bbox` provenance, so its `region` spans carry the section breadcrumb and
+* **When an active extraction engine of §7.4.B.1 reads HTML** (the §7.4.B.1
+  markup row marks two: docling T1 and pandoc T2), the pipeline SHOULD route
+  HTML through it, subject to the same `ingest.extractor` selection and the
+  *Extractor availability* rules of §7.4.B. The result is an
+  `extracted_markdown` representation and the structured `region` spans of
+  §7.4.B (heading hierarchy → section breadcrumb; tables rendered atomically to
+  Markdown; element labels in `extra_json.label`). Under pandoc those span
+  attributes are the progressive enhancement of the pandoc output-shape rules in
+  §7.4.B, not a structured-model guarantee. HTML carries no page/`bbox`
+  provenance either way, so its `region` spans carry the section breadcrumb and
   `label` and fall back to no page span, per the provenance-unavailable rule in
   §7.4.B.
-* **When no structured HTML engine is available** — including when the extractor
-  is `off`, explicitly disabled/unavailable (§7.7), or does not accept HTML —
-  HTML MUST fall back to `raw_text` (tier T4, §7.4.B.1), exactly as before.
-  `raw_text` remains the guaranteed baseline: HTML is never dropped, and behavior
-  MUST NOT regress when docling is absent.
+* **When no active engine of §7.4.B.1 reads HTML** (extractor `off`, an
+  explicitly disabled/unavailable engine per §7.7, or a pinned engine that does
+  not accept HTML), HTML MUST fall back to `raw_text` (tier T4, §7.4.B.1),
+  exactly as before. `raw_text` remains the guaranteed baseline: HTML is never
+  dropped, and behavior MUST NOT regress when no structured engine is present.
 * Either path routes to `index_kind=text`. The path choice does not change the
   index kind and follows the re-indexing semantics of §7.6 — a document
   previously indexed as flat `raw_text` keeps that representation until it is
