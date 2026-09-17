@@ -21,11 +21,12 @@ and is not the global version. A numbered document under `docs/specs/` carries
 its own independent `Version` field, per the restructure.
 
 **The changelog below is incomplete, and this states it rather than hides it.**
-Entries stop at `0.22.0`. Versions `0.23.0` through `0.47.0` were applied to
-`docs/SPEC.md` without an entry here, so the release history for that range
-lives in the git log and in the pull requests, not in this file. The missing
-entries are NOT reconstructed here: to write 25 summaries after the fact would
-invent a record rather than report one. Issues #58 and #73 track the backfill.
+Entries run from `0.5.0` to `0.22.0` and resume at `0.47.1`. Versions `0.23.0`
+through `0.47.0` were applied to `docs/SPEC.md` without an entry here, so the
+release history for that range lives in the git log and in the pull requests,
+not in this file. The missing entries are NOT reconstructed here: to write 25
+summaries after the fact would invent a record rather than report one. Issues
+#58 and #73 track the backfill.
 
 Going forward, a change that bumps the version MUST add its entry here in the
 same pull request.
