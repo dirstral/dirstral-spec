@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.67.1`
+**Current spec version:** `0.67.2`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -21,11 +21,12 @@ and is not the global version. A numbered document under `docs/specs/` carries
 its own independent `Version` field, per the restructure.
 
 **The changelog below is incomplete, and this states it rather than hides it.**
-Entries stop at `0.22.0`. Versions `0.23.0` through `0.47.0` were applied to
-`docs/SPEC.md` without an entry here, so the release history for that range
-lives in the git log and in the pull requests, not in this file. The missing
-entries are NOT reconstructed here: to write 25 summaries after the fact would
-invent a record rather than report one. Issues #58 and #73 track the backfill.
+Entries run from `0.5.0` to `0.22.0` and resume at `0.47.1`. Versions `0.23.0`
+through `0.47.0` were applied to `docs/SPEC.md` without an entry here, so the
+release history for that range lives in the git log and in the pull requests,
+not in this file. The missing entries are NOT reconstructed here: to write 25
+summaries after the fact would invent a record rather than report one. Issues
+#58 and #73 track the backfill.
 
 Going forward, a change that bumps the version MUST add its entry here in the
 same pull request.
@@ -60,6 +61,98 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.67.2: three artifacts that disagreed with the contract they index
+
+Three clarifications, no contract change: PATCH under the pre-1.0 policy. No new
+tool, schema field, error code or config key. Each one is a place where a
+pointer, a machine-readable description or a migrated copy fell behind the
+canonical text it was supposed to track.
+
+- **The tool schema index omitted a shipped tool (#74).**
+  `spec/tools/schemas.md` calls itself the canonical index, but it listed ten
+  tools while `spec/tools/schemas/` holds eleven tool schemas.
+  `dir2mcp_related` (§15.12) was missing from both tables even though
+  `schemas/related.json` is present, df-007 indexes it, and the reference
+  implementation serves it. A generator or a conformance suite that discovered
+  the surface from the index saw ten tools; a filesystem glob saw eleven, so
+  discovery depended on which one you read. Both tables now carry the tool and
+  its schema file. The index also states the rule it was silently breaking:
+  every file in `spec/tools/schemas/` except the shared `common.json` appears
+  exactly once, and every linked file exists. CI enforces both directions, so
+  the next schema cannot ship unindexed. The file header moved from `0.17.0`,
+  which was 50 minor versions stale.
+- **`stats.json` documented a document status that does not exist (#77).** The
+  `skip_reasons` description said `doc_counts` "groups status='ready' docs".
+  There is no `ready` document status (the enum is `ok | skipped | pending |
+  error`), and a count restricted to successfully indexed documents could not
+  overstate coverage, so the sentence contradicted the rationale it was
+  giving. §15.2 and the bs-007 0.3.0 changelog already carried the correction;
+  the machine-readable copy did not, so generated documentation and
+  schema-reading clients received the false semantics that `skip_reasons`
+  exists to prevent. The corrected wording is now in the schema: `doc_counts`
+  groups **all** non-deleted documents by `doc_type` regardless of status, and
+  a client MUST NOT read it as an indexed-document count. CI enforces the
+  parity two ways: a named regression guard for the literal `status='ready'`
+  string, and a general assertion that every document status a schema
+  description names is a member of the canonical enum. The enum is read out of
+  `list_files.json` rather than hardcoded, so the check cannot drift from the
+  declaration it enforces, and an invented `status='done'` fails the same way
+  `status='ready'` does. A third guard closes the loop on the drift itself:
+  the doc_counts explanation lives in two places, the canonical §15.2 schema
+  block and `stats.json`, and CI now extracts both and asserts the
+  load-bearing claims are present on each side and the retracted claim on
+  neither. It does not demand byte equality. The two copies are deliberately
+  worded for different readers, so a byte diff would fail on wording rather
+  than on meaning.
+- **td-004 deferred a default to a closed issue (#78).** §A still said the
+  default html routing was deferred to dir2mcp #556, and that an
+  implementation MAY keep routing html to `raw_text` "until #556 lands". #556
+  closed in July. §B.1 of the same document already ranks the markup row
+  docling (T1), pandoc (T2), `raw_text` (T4) and never bypasses a
+  higher-fidelity active engine, so the two sections gave opposite conformance
+  answers for the same `extractor: auto` configuration: an implementer
+  following §A could emit lower-fidelity representations and believe it
+  conformed. §A now states the fidelity order and defers the rule to §B.1. The
+  two §A bullets had a second copy of the same drift: each named only "the
+  docling family" as the structured HTML path, wording that predates the 0.4.0
+  pandoc binding. Read literally they sent html to `raw_text` whenever docling
+  was absent, even with an active pandoc that reads html. Both bullets now key
+  on an **active** §B.1 engine that reads HTML. The first bullet also moves
+  from **SHOULD** to **MUST**. §B.1 already states that a higher-fidelity
+  active engine is never bypassed, so a SHOULD in §A read as a licence §B.1
+  does not grant. The conformance set does not change, because §B.1 already
+  forbade that bypass at the current spec version; only §A's wording did not
+  say so. That is why this stays a PATCH. The descriptive `MAY` in the
+  **Markup boundary (html)** sentence went with it: a blanket "html MAY be
+  handled here as flat `raw_text`" granted the permission the bullets below
+  forbid, one paragraph higher up. Both §A passages were swept for other RFC
+  2119 keywords used descriptively. None remain. The §A scope note also
+  deferred the cross-format matrix to dir2mcp #395 as separate future work;
+  #395 is closed and that matrix is §B.1 of this document, so the note points
+  there. td-004 0.5.0 -> 0.5.1.
+
+Deliberately **not** closed here:
+
+- SPEC.md §15.12 still carries `Status: Planned` for `dir2mcp_related` and says
+  it "lands in a follow-up dir2mcp code PR", but `internal/mcp/tools.go`
+  registers and serves the tool. `schemas.md` therefore records the status the
+  spec itself still states, `planned (optional extension)`, rather than promote
+  a tool by editing an index. The same doubt applies to
+  `dir2mcp_open_media_clip`, which the index has always called `planned` while
+  the implementation serves it. Promoting either is a status decision for a
+  maintainer, not an index fix, and it needs its own issue.
+- The §B.1 "dir2mcp #394/#556" reference in the best-available paragraph stays.
+  It names the defects the selection rule fixes. That is history, not a pending
+  condition.
+- The #77 parity checks are claim-level, not sentence-level. CI verifies the
+  document-status vocabulary against the canonical enum, and verifies the named
+  `doc_counts` claims on both copies of the `skip_reasons` description. It does
+  not diff the two descriptions sentence by sentence, because they are worded
+  for different readers on purpose and such a diff would fail on wording rather
+  than on meaning. The §8.6 transcription `ready` state is a different field
+  and is out of scope by design; a schema that ever needs to name it will have
+  to phrase it distinctly or take an explicit exclusion.
 
 ## 0.67.1: the reference implementation carries a second name-hint convention
 

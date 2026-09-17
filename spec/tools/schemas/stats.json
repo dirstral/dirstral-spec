@@ -103,7 +103,7 @@
         },
         "skip_reasons": {
           "type": "array",
-          "description": "Optional honest-coverage breakdown: one {reason, count} entry per distinct reason a document was set to status='skipped' during ingest, counted across the current corpus (parallel to recent_failures). Unlike doc_counts (which groups status='ready' docs and overstates coverage), this reports what was NOT indexed and why. Implementations MAY omit when nothing was skipped; clients MUST treat omission as 'nothing skipped', not as 'unsupported'. Zero-count reasons are omitted; an empty corpus omits the field.",
+          "description": "Optional honest-coverage breakdown: one {reason, count} entry per distinct reason a document was set to status='skipped' during ingest, counted across the current corpus (parallel to recent_failures). Unlike doc_counts (which groups ALL non-deleted documents by doc_type regardless of status, so a skipped .odt and an extracted .docx both count as 'document', and therefore overstates coverage), this reports what was NOT indexed and why. Clients MUST NOT read doc_counts as an indexed-document count. Implementations MAY omit when nothing was skipped; clients MUST treat omission as 'nothing skipped', not as 'unsupported'. Zero-count reasons are omitted; an empty corpus omits the field.",
           "items": {
             "type": "object",
             "additionalProperties": false,

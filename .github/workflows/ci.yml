@@ -26,6 +26,227 @@ jobs:
           test -f spec/versioning.md
           test -f spec/tools/schemas.md
           test -f spec/errors/taxonomy.md
+  schema-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tool schemas parse, and the index matches the directory
+        run: |
+          fail=0
+
+          # Every contract document must parse.
+          for f in spec/tools/schemas/*.json; do
+            if ! python3 -m json.tool "$f" >/dev/null; then
+              echo "::error file=$f::invalid JSON"
+              fail=1
+            fi
+          done
+
+          # Every tool schema must be linked exactly once from the index.
+          # common.json is the shared Span/Hit/Citation definitions file, not a
+          # tool, so it carries no row.
+          for f in spec/tools/schemas/*.json; do
+            base=$(basename "$f")
+            if [ "$base" = "common.json" ]; then continue; fi
+            # grep -o, not grep -c: -c counts matching LINES, so two links on
+            # one line would read as one and a duplicate row would pass.
+            n=$(grep -o -F "(schemas/$base)" spec/tools/schemas.md | wc -l | tr -d "[:space:]")
+            if [ "$n" != "1" ]; then
+              echo "::error file=spec/tools/schemas.md::schemas/$base is linked $n time(s); expected exactly 1 (dirstral-spec#74)"
+              fail=1
+            fi
+          done
+
+          # Every file the index links must exist.
+          linked=$(grep -oE '\(schemas/[A-Za-z0-9_.-]+\.json\)' spec/tools/schemas.md | tr -d '()' | sort -u || true)
+          for rel in $linked; do
+            if [ ! -f "spec/tools/$rel" ]; then
+              echo "::error file=spec/tools/schemas.md::links missing file $rel"
+              fail=1
+            fi
+          done
+
+          exit $fail
+      - name: Document-status descriptions match the canonical enum
+        run: |
+          fail=0
+
+          # Named regression guard for dirstral-spec#77: stats.json once said
+          # doc_counts "groups status='ready' docs". No 'ready' status exists.
+          if grep -n "status='ready'" spec/tools/schemas/*.json; then
+            echo "::error::a tool schema describes the nonexistent document status 'ready' (dirstral-spec#77)"
+            fail=1
+          fi
+
+          # General parity: every document status a description names must be a
+          # member of the canonical enum. The enum is READ FROM
+          # list_files.json, never hardcoded, so prose and schema cannot drift.
+          if ! python3 - <<'PY'; then fail=1; fi
+          import glob, json, re, sys
+
+          CANON = "spec/tools/schemas/list_files.json"
+          MENTION = re.compile(r"status\s*=\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")
+
+          def walk(node, enums, texts):
+              if isinstance(node, dict):
+                  for key, val in node.items():
+                      if (key == "status" and isinstance(val, dict)
+                              and val.get("type") == "string"
+                              and isinstance(val.get("enum"), list)):
+                          enums.append(tuple(val["enum"]))
+                      walk(val, enums, texts)
+              elif isinstance(node, list):
+                  for item in node:
+                      walk(item, enums, texts)
+              elif isinstance(node, str):
+                  texts.append(node)
+
+          def load(path):
+              with open(path, encoding="utf-8") as handle:
+                  return json.load(handle)
+
+          def die(msg):
+              print("::error::" + msg)
+              sys.exit(1)
+
+          try:
+              enums = []
+              walk(load(CANON), enums, [])
+          except (OSError, ValueError) as exc:
+              die("cannot read the canonical status enum from %s: %s" % (CANON, exc))
+          if len(set(enums)) != 1 or not enums[0]:
+              die("expected exactly one non-empty document-status enum in %s, found %r"
+                  % (CANON, sorted(set(enums))))
+          allowed = set(enums[0])
+          print("canonical document status enum (%s): %s"
+                % (CANON, " | ".join(sorted(allowed))))
+
+          files = sorted(glob.glob("spec/tools/schemas/*.json"))
+          if not files:
+              die("no tool schemas found under spec/tools/schemas/")
+
+          checked = bad = 0
+          for path in files:
+              try:
+                  texts = []
+                  walk(load(path), [], texts)
+              except (OSError, ValueError) as exc:
+                  print("::error file=%s::cannot parse: %s" % (path, exc))
+                  bad += 1
+                  continue
+              for text in texts:
+                  for value in MENTION.findall(text):
+                      checked += 1
+                      if value not in allowed:
+                          print("::error file=%s::description says status='%s', which is "
+                                "not in the canonical enum (%s). A schema description "
+                                "must not invent a document status (dirstral-spec#77)."
+                                % (path, value, " | ".join(sorted(allowed))))
+                          bad += 1
+          print("checked %d document-status mention(s) across %d schema file(s)"
+                % (checked, len(files)))
+          if checked == 0:
+              die("no document-status mention found to verify; the parity check is "
+                  "not exercising anything")
+          sys.exit(1 if bad else 0)
+          PY
+
+          exit $fail
+      - name: stats.json skip_reasons keeps parity with the canonical SPEC.md copy
+        run: |
+          # dirstral-spec#77: the doc_counts explanation exists in two places,
+          # the canonical SPEC.md 15.2 schema block and the machine-readable
+          # stats.json. They drifted once. This asserts the claims that matter
+          # are present on BOTH sides and the retracted claim is on neither.
+          # It does not demand byte equality: the two copies are deliberately
+          # worded for different readers, and a byte diff would be brittle.
+          python3 - <<'PY'
+          import io, json, re, sys
+
+          SPEC = "docs/SPEC.md"
+          SCHEMA = "spec/tools/schemas/stats.json"
+
+          REQUIRED = [
+              "all non deleted documents",
+              "regardless of status",
+              "a skipped odt and an extracted docx both count as document",
+              "overstates coverage",
+              "reports what was not indexed and why",
+              "must not read doc counts as an indexed document count",
+          ]
+          BANNED = ["status ready", "groups status ready"]
+
+          def norm(text):
+              return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+          def die(msg):
+              print("::error::" + msg)
+              sys.exit(1)
+
+          def find_desc(node):
+              if isinstance(node, dict):
+                  for key, val in node.items():
+                      if key == "skip_reasons" and isinstance(val, dict):
+                          desc = val.get("description")
+                          if isinstance(desc, str) and desc:
+                              return desc
+                      found = find_desc(val)
+                      if found:
+                          return found
+              elif isinstance(node, list):
+                  for item in node:
+                      found = find_desc(item)
+                      if found:
+                          return found
+              return None
+
+          try:
+              spec_text = io.open(SPEC, encoding="utf-8").read()
+          except OSError as exc:
+              die("cannot read %s: %s" % (SPEC, exc))
+
+          blocks = [b for b in re.findall(r"```json\n(.*?)\n```", spec_text, re.S)
+                    if '"skip_reasons"' in b]
+          if len(blocks) != 1:
+              die("expected exactly one canonical JSON block carrying skip_reasons "
+                  "in %s, found %d" % (SPEC, len(blocks)))
+          try:
+              canon_desc = find_desc(json.loads(blocks[0]))
+          except ValueError as exc:
+              die("the canonical %s skip_reasons block does not parse: %s" % (SPEC, exc))
+          if not canon_desc:
+              die("no skip_reasons description in the canonical %s block" % SPEC)
+
+          try:
+              schema_desc = find_desc(json.load(io.open(SCHEMA, encoding="utf-8")))
+          except (OSError, ValueError) as exc:
+              die("cannot read %s: %s" % (SCHEMA, exc))
+          if not schema_desc:
+              die("no skip_reasons description in %s" % SCHEMA)
+
+          sides = [(SPEC, norm(canon_desc)), (SCHEMA, norm(schema_desc))]
+          bad = 0
+          for claim in REQUIRED:
+              for where, text in sides:
+                  if claim not in text:
+                      print("::error file=%s::the skip_reasons description has lost "
+                            "the required doc_counts claim \"%s\". The canonical "
+                            "prose and the machine-readable schema MUST agree "
+                            "(dirstral-spec#77)." % (where, claim))
+                      bad += 1
+          for claim in BANNED:
+              for where, text in sides:
+                  if claim in text:
+                      print("::error file=%s::the skip_reasons description carries "
+                            "the retracted claim \"%s\" (dirstral-spec#77)."
+                            % (where, claim))
+                      bad += 1
+
+          print("skip_reasons doc_counts parity: %d required claim(s) verified on "
+                "both %s and %s; %d banned claim(s) absent"
+                % (len(REQUIRED), SPEC, SCHEMA, len(BANNED)))
+          sys.exit(1 if bad else 0)
+          PY
   links-basic:
     runs-on: ubuntu-latest
     steps:

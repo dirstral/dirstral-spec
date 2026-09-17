@@ -1127,36 +1127,41 @@ Use extension + MIME sniff + binary heuristics to classify:
   * code → `index_kind=code`
   * others → `index_kind=text`
 
-**Markup boundary (html).** `html` is a *dual-path* format: it MAY be handled
-here as flat `raw_text`, or routed to a structured extraction engine that
-preserves headings/tables/links. Which path applies is governed by the §7.4.B.1
-capability matrix (which lists `html` as structured-capable) and the *Extractor
-availability* rules there:
+**Markup boundary (html).** `html` is a *dual-path* format: it is either
+handled here as flat `raw_text`, or routed to a structured extraction engine
+that preserves headings/tables/links. Which path applies is governed by the
+§7.4.B.1 capability matrix (which lists `html` as structured-capable) and the
+*Extractor availability* rules there:
 
-* **When a structured extraction engine that accepts HTML is available** — the
-  docling family of §7.4.B, subject to the same `ingest.extractor` selection and
-  the *Extractor availability* rules — the pipeline SHOULD route HTML through it,
-  producing an `extracted_markdown` representation and the structured `region`
-  spans of §7.4.B (heading hierarchy → section breadcrumb; tables rendered
-  atomically to Markdown; element labels in `extra_json.label`). HTML carries no
-  page/`bbox` provenance, so its `region` spans carry the section breadcrumb and
+* **When the `ingest.extractor` policy makes an active §7.4.B.1 engine that
+  reads HTML eligible** (the §7.4.B.1 markup row marks two: docling T1 and
+  pandoc T2), the pipeline MUST route HTML through it, per the *Extractor
+  availability* rules of §7.4.B. This is §7.4.B.1's never-bypass rule applied
+  to the markup row, not a second requirement. The result is an
+  `extracted_markdown` representation and the structured `region` spans of
+  §7.4.B (heading hierarchy → section breadcrumb; tables rendered atomically to
+  Markdown; element labels in `extra_json.label`). Under pandoc those span
+  attributes are the progressive enhancement of the pandoc output-shape rules in
+  §7.4.B, not a structured-model guarantee. HTML carries no page/`bbox`
+  provenance either way, so its `region` spans carry the section breadcrumb and
   `label` and fall back to no page span, per the provenance-unavailable rule in
   §7.4.B.
-* **When no structured HTML engine is available** — including when the extractor
-  is `off`, explicitly disabled/unavailable (§7.7), or does not accept HTML —
-  HTML MUST fall back to `raw_text` (tier T4, §7.4.B.1), exactly as before.
-  `raw_text` remains the guaranteed baseline: HTML is never dropped, and behavior
-  MUST NOT regress when docling is absent.
+* **When no active engine of §7.4.B.1 reads HTML** (extractor `off`, an
+  explicitly disabled/unavailable engine per §7.7, or a pinned engine that does
+  not accept HTML), HTML MUST fall back to `raw_text` (tier T4, §7.4.B.1),
+  exactly as before. `raw_text` remains the guaranteed baseline: HTML is never
+  dropped, and behavior MUST NOT regress when no structured engine is present.
 * Either path routes to `index_kind=text`. The path choice does not change the
   index kind and follows the re-indexing semantics of §7.6 — a document
   previously indexed as flat `raw_text` keeps that representation until it is
   re-indexed.
 
-The **default** html routing (whether best-available auto promotes html from
-flat `raw_text` to a structured engine by default) is governed by **dir2mcp
-#556** and is intentionally left unchanged by this revision: until #556 lands, an
-implementation MAY continue to route html to `raw_text` and MUST NOT be
-considered non-conforming for doing so.
+The **default** html routing under `extractor: auto` is the §7.4.B.1 fidelity
+order for the markup row: docling (T1), then pandoc (T2), then `raw_text` (T4).
+`raw_text` is the last tier, not an unconstrained default. §7.4.B.1 states
+that a higher-fidelity *active* engine is never bypassed, so html falls back
+to `raw_text` only when no higher tier is active. **dir2mcp #556 is closed.**
+It is the defect this rule fixes, not pending work.
 
 #### B) PDF/image/document
 
@@ -1234,7 +1239,7 @@ cells participate in selection whenever a `pandoc` binary is available (see
 | office (slides/sheets, OOXML) | `.pptx .xlsx` | ✅ T1 | ❌ | ❌ | ❌ |
 | office/ebook (ODF/RTF/EPUB) | `.odt .rtf .epub` | ❌ | ❌ | ✅ T2 | ❌ |
 | legacy office (binary) | `.doc` | ❌ | ❌ | ❌ | ❌ |
-| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§7.4.A, #556) |
+| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§7.4.A, fallback tier) |
 
 † `pandoc` (T2, #393) is a born-digital markup/office/ebook converter with a
 **reader-only** support set: it ingests `.docx`, `.odt`, `.rtf`, `.epub`, and
