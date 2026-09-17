@@ -45,7 +45,8 @@ JSON Schema contract documents live in `spec/tools/schemas/*.json`.
 the shared `Span` / `Hit` / `Citation` definitions that the tool schemas `$ref`.
 Every other file in `spec/tools/schemas/` MUST appear exactly once in the table
 above, and every file the table links MUST exist. CI enforces both directions,
-so a schema can no longer ship unindexed (the `related.json` case, #74).
+so a schema can no longer ship unindexed (the `related.json` case,
+dirstral-spec#74).
 
 ## Schema authoring rules
 
