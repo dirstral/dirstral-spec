@@ -1127,11 +1127,11 @@ Use extension + MIME sniff + binary heuristics to classify:
   * code → `index_kind=code`
   * others → `index_kind=text`
 
-**Markup boundary (html).** `html` is a *dual-path* format: it MAY be handled
-here as flat `raw_text`, or routed to a structured extraction engine that
-preserves headings/tables/links. Which path applies is governed by the §7.4.B.1
-capability matrix (which lists `html` as structured-capable) and the *Extractor
-availability* rules there:
+**Markup boundary (html).** `html` is a *dual-path* format: it is either
+handled here as flat `raw_text`, or routed to a structured extraction engine
+that preserves headings/tables/links. Which path applies is governed by the
+§7.4.B.1 capability matrix (which lists `html` as structured-capable) and the
+*Extractor availability* rules there:
 
 * **When the `ingest.extractor` policy makes an active §7.4.B.1 engine that
   reads HTML eligible** (the §7.4.B.1 markup row marks two: docling T1 and

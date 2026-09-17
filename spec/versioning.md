@@ -116,10 +116,14 @@ canonical text it was supposed to track.
   active engine is never bypassed, so a SHOULD in §A read as a licence §B.1
   does not grant. The conformance set does not change, because §B.1 already
   forbade that bypass at the current spec version; only §A's wording did not
-  say so. That is why this stays a PATCH. The §A scope note also deferred the
-  cross-format matrix to dir2mcp #395 as separate future work; #395 is closed
-  and that matrix is §B.1 of this document, so the note points there. td-004
-  0.5.0 -> 0.5.1.
+  say so. That is why this stays a PATCH. The descriptive `MAY` in the
+  **Markup boundary (html)** sentence went with it: a blanket "html MAY be
+  handled here as flat `raw_text`" granted the permission the bullets below
+  forbid, one paragraph higher up. Both §A passages were swept for other RFC
+  2119 keywords used descriptively. None remain. The §A scope note also
+  deferred the cross-format matrix to dir2mcp #395 as separate future work;
+  #395 is closed and that matrix is §B.1 of this document, so the note points
+  there. td-004 0.5.0 -> 0.5.1.
 
 Deliberately **not** closed here:
 
