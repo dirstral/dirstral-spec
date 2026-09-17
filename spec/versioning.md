@@ -81,17 +81,23 @@ canonical text it was supposed to track.
   exactly once, and every linked file exists. CI enforces both directions, so
   the next schema cannot ship unindexed. The file header moved from `0.17.0`,
   which was 50 minor versions stale.
-- **`stats.json` documented a document status that does not exist (#77).**
-  The `skip_reasons` description said `doc_counts` "groups status='ready' docs".
+- **`stats.json` documented a document status that does not exist (#77).** The
+  `skip_reasons` description said `doc_counts` "groups status='ready' docs".
   There is no `ready` document status (the enum is `ok | skipped | pending |
   error`), and a count restricted to successfully indexed documents could not
-  overstate coverage, so the sentence contradicted the rationale it was giving.
-  §15.2 and the bs-007 0.3.0 changelog already carried the correction; the
-  machine-readable copy did not, so generated documentation and schema-reading
-  clients received the false semantics that `skip_reasons` exists to prevent.
-  The corrected wording is now in the schema: `doc_counts` groups **all**
-  non-deleted documents by `doc_type` regardless of status, and a client MUST
-  NOT read it as an indexed-document count.
+  overstate coverage, so the sentence contradicted the rationale it was
+  giving. §15.2 and the bs-007 0.3.0 changelog already carried the correction;
+  the machine-readable copy did not, so generated documentation and
+  schema-reading clients received the false semantics that `skip_reasons`
+  exists to prevent. The corrected wording is now in the schema: `doc_counts`
+  groups **all** non-deleted documents by `doc_type` regardless of status, and
+  a client MUST NOT read it as an indexed-document count. CI enforces the
+  parity two ways: a named regression guard for the literal `status='ready'`
+  string, and a general assertion that every document status a schema
+  description names is a member of the canonical enum. The enum is read out of
+  `list_files.json` rather than hardcoded, so the check cannot drift from the
+  declaration it enforces, and an invented `status='done'` fails the same way
+  `status='ready'` does.
 - **td-004 deferred a default to a closed issue (#78).** §A still said the
   default html routing was deferred to dir2mcp #556, and that an
   implementation MAY keep routing html to `raw_text` "until #556 lands". #556
@@ -128,10 +134,13 @@ Deliberately **not** closed here:
 - The §B.1 "dir2mcp #394/#556" reference in the best-available paragraph stays.
   It names the defects the selection rule fixes. That is history, not a pending
   condition.
-- The parity check asked for in #77 is not generalized. CI guards the exact
-  regression (no tool schema may describe a document `status='ready'`) rather
-  than attempt prose-to-schema diffing, which would be brittle and would fire on
-  the unrelated transcription `ready` state in §8.6.
+- The #77 parity check covers the **document** status vocabulary only, not
+  prose-to-schema diffing in general. It asserts that every `status='X'` a tool
+  schema description names is a member of the canonical document-status enum.
+  It does not compare a description against its §15 prose sentence by sentence,
+  which would be brittle. The §8.6 transcription `ready` state is a different
+  field and is out of scope by design; a schema that ever needs to name it will
+  have to phrase it distinctly or take an explicit exclusion.
 
 ## 0.67.1: the reference implementation carries a second name-hint convention
 

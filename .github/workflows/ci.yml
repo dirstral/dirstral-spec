@@ -64,12 +64,90 @@ jobs:
             fi
           done
 
-          # No document status named 'ready' exists (ok | skipped | pending |
-          # error). A schema description must not claim one.
+          exit $fail
+      - name: Document-status descriptions match the canonical enum
+        run: |
+          fail=0
+
+          # Named regression guard for dirstral-spec#77: stats.json once said
+          # doc_counts "groups status='ready' docs". No 'ready' status exists.
           if grep -n "status='ready'" spec/tools/schemas/*.json; then
-            echo "::error::a tool schema describes a nonexistent document status 'ready' (dirstral-spec#77)"
+            echo "::error::a tool schema describes the nonexistent document status 'ready' (dirstral-spec#77)"
             fail=1
           fi
+
+          # General parity: every document status a description names must be a
+          # member of the canonical enum. The enum is READ FROM
+          # list_files.json, never hardcoded, so prose and schema cannot drift.
+          if ! python3 - <<'PY'; then fail=1; fi
+          import glob, json, re, sys
+
+          CANON = "spec/tools/schemas/list_files.json"
+          MENTION = re.compile(r"status\s*=\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")
+
+          def walk(node, enums, texts):
+              if isinstance(node, dict):
+                  for key, val in node.items():
+                      if (key == "status" and isinstance(val, dict)
+                              and val.get("type") == "string"
+                              and isinstance(val.get("enum"), list)):
+                          enums.append(tuple(val["enum"]))
+                      walk(val, enums, texts)
+              elif isinstance(node, list):
+                  for item in node:
+                      walk(item, enums, texts)
+              elif isinstance(node, str):
+                  texts.append(node)
+
+          def load(path):
+              with open(path, encoding="utf-8") as handle:
+                  return json.load(handle)
+
+          def die(msg):
+              print("::error::" + msg)
+              sys.exit(1)
+
+          try:
+              enums = []
+              walk(load(CANON), enums, [])
+          except (OSError, ValueError) as exc:
+              die("cannot read the canonical status enum from %s: %s" % (CANON, exc))
+          if len(set(enums)) != 1 or not enums[0]:
+              die("expected exactly one non-empty document-status enum in %s, found %r"
+                  % (CANON, sorted(set(enums))))
+          allowed = set(enums[0])
+          print("canonical document status enum (%s): %s"
+                % (CANON, " | ".join(sorted(allowed))))
+
+          files = sorted(glob.glob("spec/tools/schemas/*.json"))
+          if not files:
+              die("no tool schemas found under spec/tools/schemas/")
+
+          checked = bad = 0
+          for path in files:
+              try:
+                  texts = []
+                  walk(load(path), [], texts)
+              except (OSError, ValueError) as exc:
+                  print("::error file=%s::cannot parse: %s" % (path, exc))
+                  bad += 1
+                  continue
+              for text in texts:
+                  for value in MENTION.findall(text):
+                      checked += 1
+                      if value not in allowed:
+                          print("::error file=%s::description says status='%s', which is "
+                                "not in the canonical enum (%s). A schema description "
+                                "must not invent a document status (dirstral-spec#77)."
+                                % (path, value, " | ".join(sorted(allowed))))
+                          bad += 1
+          print("checked %d document-status mention(s) across %d schema file(s)"
+                % (checked, len(files)))
+          if checked == 0:
+              die("no document-status mention found to verify; the parity check is "
+                  "not exercising anything")
+          sys.exit(1 if bad else 0)
+          PY
 
           exit $fail
   links-basic:
