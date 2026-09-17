@@ -1152,11 +1152,12 @@ availability* rules there:
   previously indexed as flat `raw_text` keeps that representation until it is
   re-indexed.
 
-The **default** html routing (whether best-available auto promotes html from
-flat `raw_text` to a structured engine by default) is governed by **dir2mcp
-#556** and is intentionally left unchanged by this revision: until #556 lands, an
-implementation MAY continue to route html to `raw_text` and MUST NOT be
-considered non-conforming for doing so.
+The **default** html routing under `extractor: auto` is the §7.4.B.1 fidelity
+order for the markup row: docling (T1), then pandoc (T2), then `raw_text` (T4).
+`raw_text` is the last tier, not an unconstrained default. §7.4.B.1 states
+that a higher-fidelity *active* engine is never bypassed, so html falls back
+to `raw_text` only when no higher tier is active. **dir2mcp #556 is closed.**
+It is the defect this rule fixes, not pending work.
 
 #### B) PDF/image/document
 
@@ -1234,7 +1235,7 @@ cells participate in selection whenever a `pandoc` binary is available (see
 | office (slides/sheets, OOXML) | `.pptx .xlsx` | ✅ T1 | ❌ | ❌ | ❌ |
 | office/ebook (ODF/RTF/EPUB) | `.odt .rtf .epub` | ❌ | ❌ | ✅ T2 | ❌ |
 | legacy office (binary) | `.doc` | ❌ | ❌ | ❌ | ❌ |
-| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§7.4.A, #556) |
+| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§7.4.A, fallback tier) |
 
 † `pandoc` (T2, #393) is a born-digital markup/office/ebook converter with a
 **reader-only** support set: it ingests `.docx`, `.odt`, `.rtf`, `.epub`, and

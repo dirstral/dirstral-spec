@@ -26,6 +26,52 @@ jobs:
           test -f spec/versioning.md
           test -f spec/tools/schemas.md
           test -f spec/errors/taxonomy.md
+  schema-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tool schemas parse, and the index matches the directory
+        run: |
+          fail=0
+
+          # Every contract document must parse.
+          for f in spec/tools/schemas/*.json; do
+            if ! python3 -m json.tool "$f" >/dev/null; then
+              echo "::error file=$f::invalid JSON"
+              fail=1
+            fi
+          done
+
+          # Every tool schema must be linked exactly once from the index.
+          # common.json is the shared Span/Hit/Citation definitions file, not a
+          # tool, so it carries no row.
+          for f in spec/tools/schemas/*.json; do
+            base=$(basename "$f")
+            if [ "$base" = "common.json" ]; then continue; fi
+            n=$(grep -c -F "(schemas/$base)" spec/tools/schemas.md || true)
+            if [ "$n" != "1" ]; then
+              echo "::error file=spec/tools/schemas.md::schemas/$base is linked $n time(s); expected exactly 1 (dirstral-spec#74)"
+              fail=1
+            fi
+          done
+
+          # Every file the index links must exist.
+          linked=$(grep -oE '\(schemas/[A-Za-z0-9_.-]+\.json\)' spec/tools/schemas.md | tr -d '()' | sort -u || true)
+          for rel in $linked; do
+            if [ ! -f "spec/tools/$rel" ]; then
+              echo "::error file=spec/tools/schemas.md::links missing file $rel"
+              fail=1
+            fi
+          done
+
+          # No document status named 'ready' exists (ok | skipped | pending |
+          # error). A schema description must not claim one.
+          if grep -n "status='ready'" spec/tools/schemas/*.json; then
+            echo "::error::a tool schema describes a nonexistent document status 'ready' (dirstral-spec#77)"
+            fail=1
+          fi
+
+          exit $fail
   links-basic:
     runs-on: ubuntu-latest
     steps:
