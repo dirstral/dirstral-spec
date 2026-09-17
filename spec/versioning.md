@@ -97,7 +97,13 @@ canonical text it was supposed to track.
   description names is a member of the canonical enum. The enum is read out of
   `list_files.json` rather than hardcoded, so the check cannot drift from the
   declaration it enforces, and an invented `status='done'` fails the same way
-  `status='ready'` does.
+  `status='ready'` does. A third guard closes the loop on the drift itself:
+  the doc_counts explanation lives in two places, the canonical §15.2 schema
+  block and `stats.json`, and CI now extracts both and asserts the
+  load-bearing claims are present on each side and the retracted claim on
+  neither. It does not demand byte equality. The two copies are deliberately
+  worded for different readers, so a byte diff would fail on wording rather
+  than on meaning.
 - **td-004 deferred a default to a closed issue (#78).** §A still said the
   default html routing was deferred to dir2mcp #556, and that an
   implementation MAY keep routing html to `raw_text` "until #556 lands". #556
@@ -138,13 +144,14 @@ Deliberately **not** closed here:
 - The §B.1 "dir2mcp #394/#556" reference in the best-available paragraph stays.
   It names the defects the selection rule fixes. That is history, not a pending
   condition.
-- The #77 parity check covers the **document** status vocabulary only, not
-  prose-to-schema diffing in general. It asserts that every `status='X'` a tool
-  schema description names is a member of the canonical document-status enum.
-  It does not compare a description against its §15 prose sentence by sentence,
-  which would be brittle. The §8.6 transcription `ready` state is a different
-  field and is out of scope by design; a schema that ever needs to name it will
-  have to phrase it distinctly or take an explicit exclusion.
+- The #77 parity checks are claim-level, not sentence-level. CI verifies the
+  document-status vocabulary against the canonical enum, and verifies the named
+  `doc_counts` claims on both copies of the `skip_reasons` description. It does
+  not diff the two descriptions sentence by sentence, because they are worded
+  for different readers on purpose and such a diff would fail on wording rather
+  than on meaning. The §8.6 transcription `ready` state is a different field
+  and is out of scope by design; a schema that ever needs to name it will have
+  to phrase it distinctly or take an explicit exclusion.
 
 ## 0.67.1: the reference implementation carries a second name-hint convention
 
