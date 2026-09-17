@@ -105,10 +105,15 @@ canonical text it was supposed to track.
   docling family" as the structured HTML path, wording that predates the 0.4.0
   pandoc binding. Read literally they sent html to `raw_text` whenever docling
   was absent, even with an active pandoc that reads html. Both bullets now key
-  on an **active** §B.1 engine that reads HTML. The §A scope note also
-  deferred the cross-format matrix to dir2mcp #395 as separate future work;
-  #395 is closed and that matrix is §B.1 of this document, so the note points
-  there. td-004 0.5.0 -> 0.5.1.
+  on an **active** §B.1 engine that reads HTML. The first bullet also moves
+  from **SHOULD** to **MUST**. §B.1 already states that a higher-fidelity
+  active engine is never bypassed, so a SHOULD in §A read as a licence §B.1
+  does not grant. The conformance set does not change, because §B.1 already
+  forbade that bypass at the current spec version; only §A's wording did not
+  say so. That is why this stays a PATCH. The §A scope note also deferred the
+  cross-format matrix to dir2mcp #395 as separate future work; #395 is closed
+  and that matrix is §B.1 of this document, so the note points there. td-004
+  0.5.0 -> 0.5.1.
 
 Deliberately **not** closed here:
 

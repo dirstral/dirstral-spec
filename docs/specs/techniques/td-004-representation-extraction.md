@@ -44,20 +44,22 @@ healthy.
   - `code` → `index_kind=code`
   - all others → `index_kind=text`
 
-**HTML.** HTML **MAY** be routed through structured extraction rather than flat
-`raw_text`:
+**HTML.** HTML takes one of two paths, per the §B.1 capability matrix and the
+*Extractor availability* rules of §B:
 
-- When an **active** extraction engine of §B.1 reads HTML, the pipeline
-  **SHOULD** route HTML through it, under the same `ingest.extractor` selection
-  and the *Extractor availability* rules of §B. The §B.1 markup row marks two:
-  docling (T1) and pandoc (T2). The result is an `extracted_markdown`
-  representation and the structured `region` spans of §B (heading hierarchy
-  → section breadcrumb; tables rendered atomically to Markdown; element labels
-  in `extra_json.label`). Under pandoc those span attributes are the
-  progressive enhancement of the pandoc output-shape rules in §B, not a
-  structured-model guarantee. HTML carries no page/`bbox` provenance either
-  way, so its `region` spans carry the section breadcrumb and `label` and fall
-  back to no page span, per the provenance-unavailable rule in §B.
+- When the `ingest.extractor` policy makes an **active** §B.1 engine that
+  reads HTML eligible, the pipeline **MUST** route HTML through it, per the
+  *Extractor availability* rules of §B. This is §B.1's never-bypass rule
+  applied to the markup row, not a second requirement. The §B.1 markup row
+  marks two engines: docling (T1) and pandoc (T2). The result is an
+  `extracted_markdown` representation and the structured `region` spans of §B
+  (heading hierarchy → section breadcrumb; tables rendered atomically to
+  Markdown; element labels in `extra_json.label`). Under pandoc those span
+  attributes are the progressive enhancement of the pandoc output-shape rules
+  in §B, not a structured-model guarantee. HTML carries no page/`bbox`
+  provenance either way, so its `region` spans carry the section breadcrumb
+  and `label` and fall back to no page span, per the provenance-unavailable
+  rule in §B.
 - When no **active** engine of §B.1 reads HTML (`extractor: off`, an explicitly
   disabled/unavailable engine
   ([bs-002](../behavior/bs-002-ingestion-pipeline.md)), or a pinned engine that
@@ -445,12 +447,19 @@ A page-separated OCR fallback span:
   fall to `raw_text`, bypassing an active T2 engine. Both bullets now key on
   an **active** §B.1 engine that reads HTML, and the first records that
   pandoc's span attributes are the §B progressive enhancement, not a
-  structured-model guarantee. The §A scope note pointed the cross-format
-  matrix at dir2mcp #395 as future work; #395 is closed and the matrix is §B.1
-  of this document, so the note points there. The #394/#556 reference in the
-  §B.1 best-available paragraph is left alone: it names the defects the rule
-  fixes and is history, not a pending condition. Mirrored in SPEC.md §7.4.A,
-  which carries the same paragraph while this document is Draft.
+  structured-model guarantee. The first bullet also moves from **SHOULD** to
+  **MUST**. §B.1 already states that a higher-fidelity active engine is never
+  bypassed, so a SHOULD in §A read as a licence §B.1 does not grant: it let an
+  implementation route html to `raw_text` with docling active and still claim
+  conformance. The conformance set does not change, because §B.1 already
+  forbade that bypass at the current spec version; only §A's wording did not
+  say so. The §A preamble dropped its **MAY** for the same reason. The §A
+  scope note pointed the cross-format matrix at dir2mcp #395 as future work;
+  #395 is closed and the matrix is §B.1 of this document, so the note points
+  there. The #394/#556 reference in the §B.1 best-available paragraph is left
+  alone: it names the defects the rule fixes and is history, not a pending
+  condition. Mirrored in SPEC.md §7.4.A, which carries the same paragraph
+  while this document is Draft.
 - **0.5.0** — §B.2 lenient: a document a lenient unsupported-format skip leaves
   with **no searchable representation** MUST now be recorded as a **durable skip**
   (`documents.status=skipped`, unsupported-format `skip_reason`) — counting toward

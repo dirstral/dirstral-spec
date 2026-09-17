@@ -1133,10 +1133,11 @@ preserves headings/tables/links. Which path applies is governed by the §7.4.B.1
 capability matrix (which lists `html` as structured-capable) and the *Extractor
 availability* rules there:
 
-* **When an active extraction engine of §7.4.B.1 reads HTML** (the §7.4.B.1
-  markup row marks two: docling T1 and pandoc T2), the pipeline SHOULD route
-  HTML through it, subject to the same `ingest.extractor` selection and the
-  *Extractor availability* rules of §7.4.B. The result is an
+* **When the `ingest.extractor` policy makes an active §7.4.B.1 engine that
+  reads HTML eligible** (the §7.4.B.1 markup row marks two: docling T1 and
+  pandoc T2), the pipeline MUST route HTML through it, per the *Extractor
+  availability* rules of §7.4.B. This is §7.4.B.1's never-bypass rule applied
+  to the markup row, not a second requirement. The result is an
   `extracted_markdown` representation and the structured `region` spans of
   §7.4.B (heading hierarchy → section breadcrumb; tables rendered atomically to
   Markdown; element labels in `extra_json.label`). Under pandoc those span
