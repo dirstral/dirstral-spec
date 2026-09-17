@@ -26,6 +26,50 @@ jobs:
           test -f spec/versioning.md
           test -f spec/tools/schemas.md
           test -f spec/errors/taxonomy.md
+  version-header:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The SPEC.md version header matches the single source
+        run: |
+          # spec/versioning.md calls itself the single source for the current
+          # spec version, and SPEC.md repeats the value for offline readers.
+          # Nothing compared the two, so SPEC.md sat at 0.47.1 while the source
+          # said 0.67.2: twenty minors of drift in the document a reader opens
+          # first (dirstral-spec#113). This job closes that.
+          python3 - <<'PY'
+          import re, sys
+
+          def one(path, pattern, what):
+              try:
+                  text = open(path, encoding="utf-8").read()
+              except OSError as exc:
+                  print(f"::error file={path}::cannot read: {exc}")
+                  sys.exit(1)
+              found = re.findall(pattern, text, re.MULTILINE)
+              if len(found) != 1:
+                  print(f"::error file={path}::expected exactly one {what}, "
+                        f"found {len(found)}: {found}")
+                  sys.exit(1)
+              return found[0]
+
+          source = one("spec/versioning.md",
+                       r"^\*\*Current spec version:\*\* `([0-9]+\.[0-9]+\.[0-9]+)`",
+                       "'Current spec version' line")
+          header = one("docs/SPEC.md",
+                       r"^\*\*Spec version:\*\* `([0-9]+\.[0-9]+\.[0-9]+)`",
+                       "'Spec version' line")
+
+          print(f"spec/versioning.md: {source}")
+          print(f"docs/SPEC.md:       {header}")
+          if source != header:
+              print(f"::error file=docs/SPEC.md::SPEC.md declares {header} but "
+                    f"spec/versioning.md, the single source, says {source}. "
+                    f"A version bump must update both (dirstral-spec#113).")
+              sys.exit(1)
+          print(f"version header matches the single source: {source}")
+          PY
+
   schema-index:
     runs-on: ubuntu-latest
     steps:
