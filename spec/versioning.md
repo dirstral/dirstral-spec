@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.67.2`
+**Current spec version:** `0.67.3`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,27 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.67.3: the spec document stated a version twenty minors stale
+
+`docs/SPEC.md` declared **Spec version:** `0.47.1` while this file, which the
+paragraph below names as the single source, said `0.67.2`. The header had not
+moved since roughly `0.47.1`, so the authoritative document misstated its own
+version across everything merged from `0.48.0` onward, including the cleaning
+family, cue segmentation, the translate engine, the name-hint conventions and
+the `0.67.2` html routing rule.
+
+This is the defect `0.67.2` addressed, one file up: an artifact disagreeing
+with the contract it indexes. It was not caught there because `0.67.2` looked
+at the tool index and `td-004`, not at the front matter of `SPEC.md`.
+
+- `docs/SPEC.md` now states `0.67.3` and names `spec/versioning.md` as the
+  source inline, so a reader who finds the two disagreeing knows which wins.
+- A new `version-header` CI job asserts the two literals are equal. The drift
+  was possible because nothing compared them; now a bump that updates only one
+  file fails the build.
+
+Neither change alters a rule, so this is a PATCH.
 
 ## 0.67.2: three artifacts that disagreed with the contract they index
 
