@@ -169,6 +169,72 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      - name: list_files fields agree across every copy of the contract
+        run: |
+          # dir2mcp_list_files is described in three places: the published
+          # schema, SPEC.md 15.5, and bs-007. include_hidden was in the schema
+          # and in no prose at all, and files[].title was emitted by the server
+          # while every canonical copy forbade it via additionalProperties
+          # (dirstral-spec#76). Nothing compared the copies.
+          python3 - <<'PY'
+          import json, re, sys
+
+          SCHEMA = "spec/tools/schemas/list_files.json"
+          SPEC = "docs/SPEC.md"
+          BS007 = "docs/specs/behavior/bs-007-tool-specifications.md"
+
+          def read(path):
+              try:
+                  return open(path, encoding="utf-8").read()
+              except OSError as exc:
+                  print(f"::error file={path}::cannot read: {exc}")
+                  sys.exit(1)
+
+          try:
+              doc = json.loads(read(SCHEMA))
+              inputs = set(doc["input"]["properties"])
+              entry = doc["output"]["properties"]["files"]["items"]
+              fields = set(entry["properties"])
+          except (ValueError, KeyError) as exc:
+              print(f"::error file={SCHEMA}::cannot read the list_files "
+                    f"contract: {exc}")
+              sys.exit(1)
+
+          if not inputs or not fields:
+              print(f"::error file={SCHEMA}::empty field set; the check is not "
+                    f"exercising anything")
+              sys.exit(1)
+
+          # Scope each search to that document's list_files section. Searching
+          # a whole file lets a common word like "title" match somewhere else
+          # entirely and report parity that does not exist.
+          def section(text, start, stop, label):
+              m = re.search(start, text, re.M)
+              if not m:
+                  print(f"::error file={label}::cannot find the list_files "
+                        f"section; the check cannot verify anything.")
+                  sys.exit(1)
+              rest = text[m.end():]
+              end = re.search(stop, rest, re.M)
+              return rest[: end.start()] if end else rest
+
+          spec = section(read(SPEC), r"^### 15\.5 ", r"^### 15\.", SPEC)
+          bs = section(read(BS007), r"^### dir2mcp_list_files$", r"^### ", BS007)
+
+          bad = 0
+          for name in sorted(inputs | fields):
+              for label, text in ((SPEC, spec), (BS007, bs)):
+                  if not re.search(r"\b" + re.escape(name) + r"\b", text):
+                      print(f"::error file={label}::the list_files section does "
+                            f"not mention field '{name}', which "
+                            f"{SCHEMA} declares (dirstral-spec#76).")
+                      bad += 1
+
+          print(f"list_files parity: {len(inputs)} input and {len(fields)} "
+                f"files[] field(s) present in all three copies")
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: Document-status descriptions match the canonical enum
         run: |
           fail=0

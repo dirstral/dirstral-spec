@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.14.0
+- **Version:** 0.15.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -190,12 +190,14 @@ and `truncated` (`rel_path`, `doc_type`, `content`, `truncated` required).
 - `glob` — restrict to matching files.
 - `limit` — integer in `[1, 5000]`, default **200**.
 - `offset` — integer `≥ 0`, default **0**.
+- `include_hidden` — boolean, default **false**.
 
 **Behavior.** Pagination is via `limit`/`offset`; the output echoes both and
 reports `total` (the full match count, independent of the page window). `files[]`
 entries carry `rel_path`, `doc_type`, `size_bytes`, `mtime_unix`,
 `status` (`ok | skipped | pending | error`), and `deleted` (all required per
-entry). The metadata mirrors the df-003 `documents` row.
+entry), plus an optional `title` present only when the document has a non-empty
+one. The metadata mirrors the df-003 `documents` row.
 
 `status` is a **projection of the stored state, not the stored state itself**.
 SPEC.md §15.5 holds the normative mapping table; the rules that bind a caller
@@ -437,6 +439,14 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 ## Changelog
 
+- **0.15.0**: declared two `dir2mcp_list_files` fields this document had
+  omitted. `include_hidden` is a documented input in `list_files.json` and the
+  reference server's advertised schema, and appeared in neither this document
+  nor SPEC.md §15.5. `files[]` carries an optional `title` that the server emits
+  when the document has a non-empty one, while every canonical copy declared
+  `additionalProperties: false` without it, so a strict client rejected any
+  listed document with a title (dirstral-spec#76). Both are additive: a server
+  that already followed the reference implementation changes nothing.
 - **0.13.0** — Declared the optional `evidence` verdict: per df-006 `Hit`, and top-level on the `dir2mcp_ask` output (SPEC 9.4.3, spec 0.55.0; dir2mcp #896/#785). One closed vocabulary (`strong | sufficient | insufficient | unknown`); a name, never a raw score, because raw scores are incomparable across retrieval modes (SPEC 9.1.1).
 
 - **0.12.0** — Added the optional `max_bytes` input and the `preview` output to `dir2mcp_open_media_clip`. A clip cut at the source bitrate can be ~22 MB for 8 seconds (dir2mcp #878); `max_bytes` lets the caller bound the clip bytes and the server re-encode to fit, and `preview`'s presence marks the result as a reduced-fidelity re-encode so it is never mistakable for a source cut. Both additive and optional.
