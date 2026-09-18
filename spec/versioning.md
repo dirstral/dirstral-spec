@@ -96,9 +96,22 @@ A new `schema-index` guard asserts the wrapper rule, so #75 cannot recur. It
 fails closed: an unparseable schema and a file with no per-tool schema at all
 both exit non-zero rather than passing on an empty set.
 
-MINOR: `include_hidden` and `title` are new optional surface in the canonical
-text. No behaviour changes in any conforming server, since both already
-described what the reference implementation does.
+**The wrapper migration is a breaking change for consumers**, and this entry
+says so rather than filing it under additions. Both legacy lookup paths are
+gone: code that read the root of `annotate.json`, `list_files.json` or
+`stats.json` as the input schema, or read their `definitions.output`, must move
+to `.input` and `.output`. Nothing inside the schemas changed meaning, but the
+path to them did.
+
+`MINOR` is still the correct bump, per the pre-1.0 policy stated at the top of
+this file: while the spec is `0.x` the `MAJOR` component stays `0`, and **both**
+breaking wire/schema changes **and** new optional fields bump the `MINOR`. A
+`MAJOR` bump is not available before `1.0.0`.
+
+The `list_files` half is additive by comparison: `include_hidden` and `title`
+are new optional surface in the canonical text, and no conforming server changes
+behaviour, since both already described what the reference implementation
+does.
 
 ## 0.68.0: two shipped tools were still marked planned
 

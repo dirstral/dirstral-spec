@@ -148,6 +148,14 @@ jobs:
                         f"{', '.join(missing)}. Every per-tool schema declares "
                         f"input and output (dirstral-spec#75).")
                   bad += 1
+              # Presence is not enough: a scalar or null passes a key check and
+              # is still not a schema object.
+              for key in ("input", "output"):
+                  if key in doc and not isinstance(doc[key], dict):
+                      print(f"::error file={path}::top-level {key} is "
+                            f"{type(doc[key]).__name__}, expected a schema "
+                            f"object (dirstral-spec#75).")
+                      bad += 1
               if "output" in doc.get("definitions", {}):
                   print(f"::error file={path}::output belongs at the top level, "
                         f"not under definitions (dirstral-spec#75).")
