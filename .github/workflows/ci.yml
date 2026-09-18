@@ -111,6 +111,130 @@ jobs:
           done
 
           exit $fail
+      - name: Every tool schema uses the documented input/output wrapper
+        run: |
+          # spec/tools/schemas.md says each per-tool document has two top-level
+          # sections, input and output, and that a generic validator loads those
+          # explicitly. Three files shipped a legacy shape instead, with the root
+          # object as the input schema and the output under definitions.output,
+          # so a consumer following the documented rule could not load them at
+          # all (dirstral-spec#75). Nothing compared the files to the rule.
+          python3 - <<'PY'
+          import glob, json, sys
+
+          # common.json is the shared Span/Hit/Citation document, not a tool, so
+          # it carries definitions and no input/output pair.
+          SHARED = "spec/tools/schemas/common.json"
+
+          files = sorted(glob.glob("spec/tools/schemas/*.json"))
+          if not files:
+              print("::error::no tool schemas found under spec/tools/schemas/")
+              sys.exit(1)
+
+          bad = checked = 0
+          for path in files:
+              if path == SHARED:
+                  continue
+              try:
+                  doc = json.load(open(path, encoding="utf-8"))
+              except (OSError, ValueError) as exc:
+                  print(f"::error file={path}::cannot parse: {exc}")
+                  bad += 1
+                  continue
+              checked += 1
+              missing = [k for k in ("input", "output") if k not in doc]
+              if missing:
+                  print(f"::error file={path}::missing top-level "
+                        f"{', '.join(missing)}. Every per-tool schema declares "
+                        f"input and output (dirstral-spec#75).")
+                  bad += 1
+              # Presence is not enough: a scalar or null passes a key check and
+              # is still not a schema object.
+              for key in ("input", "output"):
+                  if key in doc and not isinstance(doc[key], dict):
+                      print(f"::error file={path}::top-level {key} is "
+                            f"{type(doc[key]).__name__}, expected a schema "
+                            f"object (dirstral-spec#75).")
+                      bad += 1
+              if "output" in doc.get("definitions", {}):
+                  print(f"::error file={path}::output belongs at the top level, "
+                        f"not under definitions (dirstral-spec#75).")
+                  bad += 1
+
+          if not checked:
+              print("::error::no per-tool schema was checked; the guard is not "
+                    "exercising anything")
+              sys.exit(1)
+          print(f"input/output wrapper: {checked} tool schema(s) conform")
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: list_files fields agree across every copy of the contract
+        run: |
+          # dir2mcp_list_files is described in three places: the published
+          # schema, SPEC.md 15.5, and bs-007. include_hidden was in the schema
+          # and in no prose at all, and files[].title was emitted by the server
+          # while every canonical copy forbade it via additionalProperties
+          # (dirstral-spec#76). Nothing compared the copies.
+          python3 - <<'PY'
+          import json, re, sys
+
+          SCHEMA = "spec/tools/schemas/list_files.json"
+          SPEC = "docs/SPEC.md"
+          BS007 = "docs/specs/behavior/bs-007-tool-specifications.md"
+
+          def read(path):
+              try:
+                  return open(path, encoding="utf-8").read()
+              except OSError as exc:
+                  print(f"::error file={path}::cannot read: {exc}")
+                  sys.exit(1)
+
+          try:
+              doc = json.loads(read(SCHEMA))
+              inputs = set(doc["input"]["properties"])
+              entry = doc["output"]["properties"]["files"]["items"]
+              fields = set(entry["properties"])
+          except (ValueError, KeyError) as exc:
+              print(f"::error file={SCHEMA}::cannot read the list_files "
+                    f"contract: {exc}")
+              sys.exit(1)
+
+          if not inputs or not fields:
+              print(f"::error file={SCHEMA}::empty field set; the check is not "
+                    f"exercising anything")
+              sys.exit(1)
+
+          # Scope each search to that document's list_files section. Searching
+          # a whole file lets a common word like "title" match somewhere else
+          # entirely and report parity that does not exist.
+          def section(text, start, stop, label):
+              m = re.search(start, text, re.M)
+              if not m:
+                  print(f"::error file={label}::cannot find the list_files "
+                        f"section; the check cannot verify anything.")
+                  sys.exit(1)
+              rest = text[m.end():]
+              end = re.search(stop, rest, re.M)
+              return rest[: end.start()] if end else rest
+
+          spec = section(read(SPEC), r"^### 15\.5 ", r"^### 15\.", SPEC)
+          bs = section(read(BS007), r"^### dir2mcp_list_files$", r"^### ", BS007)
+
+          bad = 0
+          for name in sorted(inputs | fields):
+              for label, text in ((SPEC, spec), (BS007, bs)):
+                  if not re.search(r"\b" + re.escape(name) + r"\b", text):
+                      print(f"::error file={label}::the list_files section does "
+                            f"not mention field '{name}', which "
+                            f"{SCHEMA} declares (dirstral-spec#76).")
+                      bad += 1
+
+          print(f"list_files parity: {len(inputs)} input and {len(fields)} "
+                f"files[] field(s) present in all three copies")
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: Document-status descriptions match the canonical enum
         run: |
           fail=0
