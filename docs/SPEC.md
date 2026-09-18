@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.68.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.69.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -4605,7 +4605,8 @@ honestly as `ok`, `skipped` or `error`.
     "path_prefix": { "type": "string" },
     "glob": { "type": "string" },
     "limit": { "type": "integer", "minimum": 1, "maximum": 5000, "default": 200 },
-    "offset": { "type": "integer", "minimum": 0, "default": 0 }
+    "offset": { "type": "integer", "minimum": 0, "default": 0 },
+    "include_hidden": { "type": "boolean", "default": false }
   }
 }
 ```
@@ -4628,6 +4629,7 @@ honestly as `ok`, `skipped` or `error`.
         "properties": {
           "rel_path": { "type": "string" },
           "doc_type": { "type": "string" },
+          "title": { "type": "string" },
           "size_bytes": { "type": "integer" },
           "mtime_unix": { "type": "integer" },
           "status": { "type": "string", "enum": ["ok", "skipped", "pending", "error"] },

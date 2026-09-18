@@ -111,6 +111,56 @@ jobs:
           done
 
           exit $fail
+      - name: Every tool schema uses the documented input/output wrapper
+        run: |
+          # spec/tools/schemas.md says each per-tool document has two top-level
+          # sections, input and output, and that a generic validator loads those
+          # explicitly. Three files shipped a legacy shape instead, with the root
+          # object as the input schema and the output under definitions.output,
+          # so a consumer following the documented rule could not load them at
+          # all (dirstral-spec#75). Nothing compared the files to the rule.
+          python3 - <<'PY'
+          import glob, json, sys
+
+          # common.json is the shared Span/Hit/Citation document, not a tool, so
+          # it carries definitions and no input/output pair.
+          SHARED = "spec/tools/schemas/common.json"
+
+          files = sorted(glob.glob("spec/tools/schemas/*.json"))
+          if not files:
+              print("::error::no tool schemas found under spec/tools/schemas/")
+              sys.exit(1)
+
+          bad = checked = 0
+          for path in files:
+              if path == SHARED:
+                  continue
+              try:
+                  doc = json.load(open(path, encoding="utf-8"))
+              except (OSError, ValueError) as exc:
+                  print(f"::error file={path}::cannot parse: {exc}")
+                  bad += 1
+                  continue
+              checked += 1
+              missing = [k for k in ("input", "output") if k not in doc]
+              if missing:
+                  print(f"::error file={path}::missing top-level "
+                        f"{', '.join(missing)}. Every per-tool schema declares "
+                        f"input and output (dirstral-spec#75).")
+                  bad += 1
+              if "output" in doc.get("definitions", {}):
+                  print(f"::error file={path}::output belongs at the top level, "
+                        f"not under definitions (dirstral-spec#75).")
+                  bad += 1
+
+          if not checked:
+              print("::error::no per-tool schema was checked; the guard is not "
+                    "exercising anything")
+              sys.exit(1)
+          print(f"input/output wrapper: {checked} tool schema(s) conform")
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: Document-status descriptions match the canonical enum
         run: |
           fail=0

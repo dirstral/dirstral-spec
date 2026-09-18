@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.68.0`
+**Current spec version:** `0.69.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,44 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.69.0: the published schemas disagreed with the rules they follow
+
+Two independent drifts, both between a published artifact and the contract it
+is supposed to obey.
+
+**The input/output wrapper (#75).** `spec/tools/schemas.md` states that each
+per-tool document has two top-level sections, `input` and `output`, and that a
+generic validator loads those explicitly. `annotate.json`, `list_files.json`
+and `stats.json` shipped a legacy shape instead: the root object was the input
+schema and the output sat under `definitions.output`. A consumer following the
+documented rule could not load them at all, and one that special-cased the
+legacy layout was no longer generic. All three now use the wrapper. No `$ref`
+pointed at the moved `definitions.output`, in these files or anywhere else in
+the repo, so nothing resolves differently.
+
+**`dir2mcp_list_files` fields (#76).** Two fields existed in the reference
+implementation and not in the canonical text:
+
+- `include_hidden` was in `list_files.json` and the server's advertised input
+  schema, and appeared **nowhere** in `docs/SPEC.md`. A client generated from
+  the canonical prose did not know it existed.
+- The server emits an optional `files[].title`, while both `list_files.json`
+  and §15.5 declared `additionalProperties: false` without it. A strict client
+  validating real output **rejected every listed document that had a title**.
+  That is a live interoperability break, not a documentation gap.
+
+Both are now declared in both documents. `title` is optional and absent from
+`required`, matching the server, which omits the key entirely when the title is
+empty.
+
+A new `schema-index` guard asserts the wrapper rule, so #75 cannot recur. It
+fails closed: an unparseable schema and a file with no per-tool schema at all
+both exit non-zero rather than passing on an empty set.
+
+MINOR: `include_hidden` and `title` are new optional surface in the canonical
+text. No behaviour changes in any conforming server, since both already
+described what the reference implementation does.
 
 ## 0.68.0: two shipped tools were still marked planned
 
