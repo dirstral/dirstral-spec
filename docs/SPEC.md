@@ -3675,6 +3675,11 @@ answer text to learn whether the answer is real is the wrong contract.
 The three carve at the line an operator acts on: change the configuration,
 fix the provider, or investigate the model.
 
+The pairing is stated in the published schemas as a draft-07 conditional, not
+only here: `retrieval_only` requires a reason, and a reason requires
+`retrieval_only`. A rule that lives only in prose is a rule a generated client
+ignores.
+
 `answer_source` describes the text in `answer` and nothing else. In
 `mode=search_only`, and wherever `rag.generate_answer: false` makes a request
 be SERVED as search-only (§9.4), no answer is produced and the field MUST be
@@ -4542,7 +4547,11 @@ block below is kept in sync with it. `evidence` is defined normatively in
     "answer_source": { "type": "string", "enum": ["generated", "retrieval_only"], "description": "Optional (§9.4.5): whether `answer` holds a generated answer or retrieved material published in place of one. Absent means generated. Absent in search_only, where no answer is produced." },
     "answer_source_reason": { "type": "string", "enum": ["generator_not_configured", "generator_unavailable", "generator_error"], "description": "Optional (§9.4.5): why the answer is retrieval_only. Required when answer_source is retrieval_only, absent otherwise." }
   },
-  "required": ["question", "answer", "citations", "hits", "indexing_complete"]
+  "required": ["question", "answer", "citations", "hits", "indexing_complete"],
+  "allOf": [
+    { "if": { "properties": { "answer_source": { "const": "retrieval_only" } }, "required": ["answer_source"] }, "then": { "required": ["answer_source_reason"] } },
+    { "if": { "required": ["answer_source_reason"] }, "then": { "properties": { "answer_source": { "const": "retrieval_only" } }, "required": ["answer_source"] } }
+  ]
 }
 ```
 

@@ -237,6 +237,7 @@ jobs:
 
       - name: answer_source agrees across every answer surface
         run: |
+          python3 -m pip install --quiet --disable-pip-version-check jsonschema
           # The whole value of 9.4.5 is that ONE optional field lets a client
           # and a health check tell a generated answer from a published context
           # dump. Three schemas carry it plus an inline copy in SPEC.md, so
@@ -317,10 +318,64 @@ jobs:
                         f"which the answer schemas declare (SPEC 9.4.5).")
                   bad += 1
 
+          # Properties and vocabularies agreeing is not the contract. 9.4.5
+          # PAIRS the fields: retrieval_only requires a reason, and a reason
+          # requires retrieval_only. A rule stated only in prose is a rule a
+          # generated client ignores, so each schema declares it and each
+          # schema is checked against instances that must pass and must fail.
+          try:
+              import jsonschema
+          except ImportError as exc:
+              # Fail, never skip. A check that quietly does nothing reports the
+              # same green as a check that passed.
+              print(f"::error::jsonschema is required to validate 9.4.5 "
+                    f"instances and is missing: {exc}")
+              sys.exit(1)
+
+          BASE = {
+              "question": "q", "answer": "a", "citations": [], "hits": [],
+              "indexing_complete": True,
+              # transcribe_and_ask requires three more.
+              "stt_provider": "p", "transcript_model": "m", "transcribed": True,
+          }
+          CASES = [
+              (True, {}, "neither field"),
+              (True, {"answer_source": "generated"}, "generated, no reason"),
+              (True, {"answer_source": "retrieval_only",
+                      "answer_source_reason": "generator_unavailable"},
+               "retrieval_only with a reason"),
+              (False, {"answer_source": "retrieval_only"},
+               "retrieval_only with NO reason"),
+              (False, {"answer_source": "generated",
+                       "answer_source_reason": "generator_error"},
+               "generated WITH a reason"),
+              (False, {"answer_source_reason": "generator_error"},
+               "a reason with no source"),
+          ]
+
+          for path in SCHEMAS:
+              schema = json.loads(read(path))["output"]
+              allowed = set(schema.get("properties", {}))
+              for should_pass, extra, label in CASES:
+                  instance = {k: v for k, v in BASE.items() if k in allowed}
+                  instance.update(extra)
+                  try:
+                      jsonschema.validate(instance, schema)
+                      passed = True
+                  except jsonschema.ValidationError:
+                      passed = False
+                  if passed != should_pass:
+                      verb = "accepts" if passed else "rejects"
+                      want = "accept" if should_pass else "reject"
+                      print(f"::error file={path}::output schema {verb} "
+                            f"'{label}'; SPEC 9.4.5 says it must {want} it.")
+                      bad += 1
+
           total = sum(len(v) for v in vocab.values())
           print(f"answer provenance parity: {len(FIELDS)} field(s) on "
                 f"{len(SCHEMAS)} answer surface(s), {total} enum(s) agreed and "
-                f"described in 9.4.5")
+                f"described in 9.4.5; {len(CASES)} instance(s) checked per "
+                f"surface")
           sys.exit(1 if bad else 0)
           PY
 
