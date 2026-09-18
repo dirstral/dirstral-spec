@@ -235,6 +235,95 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      - name: answer_source agrees across every answer surface
+        run: |
+          # The whole value of 9.4.5 is that ONE optional field lets a client
+          # and a health check tell a generated answer from a published context
+          # dump. Three schemas carry it plus an inline copy in SPEC.md, so
+          # there are four places for a vocabulary to drift, and a client that
+          # routes on a value one surface never emits is back to grepping
+          # prose. Nothing compared the copies.
+          python3 - <<'PY'
+          import json, re, sys
+
+          SCHEMAS = [
+              "spec/tools/schemas/ask.json",
+              "spec/tools/schemas/ask_audio.json",
+              "spec/tools/schemas/transcribe_and_ask.json",
+          ]
+          SPEC = "docs/SPEC.md"
+          BS007 = "docs/specs/behavior/bs-007-tool-specifications.md"
+          FIELDS = ("answer_source", "answer_source_reason")
+
+          def read(path):
+              try:
+                  return open(path, encoding="utf-8").read()
+              except OSError as exc:
+                  print(f"::error file={path}::cannot read: {exc}")
+                  sys.exit(1)
+
+          bad = 0
+          vocab = {}
+          for path in SCHEMAS:
+              try:
+                  props = json.loads(read(path))["output"]["properties"]
+              except (ValueError, KeyError) as exc:
+                  print(f"::error file={path}::cannot read the output "
+                        f"properties: {exc}")
+                  sys.exit(1)
+              for field in FIELDS:
+                  if field not in props:
+                      print(f"::error file={path}::declares no '{field}'; "
+                            f"SPEC 9.4.5 puts it on every answer surface.")
+                      bad += 1
+                      continue
+                  values = tuple(props[field].get("enum", ()))
+                  if not values:
+                      print(f"::error file={path}::'{field}' declares no enum, "
+                            f"so its vocabulary is not closed (SPEC 9.4.5).")
+                      bad += 1
+                      continue
+                  vocab.setdefault(field, {})[path] = values
+
+          for field, byfile in vocab.items():
+              distinct = set(byfile.values())
+              if len(distinct) > 1:
+                  print(f"::error file={SCHEMAS[0]}::'{field}' has "
+                        f"{len(distinct)} different vocabularies across the "
+                        f"answer surfaces: {byfile}")
+                  bad += 1
+
+          # Every value a schema may emit has to be described in the prose that
+          # defines it, or an implementer reads the enum and guesses.
+          spec = read(SPEC)
+          m = re.search(r"^#### 9\.4\.5 ", spec, re.M)
+          if not m:
+              print(f"::error file={SPEC}::cannot find 9.4.5; the check cannot "
+                    f"verify anything.")
+              sys.exit(1)
+          rest = spec[m.end():]
+          end = re.search(r"^#### 9\.|^### 9\.", rest, re.M)
+          section = rest[: end.start()] if end else rest
+
+          bs = read(BS007)
+          for field, byfile in vocab.items():
+              for value in sorted({v for values in byfile.values() for v in values}):
+                  if not re.search(r"\b" + re.escape(value) + r"\b", section):
+                      print(f"::error file={SPEC}::9.4.5 does not describe "
+                            f"'{value}', which the answer schemas may emit.")
+                      bad += 1
+              if not re.search(r"\b" + re.escape(field) + r"\b", bs):
+                  print(f"::error file={BS007}::does not mention '{field}', "
+                        f"which the answer schemas declare (SPEC 9.4.5).")
+                  bad += 1
+
+          total = sum(len(v) for v in vocab.values())
+          print(f"answer provenance parity: {len(FIELDS)} field(s) on "
+                f"{len(SCHEMAS)} answer surface(s), {total} enum(s) agreed and "
+                f"described in 9.4.5")
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: Document-status descriptions match the canonical enum
         run: |
           fail=0

@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.69.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.70.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3621,6 +3621,70 @@ RETRIEVAL, `faithfulness` describes the ANSWER, and a withheld answer may sit
 on `strong` evidence. A server MUST NOT emit `faithfulness` unless it
 advertises a schema that declares it (§15.1.1).
 
+#### 9.4.5 Answer provenance (optional)
+
+§9.4.3 and §9.4.4 both assume an answer was generated. A third outcome exists
+and the contract has never described it: generation is attempted, it fails, and
+the server publishes the retrieved material in `answer` instead of nothing.
+
+That fallback is reasonable. The retrieved passages are the best available
+response, and returning them beats returning an error to a caller who could
+still read them. What is not reasonable is publishing them as if a model had
+written them. `citations`, `hits`, `evidence` and `indexing_complete` are all
+populated and all correct, because retrieval genuinely succeeded, so no field
+in the response distinguishes this case and the only detector left is the
+shape of the prose.
+
+That is not hypothetical. Two public deployments served retrieved context as
+answers for three days (2026-09-15 to 2026-09-18) after a provider ran out of
+credit. Retrieval was healthy throughout and every surface looked correct. The
+outage was caught by an operator's own script that regular-expression-matched
+the fallback's own wording. A contract that forces an operator to grep the
+answer text to learn whether the answer is real is the wrong contract.
+
+* A server that publishes text in `answer` which is NOT a generated answer to
+  the question MUST mark it, when it advertises a schema that declares the
+  field. Silence means generated.
+* A retrieval-only answer MUST keep its `citations`. This is the opposite of
+  the §9.4.4 rule and for the opposite reason: the published text IS the cited
+  material, so citing it asserts nothing the server did not do.
+* `evidence` MUST NOT be downgraded for it. The retrieval is what `evidence`
+  describes, and the retrieval succeeded.
+* `faithfulness` MUST be `unchecked`, or absent. Nothing was generated, so
+  there is no answer to verify, and `verified` would claim a check that could
+  not have run.
+* A retrieval-only answer is a normal result, not an error (§14). The server
+  answered; it answered with less.
+
+**Exposing the provenance (`answer_source`, optional).** The answer surfaces
+(§15.3, §15.9, §15.10) MAY carry two optional fields:
+
+* `answer_source` — `generated` or `retrieval_only`. `generated` means a model
+  produced the text in `answer`. `retrieval_only` means the server published
+  retrieved material in place of a generated answer.
+* `answer_source_reason` — why, in one closed vocabulary. It MUST be present
+  when `answer_source` is `retrieval_only` and MUST be absent otherwise:
+  * `generator_not_configured` — no answer generator is configured. Expected
+    operation, not a fault.
+  * `generator_unavailable` — one is configured and could not be used: it
+    could not be reached, or it refused service (authentication, quota, rate
+    limit, exhausted credit).
+  * `generator_error` — one was reached and replied, but the reply could not
+    be used as an answer.
+
+The three carve at the line an operator acts on: change the configuration,
+fix the provider, or investigate the model.
+
+`answer_source` describes the text in `answer` and nothing else. In
+`mode=search_only`, and wherever `rag.generate_answer: false` makes a request
+be SERVED as search-only (§9.4), no answer is produced and the field MUST be
+absent; `answer: ""` already says so. An answer WITHHELD under §9.4.4 is
+reported as `generated`: generation ran, and `faithfulness: unsupported` with
+an empty `citations` array already describes that outcome in full.
+
+A server MUST NOT emit either field unless it advertises a schema that
+declares it (§15.1.1).
+
 ### 9.5 Per-language retrieval filter (optional)
 
 `dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept an **optional**
@@ -4474,7 +4538,9 @@ block below is kept in sync with it. `evidence` is defined normatively in
     "hits": { "type": "array", "items": { "$ref": "#/definitions/Hit" } },
     "indexing_complete": { "type": "boolean" },
     "evidence": { "type": "string", "enum": ["strong", "sufficient", "insufficient", "unknown"], "description": "Optional absolute verdict of the eligible set behind the answer (§9.4.3); insufficient is the structured form of abstention." },
-    "faithfulness": { "type": "string", "enum": ["verified", "unsupported", "unchecked"], "description": "Optional verdict on the ANSWER rather than the retrieval (§9.4.4): unsupported means the answer was withheld, and unchecked means verification produced no verdict (not configured, or attempted and unable to complete). Orthogonal to evidence." }
+    "faithfulness": { "type": "string", "enum": ["verified", "unsupported", "unchecked"], "description": "Optional verdict on the ANSWER rather than the retrieval (§9.4.4): unsupported means the answer was withheld, and unchecked means verification produced no verdict (not configured, or attempted and unable to complete). Orthogonal to evidence." },
+    "answer_source": { "type": "string", "enum": ["generated", "retrieval_only"], "description": "Optional (§9.4.5): whether `answer` holds a generated answer or retrieved material published in place of one. Absent means generated. Absent in search_only, where no answer is produced." },
+    "answer_source_reason": { "type": "string", "enum": ["generator_not_configured", "generator_unavailable", "generator_error"], "description": "Optional (§9.4.5): why the answer is retrieval_only. Required when answer_source is retrieval_only, absent otherwise." }
   },
   "required": ["question", "answer", "citations", "hits", "indexing_complete"]
 }
