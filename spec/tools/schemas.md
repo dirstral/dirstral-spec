@@ -19,9 +19,9 @@ JSON Schema contract documents live in `spec/tools/schemas/*.json`.
 | `dir2mcp_transcribe` | stable |
 | `dir2mcp_annotate` | stable |
 | `dir2mcp_transcribe_and_ask` | stable |
-| `dir2mcp_open_media_clip` | planned |
+| `dir2mcp_open_media_clip` | stable |
 | `dir2mcp_ask_audio` | stable |
-| `dir2mcp_related` | planned (optional extension) |
+| `dir2mcp_related` | stable (optional extension) |
 
 > **Note:** JSON Schema files for each tool are tracked in `spec/tools/schemas/` and are the authoritative machine-readable contracts. This markdown is an index only.
 

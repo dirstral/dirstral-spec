@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.67.3` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.68.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -4927,12 +4927,12 @@ Tool result `content[]` must include:
 
 ### 15.11 `dir2mcp_open_media_clip` (recommended)
 
-> **Status: Planned.** Returns the **actual audio/video snippet** for a media
+> Returns the **actual audio/video snippet** for a media
 > search/ask hit (dir2mcp #264), rather than only a `path@t=...` citation. It is
 > the time-media analogue of `dir2mcp_open_file`: where `open_file` returns the
 > **transcript text** for a `time` span, `open_media_clip` returns the **extracted
-> media bytes** for that span. It is **additive** and lands in a follow-up dir2mcp
-> code PR.
+> media bytes** for that span. It is **additive**, and dir2mcp registers and
+> serves it.
 
 **Description:** extract and return the media snippet for a transcript/media hit,
 identified either by `chunk_id` (resolved to its source media + `time` span) or
@@ -5080,12 +5080,12 @@ supported.
 
 ### 15.12 `dir2mcp_related` (optional extension)
 
-> **Status: Planned.** "More like this": given an existing chunk or document,
+> "More like this": given an existing chunk or document,
 > return the nearest-neighbour **segments** (dir2mcp #324), so a client can explore
 > similar content the way `dir2mcp_search` explores by query. It **reuses** the
 > vector index, dedup, and the §9.5/§9.6 filters — it is a query-by-example over
-> the same retrieval surface, not a new index. It is **additive** and lands in a
-> follow-up dir2mcp code PR.
+> the same retrieval surface, not a new index. It is **additive**, and dir2mcp
+> registers and serves it.
 
 **Description:** rank indexed segments by embedding similarity to a source
 segment, excluding the source itself.

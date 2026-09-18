@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.67.3`
+**Current spec version:** `0.68.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,31 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.68.0: two shipped tools were still marked planned
+
+`docs/SPEC.md` §15.11 `dir2mcp_open_media_clip` and §15.12 `dir2mcp_related`
+both carried `> **Status: Planned.**` and closed by saying each "lands in a
+follow-up dir2mcp code PR". Both had already landed. The reference
+implementation registers and serves them, with an input schema, an output
+schema and a handler (`internal/mcp/tools.go:60,67,137,186`), and
+`internal/mcp/server.go` cites §15.11 by section number for its `max_bytes`
+limits.
+
+So a client author reading the spec built less than a conforming server
+offers, while a client reading `tools/list` received both tools. The index in
+`spec/tools/schemas.md` was correct to say `planned`: it mirrors the status the
+spec states, and could not overrule it.
+
+- Both `Status: Planned` blockquotes are removed. A shipped tool carries no
+  status line in this document; the nine that remain are genuinely planned.
+- Both "lands in a follow-up dir2mcp code PR" tails now say the tool ships.
+- The two `spec/tools/schemas.md` status cells become `stable` and
+  `stable (optional extension)`.
+
+MINOR, not PATCH: under the pre-1.0 policy new optional tools bump the MINOR,
+and this is the change that declares them offered rather than planned. No
+tool's contract, schema or behaviour changes.
 
 ## 0.67.3: the spec document stated a version twenty minors stale
 
