@@ -351,6 +351,19 @@ jobs:
                "generated WITH a reason"),
               (False, {"answer_source_reason": "generator_error"},
                "a reason with no source"),
+              # Nothing was generated, so there is no answer to verify.
+              (True, {"answer_source": "retrieval_only",
+                      "answer_source_reason": "generator_unavailable",
+                      "faithfulness": "unchecked"},
+               "retrieval_only, faithfulness unchecked"),
+              (False, {"answer_source": "retrieval_only",
+                       "answer_source_reason": "generator_unavailable",
+                       "faithfulness": "verified"},
+               "retrieval_only claiming a verified answer"),
+              (False, {"answer_source": "retrieval_only",
+                       "answer_source_reason": "generator_unavailable",
+                       "faithfulness": "unsupported"},
+               "retrieval_only claiming a withheld answer"),
           ]
 
           for path in SCHEMAS:

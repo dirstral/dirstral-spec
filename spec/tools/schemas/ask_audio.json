@@ -53,7 +53,7 @@
     "required": ["question", "answer", "citations", "hits", "indexing_complete"],
     "$comment": "SPEC 9.4.5 pairs the two answer-provenance fields, and a rule that lives only in prose is a rule a generated client can ignore. The riders below state it in the schema: retrieval_only requires a reason, and a reason requires retrieval_only.",
     "allOf": [
-      { "if": { "properties": { "answer_source": { "const": "retrieval_only" } }, "required": ["answer_source"] }, "then": { "required": ["answer_source_reason"] } },
+      { "if": { "properties": { "answer_source": { "const": "retrieval_only" } }, "required": ["answer_source"] }, "then": { "required": ["answer_source_reason"], "properties": { "faithfulness": { "const": "unchecked" } } } },
       { "if": { "required": ["answer_source_reason"] }, "then": { "properties": { "answer_source": { "const": "retrieval_only" } }, "required": ["answer_source"] } }
     ]
   }

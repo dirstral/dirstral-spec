@@ -3675,10 +3675,11 @@ answer text to learn whether the answer is real is the wrong contract.
 The three carve at the line an operator acts on: change the configuration,
 fix the provider, or investigate the model.
 
-The pairing is stated in the published schemas as a draft-07 conditional, not
-only here: `retrieval_only` requires a reason, and a reason requires
-`retrieval_only`. A rule that lives only in prose is a rule a generated client
-ignores.
+Three of these rules are stated in the published schemas as draft-07
+conditionals, not only here: `retrieval_only` requires a reason, a reason
+requires `retrieval_only`, and `retrieval_only` admits no `faithfulness`
+other than `unchecked` (absent stays legal, since the field is optional). A
+rule that lives only in prose is a rule a generated client ignores.
 
 `answer_source` describes the text in `answer` and nothing else. In
 `mode=search_only`, and wherever `rag.generate_answer: false` makes a request
@@ -4549,7 +4550,7 @@ block below is kept in sync with it. `evidence` is defined normatively in
   },
   "required": ["question", "answer", "citations", "hits", "indexing_complete"],
   "allOf": [
-    { "if": { "properties": { "answer_source": { "const": "retrieval_only" } }, "required": ["answer_source"] }, "then": { "required": ["answer_source_reason"] } },
+    { "if": { "properties": { "answer_source": { "const": "retrieval_only" } }, "required": ["answer_source"] }, "then": { "required": ["answer_source_reason"], "properties": { "faithfulness": { "const": "unchecked" } } } },
     { "if": { "required": ["answer_source_reason"] }, "then": { "properties": { "answer_source": { "const": "retrieval_only" } }, "required": ["answer_source"] } }
   ]
 }
