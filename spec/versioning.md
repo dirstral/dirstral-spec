@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.69.0`
+**Current spec version:** `0.70.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,16 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.70.0 — answer provenance (optional)
+
+New **optional** output fields on the three answer surfaces; additive, so every existing client is unaffected (`MINOR` per the pre-1.0 policy).
+
+- §9.4.5 **Answer provenance**: a server that publishes retrieved material in `answer` in place of a generated answer MUST mark it, when it advertises a schema declaring the field. The fallback itself stays legal and its `citations[]` stay populated (the published text IS the cited material), `evidence` MUST NOT be downgraded for it (the retrieval succeeded), and `faithfulness` MUST be `unchecked` or absent (nothing was generated to verify).
+- `answer_source` (`generated | retrieval_only`) and `answer_source_reason` (`generator_not_configured | generator_unavailable | generator_error`) added to `ask.json`, `ask_audio.json` and `transcribe_and_ask.json`. The reason vocabulary carves at the line an operator acts on: change the configuration, fix the provider, or investigate the model.
+- Absent `answer_source` means generated. The field is absent in `search_only` and wherever `rag.generate_answer: false` makes a request be served as search-only, because no answer is produced. An answer WITHHELD under §9.4.4 is `generated`: generation ran.
+- Motivated by a real three-day silent outage (dirstral-spec#117). Retrieval was healthy, every field was correct, and the only detector was an operator script matching the fallback's own prose. `dirstral-conformance` SHOULD add a suite asserting the marking.
+- No new tool and no new error code: a retrieval-only answer is a normal result, not an error (§14).
 
 ## 0.69.0: the published schemas disagreed with the rules they follow
 

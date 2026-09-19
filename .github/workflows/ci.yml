@@ -235,6 +235,163 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      - name: answer_source agrees across every answer surface
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check jsonschema
+          # The whole value of 9.4.5 is that ONE optional field lets a client
+          # and a health check tell a generated answer from a published context
+          # dump. Three schemas carry it plus an inline copy in SPEC.md, so
+          # there are four places for a vocabulary to drift, and a client that
+          # routes on a value one surface never emits is back to grepping
+          # prose. Nothing compared the copies.
+          python3 - <<'PY'
+          import json, re, sys
+
+          SCHEMAS = [
+              "spec/tools/schemas/ask.json",
+              "spec/tools/schemas/ask_audio.json",
+              "spec/tools/schemas/transcribe_and_ask.json",
+          ]
+          SPEC = "docs/SPEC.md"
+          BS007 = "docs/specs/behavior/bs-007-tool-specifications.md"
+          FIELDS = ("answer_source", "answer_source_reason")
+
+          def read(path):
+              try:
+                  return open(path, encoding="utf-8").read()
+              except OSError as exc:
+                  print(f"::error file={path}::cannot read: {exc}")
+                  sys.exit(1)
+
+          bad = 0
+          vocab = {}
+          for path in SCHEMAS:
+              try:
+                  props = json.loads(read(path))["output"]["properties"]
+              except (ValueError, KeyError) as exc:
+                  print(f"::error file={path}::cannot read the output "
+                        f"properties: {exc}")
+                  sys.exit(1)
+              for field in FIELDS:
+                  if field not in props:
+                      print(f"::error file={path}::declares no '{field}'; "
+                            f"SPEC 9.4.5 puts it on every answer surface.")
+                      bad += 1
+                      continue
+                  values = tuple(props[field].get("enum", ()))
+                  if not values:
+                      print(f"::error file={path}::'{field}' declares no enum, "
+                            f"so its vocabulary is not closed (SPEC 9.4.5).")
+                      bad += 1
+                      continue
+                  vocab.setdefault(field, {})[path] = values
+
+          for field, byfile in vocab.items():
+              distinct = set(byfile.values())
+              if len(distinct) > 1:
+                  print(f"::error file={SCHEMAS[0]}::'{field}' has "
+                        f"{len(distinct)} different vocabularies across the "
+                        f"answer surfaces: {byfile}")
+                  bad += 1
+
+          # Every value a schema may emit has to be described in the prose that
+          # defines it, or an implementer reads the enum and guesses.
+          spec = read(SPEC)
+          m = re.search(r"^#### 9\.4\.5 ", spec, re.M)
+          if not m:
+              print(f"::error file={SPEC}::cannot find 9.4.5; the check cannot "
+                    f"verify anything.")
+              sys.exit(1)
+          rest = spec[m.end():]
+          end = re.search(r"^#### 9\.|^### 9\.", rest, re.M)
+          section = rest[: end.start()] if end else rest
+
+          bs = read(BS007)
+          for field, byfile in vocab.items():
+              for value in sorted({v for values in byfile.values() for v in values}):
+                  if not re.search(r"\b" + re.escape(value) + r"\b", section):
+                      print(f"::error file={SPEC}::9.4.5 does not describe "
+                            f"'{value}', which the answer schemas may emit.")
+                      bad += 1
+              if not re.search(r"\b" + re.escape(field) + r"\b", bs):
+                  print(f"::error file={BS007}::does not mention '{field}', "
+                        f"which the answer schemas declare (SPEC 9.4.5).")
+                  bad += 1
+
+          # Properties and vocabularies agreeing is not the contract. 9.4.5
+          # PAIRS the fields: retrieval_only requires a reason, and a reason
+          # requires retrieval_only. A rule stated only in prose is a rule a
+          # generated client ignores, so each schema declares it and each
+          # schema is checked against instances that must pass and must fail.
+          try:
+              import jsonschema
+          except ImportError as exc:
+              # Fail, never skip. A check that quietly does nothing reports the
+              # same green as a check that passed.
+              print(f"::error::jsonschema is required to validate 9.4.5 "
+                    f"instances and is missing: {exc}")
+              sys.exit(1)
+
+          BASE = {
+              "question": "q", "answer": "a", "citations": [], "hits": [],
+              "indexing_complete": True,
+              # transcribe_and_ask requires three more.
+              "stt_provider": "p", "transcript_model": "m", "transcribed": True,
+          }
+          CASES = [
+              (True, {}, "neither field"),
+              (True, {"answer_source": "generated"}, "generated, no reason"),
+              (True, {"answer_source": "retrieval_only",
+                      "answer_source_reason": "generator_unavailable"},
+               "retrieval_only with a reason"),
+              (False, {"answer_source": "retrieval_only"},
+               "retrieval_only with NO reason"),
+              (False, {"answer_source": "generated",
+                       "answer_source_reason": "generator_error"},
+               "generated WITH a reason"),
+              (False, {"answer_source_reason": "generator_error"},
+               "a reason with no source"),
+              # Nothing was generated, so there is no answer to verify.
+              (True, {"answer_source": "retrieval_only",
+                      "answer_source_reason": "generator_unavailable",
+                      "faithfulness": "unchecked"},
+               "retrieval_only, faithfulness unchecked"),
+              (False, {"answer_source": "retrieval_only",
+                       "answer_source_reason": "generator_unavailable",
+                       "faithfulness": "verified"},
+               "retrieval_only claiming a verified answer"),
+              (False, {"answer_source": "retrieval_only",
+                       "answer_source_reason": "generator_unavailable",
+                       "faithfulness": "unsupported"},
+               "retrieval_only claiming a withheld answer"),
+          ]
+
+          for path in SCHEMAS:
+              schema = json.loads(read(path))["output"]
+              allowed = set(schema.get("properties", {}))
+              for should_pass, extra, label in CASES:
+                  instance = {k: v for k, v in BASE.items() if k in allowed}
+                  instance.update(extra)
+                  try:
+                      jsonschema.validate(instance, schema)
+                      passed = True
+                  except jsonschema.ValidationError:
+                      passed = False
+                  if passed != should_pass:
+                      verb = "accepts" if passed else "rejects"
+                      want = "accept" if should_pass else "reject"
+                      print(f"::error file={path}::output schema {verb} "
+                            f"'{label}'; SPEC 9.4.5 says it must {want} it.")
+                      bad += 1
+
+          total = sum(len(v) for v in vocab.values())
+          print(f"answer provenance parity: {len(FIELDS)} field(s) on "
+                f"{len(SCHEMAS)} answer surface(s), {total} enum(s) agreed and "
+                f"described in 9.4.5; {len(CASES)} instance(s) checked per "
+                f"surface")
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: Document-status descriptions match the canonical enum
         run: |
           fail=0

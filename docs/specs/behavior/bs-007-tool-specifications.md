@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.15.0
+- **Version:** 0.16.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -120,8 +120,14 @@ returns retrieval results with `answer: ""` and `citations: []`, and the
 insufficient-evidence rules do not apply to it. `rag.generate_answer: false`
 reaches the same outcome by the same reasoning: a request that asks for
 `mode=answer` against it is SERVED as `search_only`, so it builds no prompt and
-the insufficient-evidence rules do not apply to it either (SPEC.md §9.4). Full
-normative contract: SPEC §9.4.1–§9.4.3. A `Citation` is lean — `chunk_id` + `rel_path` + `span` (df-006); the
+the insufficient-evidence rules do not apply to it either (SPEC.md §9.4).
+Output MAY also carry `answer_source` (`generated | retrieval_only`) with
+`answer_source_reason` (SPEC 9.4.5), which says whether `answer` holds a
+generated answer or retrieved material published in place of one. Absent means
+generated, and it is absent in `search_only`, where no answer is produced. A
+`retrieval_only` answer KEEPS its `citations[]`, because the published text is
+the cited material; this is the opposite of the §9.4.4 withholding rule and for
+the opposite reason. Full normative contract: SPEC §9.4.1–§9.4.5. A `Citation` is lean — `chunk_id` + `rel_path` + `span` (df-006); the
 cited text is resolved via `dir2mcp_open_file` or the matching `hits[]` entry.
 The result `content[]` MUST include a `text` item containing the final answer
 (when `mode=answer` **and** answer generation is enabled) with inline citations.
@@ -447,6 +453,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
   `additionalProperties: false` without it, so a strict client rejected any
   listed document with a title (dirstral-spec#76). Both are additive: a server
   that already followed the reference implementation changes nothing.
+- **0.16.0** — Declared the optional `answer_source` / `answer_source_reason` pair on the three answer surfaces (SPEC 9.4.5, spec 0.70.0; dirstral-spec#117). A generated answer and a published-instead-of-one context dump were indistinguishable in the payload, and two public deployments served dumps for three days before an operator's regex on the fallback's own prose caught it.
 - **0.13.0** — Declared the optional `evidence` verdict: per df-006 `Hit`, and top-level on the `dir2mcp_ask` output (SPEC 9.4.3, spec 0.55.0; dir2mcp #896/#785). One closed vocabulary (`strong | sufficient | insufficient | unknown`); a name, never a raw score, because raw scores are incomparable across retrieval modes (SPEC 9.1.1).
 
 - **0.12.0** — Added the optional `max_bytes` input and the `preview` output to `dir2mcp_open_media_clip`. A clip cut at the source bitrate can be ~22 MB for 8 seconds (dir2mcp #878); `max_bytes` lets the caller bound the clip bytes and the server re-encode to fit, and `preview`'s presence marks the result as a reduced-fidelity re-encode so it is never mistakable for a source cut. Both additive and optional.
