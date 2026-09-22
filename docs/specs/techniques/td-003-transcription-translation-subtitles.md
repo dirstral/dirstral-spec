@@ -563,10 +563,11 @@ transcript exactly as it applies to an unreadable format.
   * `decoded_ms`: the summed length of `ranges`.
   * `duration_ms`: the recording's length, when known (0 when the duration
     probe failed).
-  * `languages` and `refused` (optional): recorded under
-    `media.stt.language_scope: window` (SPEC.md §8.2.2), which also requires the
-    object for a one-window decode when a window was refused. A refused range
-    is never inside `ranges`.
+  * `languages`: **REQUIRED** under `media.stt.language_scope: window`
+    (SPEC.md §8.2.2), absent under `item`. `refused`: present under `window`
+    when a window was refused, absent or empty otherwise. SPEC.md §8.2.2 also
+    requires this object for a one-window decode when a window was refused. A
+    refused range is never inside `ranges`.
 
   A decode that took **one** request records nothing (SPEC.md §8.2.2 excepted): absence is "no assertion"
   (df-003 §5.2), never "complete". Recording the object for a **fully** decoded
@@ -650,7 +651,8 @@ transcript exactly as it applies to an unreadable format.
 
 - **0.6.0**: mirrors spec 0.71.0 (SPEC.md §8.2.2, optional, off by default).
   §8.6.1 gains a fourth chunk-window close rule, a language change; §8.6.13
-  `coverage` gains optional `languages[]` and `refused[]` and is required for a
+  `coverage` gains `languages[]` (required under `window` scope) and
+  `refused[]` (present when a window was refused) and is required for a
   one-window decode when a window was refused; §8.6.6 checks MAY run per window
   with a failing window recorded as a refused range. No change for a corpus on
   the default `language_scope: item`.

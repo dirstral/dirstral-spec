@@ -2327,6 +2327,17 @@ operator's declaration (`stt_languages`) and the operator's route
   misread window from flapping the route. It is deterministic by construction,
   and an implementation MUST NOT use a look-ahead whose result depends on decode
   order or timing.
+* **Unknown language.** When the item-level resolution is **unknown** (§8.8: no
+  pin, no declaration, detection unavailable or below the floor) and a window's
+  own detection is also below the floor, that window has **no language**. It is
+  decoded by the default STT profile, the §8.2.1 floor does not apply to it
+  (absence of a resolved language is not evidence of non-coverage, exactly as
+  §8.2.1 treats an undeclared set), and its `coverage.languages` entry **omits**
+  `language`, `language_source` and `language_confidence` and records
+  `covered: true`. No BCP-47 tag is invented for it. A later window that would
+  inherit from an unknown window is unknown too; a later window that detects a
+  language above the floor starts a new range as usual. The `warn` message
+  names a language only when one is resolved.
 * **Per-window routing.** `media.stt.language_providers` (§8.2.1) is applied
   per window: a window whose resolved language matches a key is decoded by that
   profile; every other window is decoded by the default STT profile. Consecutive
@@ -2343,16 +2354,28 @@ operator's declaration (`stt_languages`) and the operator's route
     whether the item's transcript is persisted. An item whose every window is
     refused produced no transcript and is `status=skipped` with
     `skip_reason="language_uncovered"`, exactly as under §8.2.1.
+  * **All windows refused, mixed reasons.** When no window decoded to persisted
+    text and the refusals carry both reasons, the item is `status=skipped` with
+    `skip_reason="language_uncovered"`: a language refusal is a decision the
+    operator configured and it will recur on every run, so it is the honest
+    thing to report, and `skip` is re-evaluated each run in any case (§8.6.13).
+    Only when **every** refusal is `quality_gate` is the item `status=error`,
+    `TRANSCRIBE_FAILED`, as §8.6.6 has it today. A skipped item produces no
+    transcript representation, so the per-window detail lives in the warning
+    log for that run, not in a `coverage` object.
 * **Recording.** Under `window` the transcript `meta_json` (§5.2) MUST carry
   the following whatever the window count, and the §8.6.13 `coverage` object
   MUST be recorded even for a one-window decode when any window was refused:
   * `coverage.languages`: an array of `{start_ms, end_ms, language,
     language_source, language_confidence?, route, covered}` in **absolute**
     recording time, **coalesced** over adjacent windows whose `(language,
-    route, covered)` are identical, **non-overlapping**, in **ascending**
-    `start_ms` order. `route` names the STT provider profile that decoded the
-    range. `language_confidence` is the minimum over the coalesced windows when
-    the source is `detected`, and absent otherwise.
+    language_source, route, covered)` are identical, **non-overlapping**, in
+    **ascending** `start_ms` order, so an inherited stretch is always its own
+    entry and nothing about which windows were inherited is lost. `route` names
+    the STT provider profile that decoded the range. `language_confidence` is
+    the minimum over the coalesced windows when the source is `detected`, and
+    absent otherwise. `inherited` appears only here; it is never a
+    representation-level `language_source` (§5.2).
   * `coverage.refused`: an array of `{start_ms, end_ms, reason}` for windows
     that were not decoded **by decision**, `reason` one of `language_uncovered`
     or `quality_gate` (§8.6.6). Absent or empty when nothing was refused. A
@@ -2360,11 +2383,14 @@ operator's declaration (`stt_languages`) and the operator's route
     a transport or provider reason is a failed window (§8.6.13), not a refused
     one.
   * The representation-level `language` (§5.2, §8.8) is the language with the
-    largest summed duration among **covered** ranges, with
-    `language_source: detected`; a tie breaks to the earliest `start_ms`. When
-    no range is covered the item-level resolution stands. The §8.2.1
-    `covered` fact on the transcript is `true` only when every decoded range is
-    covered.
+    largest summed duration among **covered** ranges; a tie breaks to the
+    earliest `start_ms`. Its `language_source` is the §8.8 signal that resolved
+    that language (`configured`, `declared` or `detected`), never `inherited`;
+    a pin or declaration applies to every window, so under either of those the
+    representation language is the asserted one. When no range is covered, or
+    every covered range is of unknown language, the item-level resolution
+    stands. The §8.2.1 `covered` fact on the transcript is `true` only when
+    every decoded range is covered.
   * Every transcript **segment span** (§8.6.1) whose language differs from the
     representation `language` MUST record `language` in its `extra_json`; a
     span that records none has the representation's language. This is what lets
@@ -3116,10 +3142,11 @@ transcript exactly as it applies to an unreadable format.
   * `decoded_ms`: the summed length of `ranges`.
   * `duration_ms`: the recording's length, when known (0 when the duration
     probe failed).
-  * `languages` and `refused` (optional): recorded under
-    `media.stt.language_scope: window` (§8.2.2), which also requires the object
-    for a one-window decode when a window was refused. A refused range is never
-    inside `ranges`.
+  * `languages`: **REQUIRED** under `media.stt.language_scope: window`
+    (§8.2.2), absent under `item`. `refused`: present under `window` when a
+    window was refused, absent or empty otherwise. §8.2.2 also requires this
+    object for a one-window decode when a window was refused. A refused range is
+    never inside `ranges`.
 
   A decode that took **one** request records nothing (§8.2.2 excepted): absence is "no assertion"
   (§5.2), never "complete". Recording the object for a **fully** decoded
