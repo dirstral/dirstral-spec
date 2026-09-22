@@ -2321,23 +2321,28 @@ operator's declaration (`stt_languages`) and the operator's route
   `[0,1]` when it can.
 * **Confidence floor and continuity.** A window whose detection falls below the
   implementation's confidence floor (§8.8), or returns no language, **inherits
-  the language of the preceding window**; the first window inherits the
-  item-level resolution of §8.2.1. Inheritance is recorded as
-  `language_source: inherited` for that window. This is the rule that keeps one
-  misread window from flapping the route. It is deterministic by construction,
-  and an implementation MUST NOT use a look-ahead whose result depends on decode
-  order or timing.
-* **Unknown language.** When the item-level resolution is **unknown** (§8.8: no
-  pin, no declaration, detection unavailable or below the floor) and a window's
-  own detection is also below the floor, that window has **no language**. It is
-  decoded by the default STT profile, the §8.2.1 floor does not apply to it
-  (absence of a resolved language is not evidence of non-coverage, exactly as
-  §8.2.1 treats an undeclared set), and its `coverage.languages` entry **omits**
-  `language`, `language_source` and `language_confidence` and records
-  `covered: true`. No BCP-47 tag is invented for it. A later window that would
-  inherit from an unknown window is unknown too; a later window that detects a
-  language above the floor starts a new range as usual. The `warn` message
-  names a language only when one is resolved.
+  the language of the preceding window** whenever that window has one; the
+  first window inherits the item-level resolution of §8.2.1 when that
+  resolution is known. Inheritance is recorded as `language_source: inherited`
+  for that window. This is the rule that keeps one misread window from flapping
+  the route, and it applies **before** the unknown-language rule below: once any
+  window has resolved a language, every following window below the floor
+  inherits it, until a window detects a language above the floor and starts a
+  new range. It is deterministic by construction, and an implementation MUST
+  NOT use a look-ahead whose result depends on decode order or timing.
+* **Unknown language.** A window whose detection is below the floor and that has
+  **nothing to inherit** has **no language**. That is exactly two cases: the
+  first window when the item-level resolution is **unknown** (§8.8: no pin, no
+  declaration, detection unavailable or below the floor), and a window whose
+  preceding window is itself unknown. Such a window is decoded by the default
+  STT profile, the §8.2.1 floor does not apply to it (absence of a resolved
+  language is not evidence of non-coverage, exactly as §8.2.1 treats an
+  undeclared set), and its `coverage.languages` entry **omits** `language`,
+  `language_source` and `language_confidence` and records `covered: true`. No
+  language is guessed for it in `coverage.languages`. A later window that
+  detects a language above the floor starts a new range as usual, and the
+  windows after it inherit under the continuity rule. The `warn` message names
+  a language only when one is resolved.
 * **Per-window routing.** `media.stt.language_providers` (§8.2.1) is applied
   per window: a window whose resolved language matches a key is decoded by that
   profile; every other window is decoded by the default STT profile. Consecutive
@@ -2395,6 +2400,15 @@ operator's declaration (`stt_languages`) and the operator's route
     representation `language` MUST record `language` in its `extra_json`; a
     span that records none has the representation's language. This is what lets
     a chunk, a citation and the §9.5 filter see the minority language.
+  * A span decoded in a window of **unknown language** MUST record
+    `language: "und"` (the BCP-47 undetermined tag, not a guess) in its
+    `extra_json` whenever the representation has a language, so it is never
+    read as being in that language. When the representation language is
+    unknown too, nothing is recorded: there is nothing to misread. `und` is the
+    chunk's language exactly as any other value is (below), so a chunk built
+    from such spans records `und`, and a specific §9.5 language filter never
+    matches it (§9.5 "Unknown / absent language"); an implementation that
+    offers the §9.5 `und` sentinel matches it on these chunks.
 * **Chunk windows close at a language change.** The §8.6.1 merge rules gain a
   fourth: a chunk window closes when the next segment's language differs from
   the current window's. A chunk therefore has one language, and the segment
