@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.70.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.71.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2286,6 +2286,117 @@ behavior — attempt any language).
   non-coverage. A `dir2mcp_stats` per-language coverage aggregate remains a planned
   additive extension.
 
+  Resolution, routing and this floor are evaluated **once per item**. Their
+  per-window form, for recordings that change language inside themselves, is
+  §8.2.2 (optional, off by default).
+
+#### 8.2.2 Per-window language identification and routing (optional)
+
+§8.2.1 resolves **one** source language per item and routes the whole item on
+it. A recording that changes language inside itself (an interview conducted in
+Russian with answers in Ukrainian; a Kyrgyz bulletin with Russian inserts) is
+then decoded by one model under one language for its whole length. A decoder
+committed to the wrong language does not fail: it emits the nearest
+in-vocabulary language, so the minority passages come out in the wrong script or
+are dropped, and the §8.2.1 floor cannot see it because the item's resolved
+language IS covered. This subsection makes resolution, routing and honest
+coverage available **per decode window** (§8.6.13). It is **optional**, **off by
+default**, and **domain-general**: no built-in language list ships, no model is
+trained or adapted, and which model covers which language remains the
+operator's declaration (`stt_languages`) and the operator's route
+(`language_providers`).
+
+* **Scope.** `media.stt.language_scope` is `item | window`, default `item`.
+  `item` is §8.2.1 unchanged. `window` applies the rules below to each decode
+  window of §8.6.13; a recording that fits one request is one window, so the
+  two scopes coincide for it. Any other value is `CONFIG_INVALID`.
+* **Per-window resolution.** Under `window`, the source language is resolved
+  per window with the §8.8 precedence. An operator pin (`configured`) or a
+  source declaration (`declared`) applies to every window and disables
+  detection, exactly as it does for the item today: the scope adds nothing when
+  the language is asserted. Otherwise the language is `detected` per window. The
+  detector is implementation-defined (the STT model's own language
+  identification on the window, or an external identifier on a probe decode). It
+  MUST be deterministic for identical audio and MUST report a confidence in
+  `[0,1]` when it can.
+* **Confidence floor and continuity.** A window whose detection falls below the
+  implementation's confidence floor (§8.8), or returns no language, **inherits
+  the language of the preceding window**; the first window inherits the
+  item-level resolution of §8.2.1. Inheritance is recorded as
+  `language_source: inherited` for that window. This is the rule that keeps one
+  misread window from flapping the route. It is deterministic by construction,
+  and an implementation MUST NOT use a look-ahead whose result depends on decode
+  order or timing.
+* **Per-window routing.** `media.stt.language_providers` (§8.2.1) is applied
+  per window: a window whose resolved language matches a key is decoded by that
+  profile; every other window is decoded by the default STT profile. Consecutive
+  windows on the same route MAY be decoded in one request when the provider
+  accepts the combined length; the merge rules of §8.6.13 are unchanged.
+* **Honest-coverage floor per window.** The §8.2.1 floor is evaluated per window
+  against the profile that decodes that window, and
+  `media.stt.on_uncovered_language` governs the response per window:
+  * `warn`: decode the window and record `covered: false` for it (below), with
+    a warning that names the range and the language.
+  * `skip`: **do not decode** the window. It is recorded as a **refused range**
+    (below) with `reason: language_uncovered`, and it counts as not decoded for
+    §8.6.13, so `media.stt.min_coverage` and `on_partial_transcript` govern
+    whether the item's transcript is persisted. An item whose every window is
+    refused produced no transcript and is `status=skipped` with
+    `skip_reason="language_uncovered"`, exactly as under §8.2.1.
+* **Recording.** Under `window` the transcript `meta_json` (§5.2) MUST carry
+  the following whatever the window count, and the §8.6.13 `coverage` object
+  MUST be recorded even for a one-window decode when any window was refused:
+  * `coverage.languages`: an array of `{start_ms, end_ms, language,
+    language_source, language_confidence?, route, covered}` in **absolute**
+    recording time, **coalesced** over adjacent windows whose `(language,
+    route, covered)` are identical, **non-overlapping**, in **ascending**
+    `start_ms` order. `route` names the STT provider profile that decoded the
+    range. `language_confidence` is the minimum over the coalesced windows when
+    the source is `detected`, and absent otherwise.
+  * `coverage.refused`: an array of `{start_ms, end_ms, reason}` for windows
+    that were not decoded **by decision**, `reason` one of `language_uncovered`
+    or `quality_gate` (§8.6.6). Absent or empty when nothing was refused. A
+    refused range is never inside `coverage.ranges`; a window that failed for
+    a transport or provider reason is a failed window (§8.6.13), not a refused
+    one.
+  * The representation-level `language` (§5.2, §8.8) is the language with the
+    largest summed duration among **covered** ranges, with
+    `language_source: detected`; a tie breaks to the earliest `start_ms`. When
+    no range is covered the item-level resolution stands. The §8.2.1
+    `covered` fact on the transcript is `true` only when every decoded range is
+    covered.
+  * Every transcript **segment span** (§8.6.1) whose language differs from the
+    representation `language` MUST record `language` in its `extra_json`; a
+    span that records none has the representation's language. This is what lets
+    a chunk, a citation and the §9.5 filter see the minority language.
+* **Chunk windows close at a language change.** The §8.6.1 merge rules gain a
+  fourth: a chunk window closes when the next segment's language differs from
+  the current window's. A chunk therefore has one language, and the segment
+  `language` above is also the chunk's. An implementation MAY match the §9.5
+  per-language filter on a chunk's recorded language in preference to the
+  representation's; it MUST NOT match a chunk on a language its text is not in.
+* **Answer language.** An implementation that derives the language of a
+  generated answer from the cited material (`${rag.answer_language_rule}`,
+  §16.1.2) SHOULD use the cited chunks' recorded language where present, so a
+  question about a Ukrainian passage inside a Russian recording is answered in
+  the language the passage is in, or in the language the operator's rule names.
+* **Quality gate per window.** Under `window` the §8.6.6 degenerate-output
+  checks MAY run per decoded window. A window that fails is a refused range with
+  `reason: quality_gate`, and the item stays `status=ok` when at least one
+  window passed. When every window fails, the document is `status=error`,
+  `TRANSCRIBE_FAILED`, as today. The per-window checks MUST be deterministic and
+  MUST use the window's resolved language, not the representation's, for the
+  language-mismatch check.
+* **Derivation identity.** `language_scope` and the `language_providers` map
+  are part of the transcript's derivation identity (§8.6.7): they change which
+  model decodes which audio and therefore the text. A transcript cached under
+  `item` MUST NOT be served to a corpus configured `window`, nor the reverse.
+* **Observability.** The honest-coverage report (§7.7, bs-002) SHOULD count
+  transcripts with a non-empty `coverage.refused` and the summed refused length,
+  qualified the same way as the partial-coverage figures. The
+  `dir2mcp_stats` per-language coverage aggregate named in §8.2.1 remains a
+  planned additive extension; `coverage.languages` is the record it would sum.
+
 ### 8.3 Note on TTS
 
 * TTS is optional and not required for core retrieval/inspection functionality.
@@ -2609,6 +2720,10 @@ stable across re-indexing.
   * **low density vs. duration** (far too little text for the media length).
   * Implementations **SHOULD** additionally flag a **detected language ≠ pinned
     language** mismatch.
+  * Under `media.stt.language_scope: window` (§8.2.2) the checks MAY run per
+    decoded window; a failing window is recorded as a refused range
+    (`reason: quality_gate`) and the document fails only when every window
+    fails.
 * A failed gate is a **non-fatal per-document error** (§7.7): the document is
   marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (§14.4) — and indexing continues.
@@ -3001,8 +3116,12 @@ transcript exactly as it applies to an unreadable format.
   * `decoded_ms`: the summed length of `ranges`.
   * `duration_ms`: the recording's length, when known (0 when the duration
     probe failed).
+  * `languages` and `refused` (optional): recorded under
+    `media.stt.language_scope: window` (§8.2.2), which also requires the object
+    for a one-window decode when a window was refused. A refused range is never
+    inside `ranges`.
 
-  A decode that took **one** request records nothing: absence is "no assertion"
+  A decode that took **one** request records nothing (§8.2.2 excepted): absence is "no assertion"
   (§5.2), never "complete". Recording the object for a **fully** decoded
   multi-window transcript is REQUIRED, not optional. `windows_decoded ==
   windows_attempted` with one full-length range is a positive statement of
@@ -5437,6 +5556,10 @@ media:
     language_providers: {}    # NO default; map BCP-47 lang => STT provider profile name
                               #   (e.g. route a language the default model covers poorly
                               #    to one that covers it). Empty => single-provider behavior.
+    language_scope: item      # item|window (§8.2.2): item (default) resolves and routes one
+                              #   language per recording; window does it per decode window,
+                              #   so a recording that changes language inside itself is
+                              #   decoded per passage, with coverage.languages/refused recorded.
     on_uncovered_language: warn  # warn|skip: response when the source language is outside
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;

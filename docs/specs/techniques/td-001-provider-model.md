@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -420,6 +420,21 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional
   `stt_language` apply as for other providers.
 
+#### 8.2.2 Per-window language identification and routing (optional)
+
+SPEC.md §8.2.1 resolves one source language per item and routes the whole item
+on it, which decodes a recording that changes language inside itself under one
+language for its whole length. SPEC.md §8.2.2 (0.71.0) makes resolution,
+`language_providers` routing and the honest-coverage floor available per
+decode window (td-003 §8.6.13) behind `media.stt.language_scope: item | window`
+(default `item`). A low-confidence window inherits the preceding window's
+language (`language_source: inherited`); `on_uncovered_language: skip` refuses a
+window rather than the item; the transcript records `coverage.languages[]` and
+`coverage.refused[]`; a segment in another language records `language` in its
+span `extra_json`; a chunk window closes at a language change. No language list
+ships and no model is trained. Until this document is Stable, SPEC.md §8.2.2 is
+the authoritative text.
+
 ### 8.3 Note on TTS
 
 * TTS is optional and not required for core retrieval/inspection functionality.
@@ -541,6 +556,9 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.7.0**: §8.2.2 added (spec 0.71.0): per-window language identification and
+  routing, optional and off by default (`media.stt.language_scope`). Pointer to
+  the authoritative SPEC.md text; the recording shape lives in td-003 §8.6.13.
 - **0.6.0** — §8.1.1/§8.1.2: added the `tei` kind (self-hosted Hugging Face Text
   Embeddings Inference on its native surface; embed only; credential-optional),
   the first kind that exposes token-level embeddings. §8.1.9 (new): the
