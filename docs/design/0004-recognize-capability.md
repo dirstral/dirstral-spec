@@ -11,7 +11,7 @@ note's earlier annotation-sidecar draft)
 Add **`recognize`** as an optional per-corpus **capability binding**: during
 ingest, dir2mcp runs a recognition backend over media files and persists the
 result as a **derived annotation representation** — human-readable,
-time-ranged statements about content ("Pitch: Logan Webb to Freddie Freeman,
+time-ranged statements about content ("Pitch: Casey Nguyen to Riley Park,
 00:42:10–00:42:31"), indexed like any text and cited with `time` spans.
 
 This is the same architectural class as `ocr` and `stt`: a capability slot
@@ -124,15 +124,15 @@ response is the **recognize response** JSON, schema alongside this note at
 {
   "recognizer": {"name": "dirstral-annotator", "version": "0.2.0"},
   "entities": [
-    {"id": "player:webb-logan", "label": "Logan Webb", "aliases": ["Webb", "#62"]}
+    {"id": "player:nguyen-casey", "label": "Casey Nguyen", "aliases": ["Nguyen", "#62"]}
   ],
   "annotations": [
     {
       "start_s": 2530.0,
       "end_s": 2551.0,
       "event": "pitch",
-      "entities": ["player:webb-logan"],
-      "text": "Pitch: Logan Webb to Freddie Freeman — fly out",
+      "entities": ["player:nguyen-casey"],
+      "text": "Pitch: Casey Nguyen to Riley Park — fly out",
       "confidence": 0.97,
       "sources": ["scorebug", "face"]
     }
@@ -158,6 +158,10 @@ and (b) participates in more than one **role**. §6.1 records the measurement;
 
 ### 6.1 Measured limit of text-only entity matching (pilot, 2026-08)
 
+Club and player names in this section are replaced by roles (Home Club, Away
+Club) and fictional players; the queries were run with the real names and every
+count is as measured.
+
 Design 0004 deferred entity-aware filters "until text matching over canonical
 labels proves insufficient" (§8). This section records the run that met that
 condition, so the promotion in §7 rests on evidence rather than preference.
@@ -182,8 +186,8 @@ in full for each.
    *scored* = those plus `scores`.
 
 Both conditions are needed. Scoring the club alone measures **attribution**,
-not the query: a Nationals ground-out counts as a correct answer to
-"Nationals home run" because the club matches. The distinction is not
+not the query: an Away Club ground-out counts as a correct answer to
+"Away Club home run" because the club matches. The distinction is not
 academic here, and it is reported below.
 
 **Variants.** The same annotations with the club written into the text three
@@ -191,20 +195,20 @@ ways:
 
 | variant | annotation text |
 |---|---|
-| A: club omitted (shipped) | `Pitch: Robbie Ray to Dylan Crews` |
-| B: club appended to each name | `Pitch: Robbie Ray (San Francisco Giants) to Dylan Crews (Washington Nationals)` |
-| C: club and role appended | `Pitch: Robbie Ray (pitching for San Francisco Giants) to Dylan Crews (batting for Washington Nationals)` |
+| A: club omitted (shipped) | `Pitch: Jordan Lee to Alex Moreno` |
+| B: club appended to each name | `Pitch: Jordan Lee (Home Club) to Alex Moreno (Away Club)` |
+| C: club and role appended | `Pitch: Jordan Lee (pitching for Home Club) to Alex Moreno (batting for Away Club)` |
 
 **Per-query results** (correct / hits returned, at `k = 5`):
 
 | query | A | B | C |
 |---|---|---|---|
-| "When did the Giants score" | 3/4 | 2/4 | 2/4 |
-| "Giants home run" | 3/4 | **0/4** | **0/4** |
-| "Giants get a hit" | 2/4 | 2/3 | 2/4 |
-| "When did the Nationals score" | 2/4 | 2/4 | 1/4 |
-| "Nationals home run" | 1/4 | 1/4 | 0/3 |
-| "Nationals get a hit" | 3/4 | 4/4 | 3/4 |
+| "When did the Home Club score" | 3/4 | 2/4 | 2/4 |
+| "Home Club home run" | 3/4 | **0/4** | **0/4** |
+| "Home Club get a hit" | 2/4 | 2/3 | 2/4 |
+| "When did the Away Club score" | 2/4 | 2/4 | 1/4 |
+| "Away Club home run" | 1/4 | 1/4 | 0/3 |
+| "Away Club get a hit" | 3/4 | 4/4 | 3/4 |
 | **precision** | **58.3%** | **47.8%** | **34.8%** |
 | precision, club only | 58.3% | 65.2% | 47.8% |
 
@@ -213,14 +217,14 @@ ways:
 
 The last row is kept deliberately. Scored on club attribution alone, variant B
 appears to *improve* on the shipped text (58.3% to 65.2%), and that reading is
-an artefact of the weaker rule. "Nationals home run" scores a perfect 4/4 on
+an artefact of the weaker rule. "Away Club home run" scores a perfect 4/4 on
 club attribution while only **one** of those four annotations is a home run,
 and that query alone contributes three of the four hits separating the two
 rows for variant B. An implementer measuring attribution instead of the query
 would conclude the opposite of the truth.
 
-The clearest single case is "Giants home run": three correct hits with no club
-in the text, **zero** with it, and the top results become a Giants **pitcher**
+The clearest single case is "Home Club home run": three correct hits with no club
+in the text, **zero** with it, and the top results become a Home Club **pitcher**
 throwing balls and fouls. Adding the label moved the query's mass onto the
 club token, which every annotation carries in **both** roles, and the words
 that identified the event stopped deciding the ranking. Marking the role in
@@ -272,8 +276,8 @@ where the result comes from. An implementation that persists entity ids but not
 `event` would land on the middle row and reasonably conclude the whole approach
 was not worth it.
 
-**Residual, and its cause.** One query, "Nationals home run", scores 1/4 in
-every row including the best. The corpus contains exactly **one** Nationals home
+**Residual, and its cause.** One query, "Away Club home run", scores 1/4 in
+every row including the best. The corpus contains exactly **one** Away Club home
 run, so 1 correct hit out of the 4 returned is the ceiling, and the filter finds
 it. Excluding that data-bounded query the role-exact selection is 18/19
 (94.7%). It is left in the table because removing an inconvenient query is how
@@ -361,7 +365,7 @@ loop:
   already defines, so no new vocabulary is introduced here. Whether an entity
   additionally carries its **role** in an annotation (this id was the pitcher,
   that one the batter) is the one genuinely open question the measurement
-  raises: without a role, "Giants batting" and "Giants pitching" remain
+  raises: without a role, "Home Club batting" and "Home Club pitching" remain
   indistinguishable to the filter exactly as they were to text matching.
 
   The v1 shape cannot express a role **within** an annotation: `entities` is
