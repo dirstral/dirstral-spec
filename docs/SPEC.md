@@ -2507,10 +2507,14 @@ no model is trained or adapted, and every model choice stays the operator's.
   `language_identifier` (the profile name) on its `meta_json` (§5.2). Nothing
   else in the §8.2.2 record changes: `route` already names the decoding
   candidate.
-* **Derivation identity.** The identifier binding, the candidate lists and, when
-  `require_validation` is `true`, the eligibility they resolve to are part of
-  the transcript's derivation identity (§8.6.7): each changes which model decodes
-  which audio. The informational validation fields are not.
+* **Derivation identity.** The identifier binding, the effective probe length
+  when an identifier is bound (`language_probe_sec`), the candidate lists and,
+  when `require_validation` is `true`, the eligibility they resolve to are part
+  of the transcript's derivation identity (§8.6.7): each changes which language
+  a window resolves to or which model decodes it. The probe matters on its own:
+  a different slice can resolve one window to another language and route while
+  the representation language stays the same. The informational validation
+  fields are not part of the identity.
 
 ### 8.3 Note on TTS
 
