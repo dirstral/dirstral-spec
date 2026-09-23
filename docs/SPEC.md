@@ -2474,7 +2474,9 @@ no model is trained or adapted, and every model choice stays the operator's.
 * **Candidate routes.** A `media.stt.language_providers` value MAY be an
   **ordered list** of STT-capable profile names instead of one name. Each name is
   validated as in §8.2.1. A single name is a one-element list, so every existing
-  configuration keeps its meaning.
+  configuration keeps its meaning. An empty list is `CONFIG_INVALID` (static
+  validation): a route with no candidate is a configuration error, not a
+  request for the default profile, which an absent key already expresses.
   * **Under `item`,** the first eligible candidate (below) decodes the item.
     The list adds nothing else under `item`.
   * **Under `window`,** a window whose resolved language matches the key is
