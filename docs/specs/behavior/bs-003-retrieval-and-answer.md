@@ -1,7 +1,7 @@
 # bs-003: Retrieval and answer generation
 
 - **ID:** bs-003
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -25,8 +25,10 @@ generation are [bs-008](bs-008-vector-index.md).
 At query time:
 
 - `index=auto`:
-  - default to `text`
   - choose `code` if the query is code-oriented (heuristic) or filters target code
+  - otherwise search **both** axes and fuse them when the corpus holds text and
+    code chunks; `text` for a text-only corpus, `code` for a code-only one
+    (SPEC.md §9.1, 0.73.0)
 - `index=both`:
   - query both indices and fuse results
   - normalization: per-index score normalization, then merge
@@ -218,6 +220,7 @@ migration and no breaking change.
 
 ## Changelog
 
+- **0.3.0**: mirrors spec 0.73.0 (SPEC.md §9.1): under `index=auto` a query that is not code-oriented searches both axes on a corpus holding text and code chunks.
 - **0.2.0** — Per-language retrieval filter: added the OPTIONAL `language_match`
   mode (`"primary"` default / `"strict"` opt-in). `"strict"` selects BCP-47 Basic
   Filtering (RFC 4647 §3.3.1) so region/script/variant subtags narrow the match

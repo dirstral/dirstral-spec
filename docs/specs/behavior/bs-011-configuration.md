@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.7.0
+- **Version:** 0.8.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -352,6 +352,8 @@ security:
     - "**/node_modules/**"
     - "**/.dir2mcp/**"
     - "**/.env"
+    - "**/.env.local"
+    - "**/.dir2mcp.yaml"
     - "**/*.pem"
     - "**/*.key"
     - "**/id_rsa"
@@ -370,6 +372,7 @@ security:
 
 ## Changelog
 
+- **0.8.0**: mirrors spec 0.73.0 (SPEC.md §7.2): the `security.path_excludes` example lists `**/.env.local` and `**/.dir2mcp.yaml`, so a copied configuration keeps the server's own config and dotenv files out of the index.
 - **0.7.0** — rag: added §16.1.2, prompt rule references. `rag.system_prompt` may
   write `${rag.answer_language_rule}` or `${rag.citation_rule}` in place of a copy
   of the shipped rule. The server expands them on the way to the model, never
