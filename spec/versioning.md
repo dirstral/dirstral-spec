@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.71.0`
+**Current spec version:** `0.72.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,17 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.72.0: language identifier and candidate routes (optional)
+
+New **optional**, off-by-default STT controls; additive, so every existing deployment is unchanged (`MINOR` per the pre-1.0 policy).
+
+- §8.2.3 **Language identifier**: `media.stt.language_identifier` names an STT-capable profile used only for the language it reports. Precedence: configured, declared, identifier, the decoder's own report, text detection. A report below the floor, empty or failed is no signal and never fails the item. `media.stt.language_probe_sec` (default 30) bounds the audio sent.
+- **Candidate routes**: a `language_providers` value may be an ordered list. Under `window`, a refused window falls through to the next candidate; `route` records the one whose text was kept; the window is refused only when every candidate refused it. A single name keeps its meaning.
+- **Validation records**: a profile may declare `stt_validation` records (`{language, method, sample, score, date}`, informational apart from `language`). `media.stt.require_validation: true` makes a candidate eligible only with a record for the language.
+- `language_identifier` is recorded on the transcript `meta_json`. The identifier, the candidate lists and, under `require_validation`, the resolved eligibility join the transcript derivation identity (§8.6.7).
+- Motivation: the RFE validation corpus (2026-09-22) showed a Whisper-class decoder reporting Kyrgyz recordings as Macedonian or Turkmen at confidence 1.0, so §8.2.2 routing on the decoder's own report cannot reach a Kyrgyz route; and dir2mcp #566 measured one public Kyrgyz fine-tune collapsing on in-domain audio. Implementation: dir2mcp #1031 (WBSO P3 milestone).
+- No new tool, tool-schema field, capability cell or error code. `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged; no model is trained or shipped.
 
 ## 0.71.0: per-window language identification and routing (optional)
 

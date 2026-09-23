@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.7.0
+- **Version:** 0.8.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -435,6 +435,16 @@ span `extra_json`; a chunk window closes at a language change. No language list
 ships and no model is trained. Until this document is Stable, SPEC.md §8.2.2 is
 the authoritative text.
 
+#### 8.2.3 Language identifier and candidate routes (optional)
+
+SPEC.md §8.2.3 (0.72.0) adds `media.stt.language_identifier`, an STT-capable
+profile used only for the language it reports, which outranks a decoder's own
+report; ordered-list values for `language_providers`, where under `window` a
+refused window falls through to the next candidate; and `stt_validation`
+records on a profile, enforced by `media.stt.require_validation`. No capability
+cell is added: the identifier binds through `stt`. Until this document is
+Stable, SPEC.md §8.2.3 is the authoritative text.
+
 ### 8.3 Note on TTS
 
 * TTS is optional and not required for core retrieval/inspection functionality.
@@ -556,6 +566,9 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.8.0**: §8.2.3 added (spec 0.72.0): language identifier binding, candidate
+  route lists and validation records, optional and off by default. Pointer to the
+  authoritative SPEC.md text.
 - **0.7.0**: §8.2.2 added (spec 0.71.0): per-window language identification and
   routing, optional and off by default (`media.stt.language_scope`). Pointer to
   the authoritative SPEC.md text; the recording shape lives in td-003 §8.6.13.

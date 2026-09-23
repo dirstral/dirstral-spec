@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.71.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.72.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2436,6 +2436,79 @@ operator's declaration (`stt_languages`) and the operator's route
   qualified the same way as the partial-coverage figures. The
   `dir2mcp_stats` per-language coverage aggregate named in §8.2.1 remains a
   planned additive extension; `coverage.languages` is the record it would sum.
+
+#### 8.2.3 Language identifier and candidate routes (optional)
+
+A decoder's own language report is not calibrated for a language it covers
+badly. It reports the nearest language it knows, often with full confidence,
+and §8.2.2 routes on that report. (Measured on a Kyrgyz interview corpus in
+2026-09: a Whisper-class decoder reported Macedonian or Turkmen at confidence
+1.0 on every Kyrgyz recording.) This subsection adds two optional, additive
+controls, off by default. Both are **domain-general**: no language list ships,
+no model is trained or adapted, and every model choice stays the operator's.
+
+* **Language identifier.** `media.stt.language_identifier` names an
+  **STT-capable provider profile** (§8.1.2) that is used **only** to identify the
+  language: the implementation sends it the audio being resolved (the item, or
+  under `window` the window) and reads the language and confidence it reports;
+  its text is discarded and never reaches the transcript. A dedicated
+  language-identification model behind an STT-compatible endpoint is the
+  intended use. Unset (default) is §8.2.1 and §8.2.2 unchanged. A name that is
+  absent or not STT-capable is `CONFIG_INVALID` (static validation).
+  * **Precedence.** When bound, the identifier's report is the `detected`
+    signal of §8.8 and outranks the decoding route's own report and any text
+    detector: `configured`, then `declared`, then the identifier, then the
+    decoder's report, then text detection. A pin or declaration still disables
+    detection entirely.
+  * **Below the floor or empty.** An identifier report below the
+    implementation's confidence floor, or with no language, is **no signal**:
+    resolution continues down the precedence (decoder report, then text), and
+    under `window` the §8.2.2 continuity rule applies to what remains.
+  * **Failure.** An identifier request that fails (transport or provider error)
+    is no signal for that item or window, exactly as a report below the floor.
+    It MUST NOT fail the item: identification is advisory.
+  * **Cost.** An implementation MAY send the identifier a bounded probe of the
+    audio instead of all of it (a prefix or a centred slice of at most
+    `media.stt.language_probe_sec`, default 30). The probe choice MUST be
+    deterministic for identical audio.
+* **Candidate routes.** A `media.stt.language_providers` value MAY be an
+  **ordered list** of STT-capable profile names instead of one name. Each name is
+  validated as in §8.2.1. A single name is a one-element list, so every existing
+  configuration keeps its meaning.
+  * **Under `item`,** the first eligible candidate (below) decodes the item.
+    The list adds nothing else under `item`.
+  * **Under `window`,** a window whose resolved language matches the key is
+    decoded by the first eligible candidate. When that candidate's window is
+    **refused** (§8.2.2: `language_uncovered` under `skip`, or `quality_gate`),
+    the next eligible candidate decodes the same window, and so on. The window's
+    `coverage.languages` entry records as `route` the candidate whose text was
+    kept. The window is refused only when every eligible candidate refused it,
+    with the reason of the last refusal. A window therefore costs at most one
+    decode per candidate. A transport or provider failure of a candidate is a
+    failed window under §8.6.13, not a refusal, and does not advance the list.
+* **Validation records.** A provider profile MAY declare `stt_validation`, a
+  list of `{language, method, sample, score, date}` records: the operator's own
+  measurement that this profile transcribes that language acceptably (for
+  example a cross-model agreement score on in-domain clips). The fields other
+  than `language` are informational: an implementation MUST NOT interpret
+  `method` or `score`, and MUST surface them unchanged where it reports routes.
+  * `media.stt.require_validation` (`false | true`, default `false`). When
+    `true`, a candidate is **eligible** for a language only when its profile
+    carries a validation record for that language; an ineligible candidate is
+    skipped with a startup warning naming it. A language whose list has no
+    eligible candidate falls back to the default STT profile, as an unmatched
+    language does in §8.2.1. When `false`, every candidate is eligible.
+  * This is the control that lets an operator record, for instance, that a
+    fine-tuned checkpoint collapsed on in-domain audio, and keep it out of the
+    route without deleting its profile.
+* **Recording.** A transcript decoded with an identifier bound records
+  `language_identifier` (the profile name) on its `meta_json` (§5.2). Nothing
+  else in the §8.2.2 record changes: `route` already names the decoding
+  candidate.
+* **Derivation identity.** The identifier binding, the candidate lists and, when
+  `require_validation` is `true`, the eligibility they resolve to are part of
+  the transcript's derivation identity (§8.6.7): each changes which model decodes
+  which audio. The informational validation fields are not.
 
 ### 8.3 Note on TTS
 
@@ -5578,6 +5651,7 @@ stt:
     model: voxtral-mini-latest
     timestamps: true
     # stt_languages: [ru, en]  # optional declared coverage (BCP-47); omit or [] => open/unknown (§8.2.1)
+    # stt_validation: []    # optional operator measurements: [{language, method, sample, score, date}] (§8.2.3)
   elevenlabs:
     api_key: ${ELEVENLABS_API_KEY}
     model: scribe_v1
@@ -5601,6 +5675,13 @@ media:
                               #   language per recording; window does it per decode window,
                               #   so a recording that changes language inside itself is
                               #   decoded per passage, with coverage.languages/refused recorded.
+    # language_identifier: ""  # optional STT-capable profile used ONLY to identify the language
+                              #   (§8.2.3); outranks the decoder's own report. Unset => §8.2.2.
+    # language_probe_sec: 30   # at most this much audio is sent to the identifier (§8.2.3)
+    # require_validation: false  # true => a language_providers candidate is eligible only when
+                              #   its profile declares stt_validation for that language (§8.2.3).
+                              # language_providers values may also be ordered lists; under
+                              #   window a refused window falls through to the next candidate.
     on_uncovered_language: warn  # warn|skip: response when the source language is outside
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;
