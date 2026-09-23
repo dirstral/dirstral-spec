@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.5.1
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -70,7 +70,10 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
     `transcript_chunk_gap_sec`, so a window does not span a pause;
   * a window closes at a **speaker change** (§8.6.8), which is already a chunk
     boundary. A window that crossed one would attribute a chunk to a speaker who
-    did not say half of it.
+    did not say half of it;
+  * a window closes at a **language change** (SPEC.md §8.2.2, under
+    `media.stt.language_scope: window`): a chunk has one language, so the
+    segment's recorded `language` is also the chunk's.
 
   The window's span keeps the **first segment's `start_ms` and the last
   segment's `end_ms`**, and the window's `text` is the member segments' text
@@ -273,6 +276,9 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   * **low density vs. duration** (far too little text for the media length).
   * Implementations **SHOULD** additionally flag a **detected language ≠ pinned
     language** mismatch.
+  * Under `media.stt.language_scope: window` (SPEC.md §8.2.2) the checks MAY run
+    per decoded window; a failing window is a refused range
+    (`reason: quality_gate`) and the document fails only when every window fails.
 * A failed gate is a **non-fatal per-document error** (bs-002 §7.7): the document
   is marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (df-008 §14.4) — and indexing
@@ -557,8 +563,13 @@ transcript exactly as it applies to an unreadable format.
   * `decoded_ms`: the summed length of `ranges`.
   * `duration_ms`: the recording's length, when known (0 when the duration
     probe failed).
+  * `languages`: **REQUIRED** under `media.stt.language_scope: window`
+    (SPEC.md §8.2.2), absent under `item`. `refused`: present under `window`
+    when a window was refused, absent or empty otherwise. SPEC.md §8.2.2 also
+    requires this object for a one-window decode when a window was refused. A
+    refused range is never inside `ranges`.
 
-  A decode that took **one** request records nothing: absence is "no assertion"
+  A decode that took **one** request records nothing (SPEC.md §8.2.2 excepted): absence is "no assertion"
   (df-003 §5.2), never "complete". Recording the object for a **fully** decoded
   multi-window transcript is REQUIRED, not optional. `windows_decoded ==
   windows_attempted` with one full-length range is a positive statement of
@@ -637,6 +648,14 @@ transcript exactly as it applies to an unreadable format.
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
 
 ## Changelog
+
+- **0.6.0**: mirrors spec 0.71.0 (SPEC.md §8.2.2, optional, off by default).
+  §8.6.1 gains a fourth chunk-window close rule, a language change; §8.6.13
+  `coverage` gains `languages[]` (required under `window` scope) and
+  `refused[]` (present when a window was refused) and is required for a
+  one-window decode when a window was refused; §8.6.6 checks MAY run per window
+  with a failing window recorded as a refused range. No change for a corpus on
+  the default `language_scope: item`.
 
 - **0.5.1**: §8.6.2 and §8.6.7 clarification, no contract change. The
   (source, target) pair rule already required a hint to come from a convention the

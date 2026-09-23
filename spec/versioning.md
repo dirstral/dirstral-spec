@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.70.0`
+**Current spec version:** `0.71.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,19 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.71.0: per-window language identification and routing (optional)
+
+New **optional**, off-by-default STT behaviour; additive, so every existing deployment is unchanged (`MINOR` per the pre-1.0 policy).
+
+- §8.2.2 **Per-window language identification and routing**: `media.stt.language_scope: item | window` (default `item`, today's behaviour). Under `window`, §8.8 resolution, `language_providers` routing and the §8.2.1 honest-coverage floor are evaluated per decode window (§8.6.13), so a recording that changes language inside itself is decoded per passage instead of under one language for its whole length. A low-confidence window inherits the preceding window's language (`language_source: inherited`), which is the anti-flapping rule; no look-ahead.
+- `on_uncovered_language` per window: `warn` decodes and records `covered: false` for the range; `skip` refuses the window, which counts as not decoded for §8.6.13, so `min_coverage` and `on_partial_transcript` decide the item.
+- Recording: `coverage.languages[]` (`{start_ms, end_ms, language, language_source, language_confidence?, route, covered}`, coalesced on all four of language, source, route and covered; REQUIRED under `window`) and `coverage.refused[]` (`{start_ms, end_ms, reason}`, `language_uncovered | quality_gate`; present when a window was refused) on the transcript `meta_json`. The representation `language` is the largest covered language by duration with its §8.8 source, never `inherited`; a window with no resolvable language (nothing detected and nothing to inherit) is decoded by the default profile and recorded without a tag, and its spans record `language: "und"` when the representation has a language, so they are never read as being in it; a segment span in another language records `language` in its `extra_json`. All windows refused with mixed reasons is `status=skipped`, `language_uncovered`; all `quality_gate` is `TRANSCRIBE_FAILED`.
+- §8.6.1 chunk windows gain a fourth close rule: a language change. A chunk has one language; §9.5 MAY match on it.
+- §8.6.6 quality checks MAY run per window; a failing window is a refused range and the document fails only when every window fails.
+- `language_scope` and `language_providers` join the transcript derivation identity (§8.6.7).
+- Motivation: dir2mcp #566 measured 27% real coverage on a Kyrgyz recording under a single route, and #964 showed answer language following the wrong passage. Implementation: dir2mcp #1029, #1030 (WBSO P3 milestone).
+- No new tool, tool-schema field, or error code. `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged; no model is trained or shipped.
 
 ## 0.70.0 — answer provenance (optional)
 
