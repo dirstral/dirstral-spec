@@ -62,13 +62,14 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
 
-## 0.73.0: the server's own configuration is excluded by default
+## 0.73.0: two first-run defaults: the server's own configuration is not indexed, and `auto` search reaches code
 
-A changed default; an existing corpus loses at most its own config and dotenv files from the index on the next run (`MINOR` per the pre-1.0 policy).
+Two changed defaults (`MINOR` per the pre-1.0 policy). An existing corpus loses at most its own config and dotenv files from the index on the next run, and `index=auto` returns code hits it did not return before for non-code-oriented queries on a mixed corpus.
 
 - §7.2: the default `security.path_excludes` MUST list `**/.dir2mcp.yaml`, `**/.env` and `**/.env.local`, the configuration file and the two dotenv files the server reads (§16.1). `**/.env` was already listed; the other two are new in the §16.2 default.
 - Motivation: a first run on a fresh folder indexed `.dir2mcp.yaml` and cited it as a source for an unrelated question. Either file can hold a provider key or a token, and content screening may not catch every format.
 - An operator who wants one of them indexed removes it from the list (§7.1 list semantics).
+- §9.1 `index=auto`: a query that is not code-oriented now searches **both** axes and fuses them when the corpus holds text and code chunks (text only for a text-only corpus, code only for a code-only corpus); a code-oriented query still narrows to `code`. Before, `auto` defaulted to `text`, so a plain-English question about a repository never reached its code: measured on a 15-file repository, the question "how is the SSO signature verified, and what makes a link single-use?" was answered from the README alone and wrongly, and with both axes from the source file and its tests, correctly. `index_used` reports `both`.
 
 ## 0.72.0: language identifier and candidate routes (optional)
 

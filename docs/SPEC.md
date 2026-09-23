@@ -3537,8 +3537,17 @@ At query time:
 
 * `index=auto`:
 
-  * default to `text`
-  * choose `code` if query is code-oriented (heuristic) or filters target code
+  * choose `code` if the query is code-oriented (heuristic) or the filters
+    target code;
+  * otherwise search **both** axes and fuse them as `index=both` does, when the
+    corpus holds chunks on both axes; search `text` when it holds text only,
+    and `code` when it holds code only.
+  * Rationale (0.73.0): a plain-English question about a repository ("how is
+    the signature verified?") is not code-oriented, yet its answer is in the
+    code. Under the earlier "default to `text`" rule such a question never
+    reached a single code chunk, not even one containing the literal function
+    name it asked about. `index_used` (§15.2) reports the axis searched, so a
+    client sees `both`.
 * `index=both`:
 
   * query both indices and fuse results
