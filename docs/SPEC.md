@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.72.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.73.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1059,6 +1059,15 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
 ### 7.2 Safety exclusions (default)
 
+* Exclude the server's own configuration and credential files by path. The
+  default `security.path_excludes` (§16.2) MUST list `**/.dir2mcp.yaml`,
+  `**/.env` and `**/.env.local`: the configuration file and the two dotenv
+  files the server reads (§16.1). These files sit in the corpus root by
+  convention, and each can hold a provider key or a token. Indexed, they
+  become retrievable text, a citation source for unrelated questions, and a
+  route for a credential into the index that content screening (below) may
+  not catch. An operator who wants one indexed removes it from the list, with
+  the list semantics of §7.1.
 * Exclude obvious secrets/credentials patterns (regexes applied to file **contents**):
 
   * AWS Access Key ID: `AKIA[0-9A-Z]{16}`
@@ -3528,8 +3537,17 @@ At query time:
 
 * `index=auto`:
 
-  * default to `text`
-  * choose `code` if query is code-oriented (heuristic) or filters target code
+  * choose `code` if the query is code-oriented (heuristic) or the filters
+    target code;
+  * otherwise search **both** axes and fuse them as `index=both` does, when the
+    corpus holds chunks on both axes; search `text` when it holds text only,
+    and `code` when it holds code only.
+  * Rationale (0.73.0): a plain-English question about a repository ("how is
+    the signature verified?") is not code-oriented, yet its answer is in the
+    code. Under the earlier "default to `text`" rule such a question never
+    reached a single code chunk, not even one containing the literal function
+    name it asked about. `index_used` (§15.2) reports the axis searched, so a
+    client sees `both`.
 * `index=both`:
 
   * query both indices and fuse results
@@ -5899,6 +5917,8 @@ security:
     - "**/node_modules/**"
     - "**/.dir2mcp/**"
     - "**/.env"
+    - "**/.env.local"
+    - "**/.dir2mcp.yaml"
     - "**/*.pem"
     - "**/*.key"
     - "**/id_rsa"
