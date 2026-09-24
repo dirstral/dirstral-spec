@@ -15,7 +15,7 @@ producer-defined; dir2mcp learns no domain.
 
 ## 2. Motivation, measured
 
-On the SF Giants pilot (issue dir2mcp#928), `what happened in the 8th inning`
+On the sports-broadcast pilot (issue dir2mcp#928), `what happened in the 8th inning`
 at `k=12` returned moments from the 3rd, 6th and 7th innings above 8th-inning
 moments. The proximate cause was an MMR setting, but fixing it exposed the
 structural limit: **the inning exists only as prose** ("bottom of the 8th"
