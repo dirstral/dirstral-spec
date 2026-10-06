@@ -183,6 +183,87 @@
           "chat"
         ]
       },
+      "evidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Optional, additive (spec 0.80.0, SPEC \u00a79.4.3). The absolute evidence thresholds in effect and the null baseline they were derived from, so a caller can reproduce an abstention from published numbers. A server that does not calibrate omits the object; a client MUST treat omission as 'not reported', never as 'no threshold'.",
+        "properties": {
+          "cosine_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "The abstention threshold in effect on the cosine scale."
+          },
+          "cosine_threshold_source": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "config",
+              "floor"
+            ],
+            "description": "auto: derived from null_baseline by the documented statistic. config: pinned by rag.evidence_threshold. floor: the fixed value, because the baseline is unavailable or sits below it."
+          },
+          "rerank_threshold": {
+            "type": "number",
+            "description": "The abstention threshold in effect on the rerank scale (a server constant; SPEC \u00a79.4.3)."
+          },
+          "null_baseline": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Present once the baseline has been computed. The distribution of the top cosine that each probe question reached against the corpus.",
+            "properties": {
+              "probes": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Number of probe questions."
+              },
+              "probe_set": {
+                "type": "string",
+                "description": "Identifier of the shipped probe set, versioned, so two baselines are comparable only when it matches."
+              },
+              "p50": {
+                "type": "number",
+                "description": "Median of the top cosine over the probes."
+              },
+              "p90": {
+                "type": "number",
+                "description": "90th percentile of the top cosine over the probes."
+              },
+              "max": {
+                "type": "number",
+                "description": "Highest top cosine any probe reached. Reported, never applied as the threshold."
+              },
+              "chunks": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Indexed chunk count when the baseline was computed."
+              },
+              "embed_model": {
+                "type": "string",
+                "description": "The text embedding model the probes were embedded with."
+              },
+              "computed_at": {
+                "type": "string",
+                "description": "RFC 3339 time of the computation."
+              }
+            },
+            "required": [
+              "probes",
+              "probe_set",
+              "p50",
+              "p90",
+              "max",
+              "chunks",
+              "embed_model"
+            ]
+          }
+        },
+        "required": [
+          "cosine_threshold",
+          "cosine_threshold_source",
+          "rerank_threshold"
+        ]
+      },
       "recent_failures": {
         "type": "array",
         "description": "Optional. Up to recent_failures_limit (default 20) of the most-recent documents with status='error', newest first by mtime_unix. Implementations MAY omit when no failures are recorded; clients MUST treat omission as 'no recent failures', not as 'unsupported'.",

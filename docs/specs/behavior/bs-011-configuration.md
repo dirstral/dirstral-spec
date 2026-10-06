@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.12.0
+- **Version:** 0.13.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -154,6 +154,11 @@ rag:
     ${rag.answer_language_rule}
   max_context_chars: 20000
   oversample_factor: 5
+  # Absolute evidence threshold on the cosine scale (§9.4.3). `auto` derives it
+  # per embedder and corpus from the null baseline, never below the server's
+  # fixed value; a number in (0,1] pins it. dir2mcp_stats.evidence reports the
+  # value in effect and the baseline behind it.
+  evidence_threshold: auto
 
 ingest:
   gitignore: true
@@ -393,6 +398,7 @@ security:
 
 ## Changelog
 
+- **0.13.0**: mirrors spec 0.80.0 (SPEC.md §9.4.3, §16.2): the template lists `rag.evidence_threshold: auto`, the calibrated absolute evidence threshold; a number in (0,1] pins it.
 - **0.12.0**: mirrors spec 0.79.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.on_route_error: fail`, and syncs the 0.72.0 identifier keys (`language_identifier`, `language_probe_sec`, `require_validation`) that were missing here, with the item-scope note.
 - **0.11.0**: mirrors spec 0.78.0 (SPEC.md §8.6.14, §16.2): the template lists the `media.subtitles.emit` block (`enabled`, `formats`, `languages`, `policy`, `dir`), opt-in subtitle write-back beside the media; `enabled: false` keeps the old behavior.
 - **0.10.0**: mirrors spec 0.77.0 (SPEC.md §16.2): the template lists `ingest.docling.timeout_sec: 3600`. The old default `900` failed a large PDF on a loaded CPU host.

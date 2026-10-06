@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.79.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.80.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -4068,6 +4068,54 @@ Because §9.1.1 allows scores from different scales in one response, a server th
 supports several retrieval modes MUST keep a threshold per mode rather than one
 global number, or normalize to a documented absolute scale shared by all modes.
 
+**Calibrated threshold from a null baseline (optional).** One fixed raw-score
+threshold that fits every embedding family can only reject near-orthogonal
+text. Measured on the dir2mcp benchmark corpus with `nomic-embed-text`: the top
+cosine of a question about a subject the corpus does not hold was `0.42` to
+`0.62`, while the shipped guard rejected only below `0.05`, so the guard never
+fired and `ask` answered questions the corpus could not answer (dir2mcp #1081).
+A server MAY therefore derive the threshold for a scale from a **null
+baseline**: the distribution of the top signal that a fixed set of **probe
+questions**, which no corpus is expected to answer, reaches against the indexed
+corpus. The baseline is a property of the embedder and the corpus together, so
+it is scale-free across embedding families where a constant is not.
+
+* The probe set MUST be fixed by the server: shipped with it, versioned, and
+  never drawn from the corpus. It MUST hold at least 16 probes over distinct
+  everyday subjects. The server MUST document the probe count and the statistic
+  it applies.
+* The baseline is per embedder and per corpus. A server MUST recompute it when
+  the embed identity (§8.1.4) or the probe set changes, and SHOULD recompute it
+  when the indexed chunk count changes. It MAY be computed when indexing
+  completes or lazily on the first request that needs it, and it MAY be cached
+  in the state directory.
+* The effective threshold MUST NOT be lower than the documented fixed value for
+  that scale: `effective = max(fixed, statistic(baseline))`. A provider whose
+  baseline sits below the fixed value therefore keeps the fixed behaviour.
+* The statistic MUST be a quantile that a few probes cannot move. The maximum
+  is non-conformant: one probe that happens to be on topic for the corpus would
+  raise the threshold to an on-topic score and refuse answerable questions. The
+  reference implementation applies the 90th percentile. Measured on the
+  benchmark corpus with `nomic-embed-text` (344 questions, 32 probes): the p90
+  rule refuses 1.5% of answerable questions, 0% of on-topic unanswerable ones,
+  and 26.6% of off-corpus ones; the maximum would refuse 5.0%, 1.2% and 65.6%,
+  and three on-topic probes move the p90 by 0.000 and the maximum to 0.75.
+* While the baseline is unavailable (not computed yet, or the embedder could
+  not be reached), the server MUST apply the fixed value and MUST NOT refuse a
+  request for that reason. This is the same fail-open rule as `unknown`.
+* An operator MAY pin the threshold with `rag.evidence_threshold` (§16.2).
+  `auto` (the default) selects the calibrated rule. A number in `(0,1]` sets the
+  cosine threshold directly; the baseline is still computed and reported, but
+  it is not applied. Any other value is `CONFIG_INVALID`.
+* A server that calibrates MUST expose the effective thresholds and the
+  baseline in `dir2mcp_stats` (`evidence`, §15.6), so a caller can reproduce a
+  verdict from published numbers.
+
+A similarity threshold separates questions whose **subject** is absent from the
+corpus. It cannot separate a question that is on topic but unanswered (the
+SQuAD 2.0 adversarial class: measured AUC about `0.6`, against about `0.9` for
+off-corpus questions). §9.4.4 is the control for that class.
+
 **Configuration.** `retrieval.min_score` (§16.2) configures the **pruning floor**
 only. It is a number.
 
@@ -4091,6 +4139,17 @@ threshold cannot catch that, because the evidence really is relevant.
 
 A server MAY therefore verify a generated answer against the retrieved
 passages it placed in the prompt, and MAY withhold an answer that fails.
+
+Verification is also the refusal control for the questions §9.4.3 cannot
+reach: a question that is on topic but unanswered carries evidence as strong as
+an answerable one, so no threshold separates them. The cost is one generation
+call per answered request and more refusals of answerable questions. The
+reference implementation measured it on its benchmark (120 questions, local
+7B model): refusals of unanswerable questions rose from 25% to 75%, answers that
+contain a gold answer fell from 75% to 67.5%, and false refusals of answerable
+questions rose from 6.2% to 22.5% (dir2mcp #1084). A server SHOULD document
+these numbers for its own setting, so an operator can choose with the cost in
+view.
 
 * Verification, when performed, MUST be against the passages the answering
   model was actually shown, not a re-rendered or re-retrieved set. Checking a
@@ -5321,6 +5380,33 @@ honestly as `ok`, `skipped` or `error`.
       },
       "required": ["embed_text", "embed_code", "ocr", "stt_provider", "stt_model", "chat"]
     },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional, additive (spec 0.80.0, §9.4.3). The absolute evidence thresholds in effect and the null baseline they were derived from, so a caller can reproduce an abstention from published numbers. A server that does not calibrate omits the object; a client MUST treat omission as 'not reported', never as 'no threshold'.",
+      "properties": {
+        "cosine_threshold": { "type": "number", "minimum": 0, "maximum": 1, "description": "The abstention threshold in effect on the cosine scale." },
+        "cosine_threshold_source": { "type": "string", "enum": ["auto", "config", "floor"], "description": "auto: derived from null_baseline by the documented statistic. config: pinned by rag.evidence_threshold. floor: the fixed value, because the baseline is unavailable or sits below it." },
+        "rerank_threshold": { "type": "number", "description": "The abstention threshold in effect on the rerank scale (a server constant; §9.4.3)." },
+        "null_baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Present once the baseline has been computed. The distribution of the top cosine that each probe question reached against the corpus.",
+          "properties": {
+            "probes": { "type": "integer", "minimum": 1, "description": "Number of probe questions." },
+            "probe_set": { "type": "string", "description": "Identifier of the shipped probe set, versioned, so two baselines are comparable only when it matches." },
+            "p50": { "type": "number", "description": "Median of the top cosine over the probes." },
+            "p90": { "type": "number", "description": "90th percentile of the top cosine over the probes." },
+            "max": { "type": "number", "description": "Highest top cosine any probe reached. Reported, never applied as the threshold." },
+            "chunks": { "type": "integer", "minimum": 0, "description": "Indexed chunk count when the baseline was computed." },
+            "embed_model": { "type": "string", "description": "The text embedding model the probes were embedded with." },
+            "computed_at": { "type": "string", "description": "RFC 3339 time of the computation." }
+          },
+          "required": ["probes", "probe_set", "p50", "p90", "max", "chunks", "embed_model"]
+        }
+      },
+      "required": ["cosine_threshold", "cosine_threshold_source", "rerank_threshold"]
+    },
     "recent_failures": {
       "type": "array",
       "description": "Optional. Up to recent_failures_limit (default 20) of the most-recent documents with status='error', newest first by mtime_unix. Each entry carries a short, sanitized error_message explaining why ingest failed (extraction crash, representation generation failure). Implementations MAY omit this field when no failures are recorded; clients MUST treat omission as 'no recent failures', not as 'unsupported'. Intended for diagnostic UIs (doctor-style consoles); the per-failure detail also surfaces in dir2mcp support-bundle's list-files.json.",
@@ -5852,6 +5938,11 @@ rag:
     ${rag.answer_language_rule}
   max_context_chars: 20000
   oversample_factor: 5
+  # Absolute evidence threshold on the cosine scale (§9.4.3). `auto` derives it
+  # per embedder and corpus from the null baseline, never below the server's
+  # fixed value; a number in (0,1] pins it. dir2mcp_stats.evidence reports the
+  # value in effect and the baseline behind it.
+  evidence_threshold: auto
 
 ingest:
   gitignore: true
