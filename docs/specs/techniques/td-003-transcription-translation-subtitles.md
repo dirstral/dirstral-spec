@@ -16,7 +16,8 @@ subtitle export (VTT/SRT always; TTML/SMIL optional), subtitle sidecar
 ingestion, multi-rendition selection, the degenerate-output quality gate,
 representation derivation identity / re-derivation, optional speaker
 diarization, word-level timing, bilingual broadcast packaging, and the optional
-two-phase batch ingest with progress reporting and a resumable run manifest.
+two-phase batch ingest with progress reporting and a resumable run manifest,
+and opt-in subtitle write-back beside the media (§8.6.14).
 
 **Status: Planned.** Implementation lands in follow-up dir2mcp code PRs once this
 spec change is merged. The contract is **domain-general**: it carries **no**
@@ -179,6 +180,9 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   export MUST **fail open** (omit TTML/SMIL, do not fail the request). The
   **bilingual** TTML/SMIL packaging contract (cross-language cue alignment, SMIL
   track metadata) is defined in §8.6.10.
+* Export is **on demand**, one document per request. Writing every document's
+  subtitles beside its media as the corpus is indexed is **write-back**, §8.6.14
+  (opt-in, off by default).
 * The **exported language is selectable** (any language for which a transcript
   exists, §8.6.2). Requesting an export for a language with no transcript is
   `INVALID_FIELD`.
@@ -647,7 +651,101 @@ transcript exactly as it applies to an unreadable format.
   floor does not apply when language coverage is undeclared. An implementation MAY
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
 
+### 8.6.14 Subtitle write-back (emitted sidecars)
+
+> **Status: Planned.** Opt-in and **off by default**
+> (`media.subtitles.emit.enabled: false`). Domain-general: no language, format or
+> station default beyond what §8.6.2/§8.6.3 already define. Implementation lands
+> in a follow-up dir2mcp code PR. Mirrors SPEC.md §8.6.14.
+
+§8.6.3 export is on demand: one document, one format, one request. An archive
+whose editors, players or downstream tools read subtitle files from the media's
+own folder needs every document's subtitles **on disk**, without an operator
+issuing one export per file, and needs them to stay there as the corpus grows.
+Write-back is that surface: once a media document's transcript representations
+exist, the pipeline renders the configured subtitle formats and writes them
+beside the media.
+
+* **Off by default; output-neutral.** Enabling write-back changes no
+  representation, chunk, embedding or citation. It is a side effect of the
+  derivation step (§8.6.11): single-pass and two-phase runs write the same files
+  and index the same output.
+* **What is written.** `media.subtitles.emit.formats` is a subset of
+  `vtt | srt | ttml` (default `[vtt]`).
+  * VTT and SRT are written **once per transcript language** the document has
+    (§8.6.2 keying), in the §8.6.4 sidecar shape `<stem>.<lang>.<ext>`, so a
+    written file binds back to its media under the ordinary sidecar rules.
+    `media.subtitles.emit.languages` (default `[]`, meaning every language the
+    document has a transcript for) restricts which languages are written.
+  * TTML is written **once per document** as `<stem>.ttml`: bilingual (§8.6.10)
+    when a translated transcript exists — primary the source-language transcript,
+    secondary the first configured `media.translate.target_langs` entry the
+    document has — else monolingual. Listing `ttml` requires
+    `media.subtitles.ttml.enabled: true`; otherwise `CONFIG_INVALID`.
+  * **SMIL is never written by write-back.** A packaging manifest beside archive
+    media is owned by whatever pipeline produced the media; overwriting it would
+    break playback. SMIL stays an on-demand export (§8.6.10).
+* **Where.** With `media.subtitles.emit.dir: ""` (the default) files are written
+  **beside the media** in the corpus. When renditions are grouped (§8.6.5) the
+  stem is the group's normalized stem, so one set of files serves every rendition
+  and binds to the selected one under §8.6.4. A non-empty `dir` is an output root
+  under which the corpus-relative directory tree is mirrored. A source with no
+  writable filesystem (`source.kind: s3`) MUST reject `dir: ""` as
+  `CONFIG_INVALID`; writing into an object store is out of scope here.
+* **Same bytes as export.** The content written for a (document, language,
+  format) MUST be byte-identical to what §8.6.3/§8.6.10 export produces for it
+  under the same configuration: one renderer and one cue pipeline (filter words,
+  cleaning, segmentation) serve both. Rendering is deterministic.
+* **Ownership: a written file is output, not an authored sidecar.** The
+  implementation MUST record every artifact it writes — document, corpus-relative
+  path, format, language, size, mtime and content hash — in state (df-003 §5.6). A
+  recorded artifact whose size and mtime on disk are unchanged is **owned**.
+  Owned files MUST be excluded from sidecar discovery (§8.6.4) and from the
+  document's sidecar fingerprint (bs-002 §7.6). Consequently write-back never changes a
+  document's identity, never triggers a re-ingest of the document it was derived
+  from, never suppresses STT or translation, and never bypasses the output quality
+  gate (§8.6.6): an owned file is **never read back** as a transcript. A changed
+  STT or translation identity (§8.6.7) re-derives the transcript exactly as if no
+  file existed. A recorded artifact that **has changed** on disk (an editor fixed a
+  cue) is no longer owned: from then on it is an authored sidecar with §8.6.4
+  precedence, and the record is dropped.
+* **Overwrite policy.** `media.subtitles.emit.policy` is `if_missing` (default)
+  or `refresh`.
+  * `if_missing` writes a (language, format) only when the document has **no
+    bound sidecar** of that format and language — owned or not, under any name
+    §8.6.4 binds. A file the implementation did not write is never overwritten;
+    an existing unowned file simply counts as present.
+  * `refresh` additionally rewrites an **owned** file whose recorded content hash
+    differs from the current render, so a re-derived transcript reaches disk.
+  * Neither policy ever writes over an unowned file.
+* **Writes are atomic** (temporary file in the target directory, then rename),
+  never partial. A write failure is a **non-fatal per-document outcome** (bs-002 §7.7):
+  it is logged with the `rel_path`, recorded on the run manifest (§8.6.11) with
+  `SUBTITLE_WRITE_FAILED` (df-008), and the transcript stays indexed.
+* **Manifest.** Every artifact written is recorded under the manifest record's
+  produced outputs as `<format>:<lang>` (`ttml` for TTML); a skipped one is not.
+  Emission order within a document is deterministic: formats, then languages,
+  each sorted.
+* **When.** Write-back runs **once per document after all of its transcript
+  representations for the run are persisted**: at the end of the document's
+  processing in single-pass mode, at the end of its derivation pass in two-phase
+  mode. The transcription pass of a two-phase run writes nothing, because the
+  translations it would need do not exist yet.
+
 ## Changelog
+
+- **0.7.0**: mirrors spec 0.75.0 (SPEC.md §8.6.14, opt-in, off by default).
+  Added §8.6.14 **subtitle write-back**: `media.subtitles.emit.*` writes VTT/SRT
+  per transcript language and one (bilingual) TTML per document beside the media
+  once its transcripts exist, byte-identical to §8.6.3/§8.6.10 export. A written
+  file is an **owned** output recorded in state (df-003 §5.6), excluded from
+  §8.6.4 sidecar discovery and the sidecar fingerprint, so it never changes
+  document identity, never bypasses the §8.6.6 gate and never blocks §8.6.7
+  re-derivation; an edited file stops being owned and becomes authored. Policy
+  `if_missing` (default) never overwrites a file the implementation did not
+  write; `refresh` rewrites owned files whose render changed. SMIL is never
+  written. A failed write is `SUBTITLE_WRITE_FAILED` (df-008), non-fatal.
+
 
 - **0.6.0**: mirrors spec 0.71.0 (SPEC.md §8.2.2, optional, off by default).
   §8.6.1 gains a fourth chunk-window close rule, a language change; §8.6.13

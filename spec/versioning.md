@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.77.0`
+**Current spec version:** `0.78.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,17 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.75.0: subtitles are written beside the media as the corpus is indexed
+
+A new optional surface, off by default (`MINOR` per the pre-1.0 policy). A deployment that does not enable it is unchanged. Spec-first, ahead of the dir2mcp implementation.
+
+- §8.6.14 (new): **subtitle write-back**. With `media.subtitles.emit.enabled: true`, once a media document's transcript representations exist the pipeline writes the configured formats (`vtt | srt | ttml`, default `[vtt]`) beside the media, one VTT/SRT per transcript language in the §8.6.4 sidecar shape and one bilingual TTML per document. The bytes are identical to what §8.6.3/§8.6.10 export produces. SMIL is never written.
+- §8.6.14: a written file is an **owned output**, recorded in state (§5.6) and excluded from §8.6.4 sidecar discovery and the §7.6 sidecar fingerprint, so write-back never changes document identity, never re-ingests its own output, never bypasses the §8.6.6 gate and never blocks §8.6.7 re-derivation. A file edited on disk stops being owned and becomes an authored sidecar.
+- §8.6.14: `policy: if_missing` (default) never overwrites a file the implementation did not write; `refresh` rewrites owned files whose render changed. A remote source (`s3`) requires an output `dir`.
+- §14.4: `SUBTITLE_WRITE_FAILED`, a non-fatal per-document code for a failed write.
+- §16.2: the template lists `media.subtitles.emit.{enabled, formats, languages, policy, dir}`.
+- Motivation: an archive pipeline being retired wrote `.ru.vtt`/`.en.vtt`/`.ttml` beside each video and skipped videos whose files existed. Its replacement must put the same files on disk without an operator exporting 140k documents one at a time, and must not then treat its own output as human-authored truth, which would freeze the archive at the first model that transcribed it.
 
 ## 0.77.0: the per-document docling timeout defaults to one hour
 

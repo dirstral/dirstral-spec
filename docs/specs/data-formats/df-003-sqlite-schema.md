@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.7.0
+- **Version:** 0.8.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -264,8 +264,34 @@ bounding box and **SHOULD** carry the section breadcrumb:
 - `stt_provider`, `stt_model`
 - `chat_model`
 
+### 5.6 `emitted_artifacts` (subtitle write-back ownership)
+
+One row per subtitle file the implementation wrote under td-003 §8.6.14. The
+table exists so a file the pipeline wrote is never mistaken for an authored
+sidecar (td-003 §8.6.4): discovery and the sidecar fingerprint skip a row whose
+on-disk `size_bytes` and `mtime_unix` still match.
+
+- `rel_path` (PK) — corpus-relative path of the written file (bs-002 §7.8)
+- `doc_id` — the media document it was derived from (FK → `documents`)
+- `format` — `vtt | srt | ttml`
+- `lang` — the transcript language written (`""` for a TTML, which carries its
+  languages inline)
+- `size_bytes`, `mtime_unix` — as observed immediately after the write; the
+  ownership test
+- `content_sha256` — hash of the bytes written; the `refresh` policy compares the
+  current render against it
+- `emitted_unix` — when it was written
+
+A row is deleted when its file is found changed (the file became authored) or
+when its document is tombstoned. Additive table; a pre-feature index has no rows
+and behaves exactly as before.
+
 ## Changelog
 
+- **0.8.0** — Added the additive `emitted_artifacts` table (§5.6) that records
+  every subtitle file written by td-003 §8.6.14 write-back, so an owned output
+  is never re-ingested as an authored sidecar. No change to existing tables;
+  a pre-feature index is unaffected (spec 0.75.0).
 - **0.7.0** — Transcript `meta_json` gains the optional `coverage` object: which
   part of the recording a multi-window decode actually covered (td-003 §8.6.13).
   Additive; absent means no assertion, so a single-request decode and a sidecar
