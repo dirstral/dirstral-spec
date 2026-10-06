@@ -3379,12 +3379,15 @@ beside the media.
     media is owned by whatever pipeline produced the media; overwriting it would
     break playback. SMIL stays an on-demand export (§8.6.10).
 * **Where.** With `media.subtitles.emit.dir: ""` (the default) files are written
-  **beside the media** in the corpus. When renditions are grouped (§8.6.5) the
-  stem is the group's normalized stem, so one set of files serves every rendition
-  and binds to the selected one under §8.6.4. A non-empty `dir` is an output root
-  under which the corpus-relative directory tree is mirrored. A source with no
-  writable filesystem (`source.kind: s3`) MUST reject `dir: ""` as
-  `CONFIG_INVALID`; writing into an object store is out of scope here.
+  **beside the media** in the corpus, where §8.6.4 would bind them (and the
+  ownership rule below is what keeps them from binding while they are unchanged).
+  When renditions are grouped (§8.6.5) the stem is the group's normalized stem,
+  so one set of files serves every rendition. A non-empty `dir` is an output
+  root under which the corpus-relative directory tree is mirrored; files there
+  are outputs only — sidecar discovery never looks outside the corpus, so they
+  neither bind nor need excluding. A source with no writable filesystem
+  (`source.kind: s3`) MUST reject `dir: ""` as `CONFIG_INVALID`; writing into an
+  object store is out of scope here.
 * **Same bytes as export.** The content written for a (document, language,
   format) MUST be byte-identical to what §8.6.3/§8.6.10 export produces for it
   under the same configuration: one renderer and one cue pipeline (filter words,
@@ -3392,16 +3395,25 @@ beside the media.
 * **Ownership: a written file is output, not an authored sidecar.** The
   implementation MUST record every artifact it writes — document, corpus-relative
   path, format, language, size, mtime and content hash — in state (§5.6). A
-  recorded artifact whose size and mtime on disk are unchanged is **owned**.
-  Owned files MUST be excluded from sidecar discovery (§8.6.4) and from the
-  document's sidecar fingerprint (§7.6). Consequently write-back never changes a
-  document's identity, never triggers a re-ingest of the document it was derived
-  from, never suppresses STT or translation, and never bypasses the output quality
-  gate (§8.6.6): an owned file is **never read back** as a transcript. A changed
-  STT or translation identity (§8.6.7) re-derives the transcript exactly as if no
-  file existed. A recorded artifact that **has changed** on disk (an editor fixed a
-  cue) is no longer owned: from then on it is an authored sidecar with §8.6.4
-  precedence, and the record is dropped.
+  recorded artifact whose size and mtime on disk are unchanged is **owned**; the
+  stat fields are the discovery-time test because discovery runs over every file
+  on every scan and MUST stay a stat, not a read. Ownership is a property of the
+  record, not of the configuration: it holds whether or not write-back is
+  currently enabled, so disabling the feature later never turns the files it
+  wrote into authored transcripts. Owned files MUST be excluded from sidecar
+  discovery (§8.6.4) and from the document's sidecar fingerprint (§7.6).
+  Consequently write-back never changes a document's identity, never triggers a
+  re-ingest of the document it was derived from, never suppresses STT or
+  translation, and never bypasses the output quality gate (§8.6.6): an owned file
+  is **never read back** as a transcript. A changed STT or translation identity
+  (§8.6.7) re-derives the transcript exactly as if no file existed. A recorded
+  artifact that **has changed** on disk (an editor fixed a cue) is no longer
+  owned: from then on it is an authored sidecar with §8.6.4 precedence, and the
+  record is dropped. **Before rewriting** an owned file (the `refresh` policy
+  below) the implementation MUST additionally verify that the on-disk content
+  hash equals the recorded hash, and MUST treat a mismatch as an edit — drop the
+  record, write nothing — so an edit that happens to preserve size and mtime is
+  never overwritten. An implementation MAY also verify the hash at discovery.
 * **Overwrite policy.** `media.subtitles.emit.policy` is `if_missing` (default)
   or `refresh`.
   * `if_missing` writes a (language, format) only when the document has **no

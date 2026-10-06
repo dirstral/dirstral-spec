@@ -269,7 +269,11 @@ bounding box and **SHOULD** carry the section breadcrumb:
 One row per subtitle file the implementation wrote under td-003 §8.6.14. The
 table exists so a file the pipeline wrote is never mistaken for an authored
 sidecar (td-003 §8.6.4): discovery and the sidecar fingerprint skip a row whose
-on-disk `size_bytes` and `mtime_unix` still match.
+on-disk `size_bytes` and `mtime_unix` still match (a stat, so discovery never
+reads subtitle bytes), and a rewrite under the `refresh` policy first verifies
+the on-disk hash against `content_sha256`, dropping the row instead of writing
+when it differs (SPEC §8.6.14). The rows apply whether or not write-back is
+currently enabled.
 
 - `rel_path` (PK) — corpus-relative path of the written file (bs-002 §7.8)
 - `doc_id` — the media document it was derived from (FK → `documents`)
@@ -279,7 +283,8 @@ on-disk `size_bytes` and `mtime_unix` still match.
 - `size_bytes`, `mtime_unix` — as observed immediately after the write; the
   ownership test
 - `content_sha256` — hash of the bytes written; the `refresh` policy compares the
-  current render against it
+  current render against it, and verifies the on-disk bytes still match it before
+  any rewrite
 - `emitted_unix` — when it was written
 
 A row is deleted when its file is found changed (the file became authored) or
