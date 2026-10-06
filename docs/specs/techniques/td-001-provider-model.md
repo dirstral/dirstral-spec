@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.8.0
+- **Version:** 0.9.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -445,6 +445,19 @@ records on a profile, enforced by `media.stt.require_validation`. No capability
 cell is added: the identifier binds through `stt`. Until this document is
 Stable, SPEC.md §8.2.3 is the authoritative text.
 
+#### 8.2.4 Item-scope identifier and route fallback (optional)
+
+SPEC.md §8.2.4 (0.79.0) runs the identifier under the default `item` scope,
+before transcription, on a probe of at most `language_probe_sec`, and routes the
+item through `language_providers` on its answer; no signal leaves item behavior
+unchanged. `media.stt.on_route_error: fail | default` (default `fail`) lets a
+route candidate that fails with a transport or provider error be replaced once
+by the default STT profile, recorded as `fallback_from` (window) or
+`route_fallback_from` (item). A `language_providers` key with a malformed
+primary subtag is `CONFIG_INVALID`, and `dir2mcp doctor` reports the resolved
+route table as `stt_routes`. Until this document is Stable, SPEC.md §8.2.4 is
+the authoritative text.
+
 ### 8.3 Note on TTS
 
 * TTS is optional and not required for core retrieval/inspection functionality.
@@ -566,6 +579,9 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.9.0**: §8.2.4 added (spec 0.79.0): the identifier under `item` scope, the
+  `on_route_error` route fallback, the `language_providers` key check and the
+  `doctor` `stt_routes` report. Pointer to SPEC.md §8.2.4.
 - **0.8.0**: §8.2.3 added (spec 0.72.0): language identifier binding, candidate
   route lists and validation records, optional and off by default. Pointer to the
   authoritative SPEC.md text.

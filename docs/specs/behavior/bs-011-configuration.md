@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.11.0
+- **Version:** 0.12.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -235,6 +235,16 @@ media:
     language_providers: {}    # NO default; map BCP-47 lang => STT provider profile name
                               #   (e.g. route a language the default model covers poorly
                               #    to one that covers it). Empty => single-provider behavior.
+                              #   A value may be an ordered candidate list (SPEC.md 8.2.3).
+    # language_identifier: ""  # optional STT-capable profile used ONLY to identify the language
+                              #   (SPEC.md 8.2.3); under item scope it runs before transcription
+                              #   and routes the item through language_providers (SPEC.md 8.2.4).
+    # language_probe_sec: 30   # at most this much audio is sent to the identifier
+    # require_validation: false  # true => a candidate is eligible only when its profile declares
+                              #   stt_validation for the language (SPEC.md 8.2.3).
+    on_route_error: fail      # fail|default (SPEC.md 8.2.4): a language_providers candidate that
+                              #   fails is a failed window/item (fail) or is replaced once by the
+                              #   default STT profile, recorded as fallback_from (default).
     on_uncovered_language: warn  # warn|skip: response when the source language is outside
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;
@@ -382,6 +392,7 @@ security:
 
 ## Changelog
 
+- **0.12.0**: mirrors spec 0.79.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.on_route_error: fail`, and syncs the 0.72.0 identifier keys (`language_identifier`, `language_probe_sec`, `require_validation`) that were missing here, with the item-scope note.
 - **0.11.0**: mirrors spec 0.78.0 (SPEC.md §8.6.14, §16.2): the template lists the `media.subtitles.emit` block (`enabled`, `formats`, `languages`, `policy`, `dir`), opt-in subtitle write-back beside the media; `enabled: false` keeps the old behavior.
 - **0.10.0**: mirrors spec 0.77.0 (SPEC.md §16.2): the template lists `ingest.docling.timeout_sec: 3600`. The old default `900` failed a large PDF on a loaded CPU host.
 - **0.9.0**: mirrors spec 0.74.0 (SPEC.md §7.4.B, §16.2): the template lists `ingest.docling.timeout_sec: 900`, the time limit for one docling CLI call on one document.

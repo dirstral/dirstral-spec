@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.78.0`
+**Current spec version:** `0.79.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,17 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.79.0: the language identifier runs under item scope, and a failed route can fall back to the default profile
+
+Two new optional controls and one new static check (`MINOR` per the pre-1.0 policy). A deployment that binds no identifier and sets no `on_route_error` keeps the old behavior, and its transcript derivation identity is byte-stable. The number follows `0.78.0`, which spec PR #125 (subtitle write-back) holds.
+
+- §8.2.4: under `media.stt.language_scope: item`, a bound `media.stt.language_identifier` resolves the item's language BEFORE transcription from a probe of at most `language_probe_sec`, and the item is decoded by the first eligible `language_providers` candidate for that language, else by the default profile. No signal (empty, below the floor, or an error) leaves item behavior unchanged. The transcript records `language_identifier`, `language_scope: item`, `language_routes` and, when a language was resolved, `language`/`language_source: detected`/`language_confidence` and `route` (the profile that decoded). The identifier, probe length and candidate lists join the item identity only when an identifier is bound.
+- §8.2.4: `media.stt.on_route_error: fail | default` (default `fail`). Under `default` a `language_providers` candidate that fails with a transport or provider error is replaced, once, by the default STT profile for the same window or item; the record names the failed candidate (`coverage.languages[].fallback_from` under `window`, `route_fallback_from` under `item`). A pin-routed corpus keeps the failed item. §8.2.2 lists `fallback_from` in the `coverage.languages` entry and its coalescing key.
+- §8.2.4: a `language_providers` key whose primary subtag is not 2 to 8 ASCII letters is `CONFIG_INVALID`.
+- §8.2.4: `dir2mcp doctor` reports the resolved STT route table as the `stt_routes` check: identifier, candidates per language with the model each binds and its eligibility, and the `on_route_error` policy; a language with no eligible candidate is a warning.
+- §16.2: the template lists `media.stt.on_route_error: fail` and notes the item-scope identifier.
+- Motivation: a 2026-10 speech benchmark on 100 FLEURS utterances per language found per-language fine-tuned checkpoints well ahead of the base model for some languages (Persian 13.3% against 20.7% WER, Kazakh 8.9% against 31.4%; Kyrgyz has no base-model token at all) and the base model best for others (Russian, Ukrainian, Romanian, Serbian). A checkpoint table per language needs the language of each recording before it is decoded, which `item` scope could not do without a pin (dir2mcp#1059, dir2mcp#1060).
 
 ## 0.78.0: subtitles are written beside the media as the corpus is indexed
 
