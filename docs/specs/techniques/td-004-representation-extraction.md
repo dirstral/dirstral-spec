@@ -1,7 +1,7 @@
 # td-004: Representation generation & structured extraction
 
 - **ID:** td-004
-- **Version:** 0.5.1
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -278,6 +278,21 @@ order continues; under `extractor: pandoc` (explicit) an unavailable binary
 disables extraction and **MUST NOT** silently fall back, mirroring explicit
 `docling`.
 
+#### Per-document docling timeout
+
+One call of the local `docling` CLI on one document **MUST** have a time limit,
+so that one slow document cannot stop indexing. `ingest.docling.timeout_sec`
+sets this limit in seconds (env `DIR2MCP_DOCLING_TIMEOUT_SEC`). The default is
+`900` (15 minutes). The value **MUST** be an integer greater than `0`; `0` or a
+negative value is `CONFIG_INVALID` at load
+([bs-011](../behavior/bs-011-configuration.md)). When the limit expires, the
+implementation **MUST** stop the command and record a non-fatal per-document
+error ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.7). The error
+**MUST** name the document by its `rel_path` and **MUST** name the limit that
+applied, so an operator can find the document and raise the limit. The limit
+applies to the CLI transport only. The `docling-serve` transport keeps its own
+request bound.
+
 #### Structured extraction (docling)
 
 When the extractor emits a structured document model (docling's
@@ -434,6 +449,10 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
+- **0.6.0**: mirrors spec 0.74.0 (SPEC.md §7.4.B): new "Per-document docling
+  timeout" section. `ingest.docling.timeout_sec` (default `900`, greater than
+  `0`) sets the limit for one docling CLI call on one document. A timeout error
+  names the document and the limit.
 - **0.5.1**: §A clarification, no contract change. The markup boundary still
   deferred the **default** html routing to dir2mcp #556 and let an
   implementation keep routing html to `raw_text` "until #556 lands". #556 is
