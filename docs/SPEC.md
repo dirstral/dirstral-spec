@@ -2618,8 +2618,9 @@ language list and no model ship, and every model choice stays the operator's.
 * **Static validation.** Every `media.stt.language_providers` key MUST be a
   BCP-47 language tag whose primary subtag is 2 to 8 ASCII letters; any other
   key is `CONFIG_INVALID`. A key that can never match a resolved language
-  (`persian`, `fa_IR`, an empty string) is a configuration error, not a route
-  that silently never fires. `media.stt.on_route_error` outside `fail |
+  (`fa_IR`, `f`, an empty string) is a configuration error, not a route that
+  silently never fires. This is a shape check only: no language list ships,
+  so no registry lookup is made. `media.stt.on_route_error` outside `fail |
   default` is `CONFIG_INVALID`.
 * **Observability.** `dir2mcp doctor` MUST report the resolved STT route table
   as its own check (`stt_routes`): the identifier binding (profile, scope,
