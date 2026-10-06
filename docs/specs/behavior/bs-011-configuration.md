@@ -261,7 +261,7 @@ media:
       formats: [vtt]          # subset of vtt|srt|ttml; ttml requires ttml.enabled: true
       languages: []           # [] => every transcript language the document has (VTT/SRT only)
       policy: if_missing      # if_missing | refresh; a file dir2mcp did not write is never overwritten
-      dir: ""                 # "" => beside the media; else mirror the corpus tree under this root (required for s3)
+      dir: ""                 # "" => beside the media; else mirror the corpus tree under this root, which must lie outside the corpus (required for s3)
   sidecars:
     enabled: true             # ingest .vtt/.srt/.ttml next to media as the transcript (td-003)
   variants:

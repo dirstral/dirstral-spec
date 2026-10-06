@@ -276,6 +276,10 @@ when it differs (SPEC §8.6.14). The rows apply whether or not write-back is
 currently enabled.
 
 - `rel_path` (PK) — corpus-relative path of the written file (bs-002 §7.8)
+- `output_root` — the `media.subtitles.emit.dir` the file was written under,
+  `""` for beside-the-media. A row applies only under the same root: rows from
+  a previous root are ignored, so a later change of `dir` cannot make a stale
+  row mis-own an in-corpus file that shares its `rel_path`
 - `doc_id` — the media document it was derived from (FK → `documents`)
 - `format` — `vtt | srt | ttml`
 - `lang` — the transcript language written (`""` for a TTML, which carries its

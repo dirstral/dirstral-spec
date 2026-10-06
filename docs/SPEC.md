@@ -3385,7 +3385,10 @@ beside the media.
   so one set of files serves every rendition. A non-empty `dir` is an output
   root under which the corpus-relative directory tree is mirrored; files there
   are outputs only — sidecar discovery never looks outside the corpus, so they
-  neither bind nor need excluding. A source with no writable filesystem
+  neither bind nor need excluding. A non-empty `dir` MUST resolve **outside the
+  corpus root** (`CONFIG_INVALID` otherwise): an output root inside the corpus
+  would place a subtitle beside some other media file, where an edit could later
+  bind it as that file's authored transcript. A source with no writable filesystem
   (`source.kind: s3`) MUST reject `dir: ""` as `CONFIG_INVALID`; writing into an
   object store is out of scope here.
 * **Same bytes as export.** The content written for a (document, language,
@@ -3394,7 +3397,11 @@ beside the media.
   cleaning, segmentation) serve both. Rendering is deterministic.
 * **Ownership: a written file is output, not an authored sidecar.** The
   implementation MUST record every artifact it writes — document, corpus-relative
-  path, format, language, size, mtime and content hash — in state (§5.6). A
+  path, format, language, size, mtime, content hash and the output root it was
+  written under (`""` for beside-the-media) — in state (§5.6). A record applies
+  only under the output root it was written under: after `dir` changes, rows
+  from the previous root neither exclude nor describe any file, so a stale row
+  can never mis-own an in-corpus file by sharing its corpus-relative path. A
   recorded artifact whose size and mtime on disk are unchanged is **owned**; the
   stat fields are the discovery-time test because discovery runs over every file
   on every scan and MUST stay a stat, not a read. Ownership is a property of the
@@ -5869,7 +5876,7 @@ media:
       formats: [vtt]          # subset of vtt|srt|ttml; ttml requires ttml.enabled: true
       languages: []           # [] => every transcript language the document has (VTT/SRT only)
       policy: if_missing      # if_missing | refresh; a file dir2mcp did not write is never overwritten
-      dir: ""                 # "" => beside the media; else mirror the corpus tree under this root
+      dir: ""                 # "" => beside the media; else mirror the corpus tree under this root, outside the corpus
   sidecars:
     enabled: true             # ingest .vtt/.srt/.ttml next to media as the transcript (§8.6.4)
   variants:
