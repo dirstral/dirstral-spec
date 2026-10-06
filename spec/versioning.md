@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.73.0`
+**Current spec version:** `0.74.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,15 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.74.0: the per-document docling timeout is configurable
+
+A new optional key with the old value as its default. A deployment that does not set it keeps the old behavior (`MINOR` per the pre-1.0 policy).
+
+- §7.4.B: one call of the local `docling` CLI on one document MUST have a time limit. `ingest.docling.timeout_sec` sets it in seconds (env `DIR2MCP_DOCLING_TIMEOUT_SEC`). The default is `900`, the fixed 15-minute limit from before. A value of `0` or less is `CONFIG_INVALID`.
+- §7.4.B: a timeout records a non-fatal per-document error (§7.7). The error MUST name the document by its `rel_path` and the limit that applied.
+- §16.2: the template lists `ingest.docling.timeout_sec: 900`.
+- Motivation: docling on CPU took about 13 minutes for one 2.6 MB PDF with many tables. A slower or busier host goes past the fixed limit and records an error for a document that has no fault. The old error did not name the document or say which setting to raise.
 
 ## 0.73.0: two first-run defaults: the server's own configuration is not indexed, and `auto` search reaches code
 

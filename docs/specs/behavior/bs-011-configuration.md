@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.8.0
+- **Version:** 0.9.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -174,6 +174,10 @@ ingest:
     # extractor (no silent fallback to the docling CLI). Under extractor=auto
     # an empty value simply means the HTTP transport is not used.
     serve_url: ""      # e.g. http://127.0.0.1:5001
+    # Time limit in seconds for one docling CLI call on one document (td-004).
+    # MUST be greater than 0. A timeout records a per-document error that names
+    # the document and the limit. Env: DIR2MCP_DOCLING_TIMEOUT_SEC.
+    timeout_sec: 900
   pdf:
     mode: ocr          # off|ocr|auto
   images:
@@ -372,6 +376,7 @@ security:
 
 ## Changelog
 
+- **0.9.0**: mirrors spec 0.74.0 (SPEC.md §7.4.B, §16.2): the template lists `ingest.docling.timeout_sec: 900`, the time limit for one docling CLI call on one document.
 - **0.8.0**: mirrors spec 0.73.0 (SPEC.md §7.2): the `security.path_excludes` example lists `**/.env.local` and `**/.dir2mcp.yaml`, so a copied configuration keeps the server's own config and dotenv files out of the index.
 - **0.7.0** — rag: added §16.1.2, prompt rule references. `rag.system_prompt` may
   write `${rag.answer_language_rule}` or `${rag.citation_rule}` in place of a copy
