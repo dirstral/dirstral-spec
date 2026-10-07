@@ -3391,10 +3391,14 @@ beside the media.
   bind it as that file's authored transcript. A source with no writable filesystem
   (`source.kind: s3`) MUST reject `dir: ""` as `CONFIG_INVALID`; writing into an
   object store is out of scope here.
-* **Same bytes as export.** The content written for a (document, language,
-  format) MUST be byte-identical to what §8.6.3/§8.6.10 export produces for it
-  under the same configuration: one renderer and one cue pipeline (filter words,
-  cleaning, segmentation) serve both. Rendering is deterministic.
+* **Same bytes as export, plus a provenance marker.** The cues written for a
+  (document, language, format) MUST be exactly what §8.6.3/§8.6.10 export
+  produces for it under the same configuration: one renderer and one cue
+  pipeline (filter words, cleaning, segmentation) serve both. A written VTT or
+  TTML additionally carries a **provenance marker** (below) that export does
+  not; it is a comment both formats' parsers ignore, so the file parses to the
+  same cues. SRT has no comment syntax and carries none. Rendering is
+  deterministic.
 * **Ownership: a written file is output, not an authored sidecar.** The
   implementation MUST record every artifact it writes — document, corpus-relative
   path, format, language, size, mtime, content hash and the output root it was
@@ -3421,6 +3425,22 @@ beside the media.
   hash equals the recorded hash, and MUST treat a mismatch as an edit — drop the
   record, write nothing — so an edit that happens to preserve size and mtime is
   never overwritten. An implementation MAY also verify the hash at discovery.
+* **Provenance marker: ownership survives the state.** The ownership record
+  lives in state, and state can be lost, reset or rebuilt; without more, every
+  written file would then bind as an authored sidecar and the corpus would never
+  re-derive those transcripts. So a written VTT MUST carry, immediately after its
+  `WEBVTT` header line, a `NOTE dir2mcp-emitted v1 sha256=<hex>` block, and a
+  written TTML MUST carry, immediately after its XML declaration, a
+  `<!-- dir2mcp-emitted v1 sha256=<hex> -->` comment, where `<hex>` is the
+  SHA-256 of every byte of the file after the marker. When discovery meets a
+  subtitle file with **no** ownership record, it MUST check for this marker: an
+  intact marker (hash matches) means the file is the implementation's own
+  unedited output, which MUST be treated as owned and SHOULD be re-recorded; a
+  marker whose hash does not match is an edited file and binds as authored; no
+  marker is authored. An implementation MAY rule out an unmarked file by reading
+  only its first bytes. An SRT written with no surviving record is
+  indistinguishable from an authored one; a deployment that needs SRT to survive
+  state loss SHOULD write it under a separate `dir`.
 * **Overwrite policy.** `media.subtitles.emit.policy` is `if_missing` (default)
   or `refresh`.
   * `if_missing` writes a (language, format) only when the document has **no
