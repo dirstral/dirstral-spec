@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.74.0`
+**Current spec version:** `0.77.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,15 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.77.0: the per-document docling timeout defaults to one hour
+
+A changed default (`MINOR` per the pre-1.0 policy). A deployment that sets `ingest.docling.timeout_sec` keeps its value. A deployment that does not set it now waits up to 3600 seconds, not 900, before it records a docling timeout for one document.
+
+- §7.4.B: the default of `ingest.docling.timeout_sec` is `3600` (1 hour). It was `900` (15 minutes). The other rules of the key do not change.
+- §16.2: the template lists `ingest.docling.timeout_sec: 3600`.
+- Mirrors: td-004 0.7.0, bs-011 0.10.0.
+- Motivation: the dir2mcp release gate of 2026-10-06 failed with the default `900`. One 2.6 MB PDF of about 195 pages needed about 1200 seconds with docling on CPU on a loaded 16-core host, and about 13 minutes on the same host when idle. With a limit of `3600` the gate passed. One hour gives room for large documents on a busy CPU host. A real hang still stops, and indexing continues with the next document.
 
 ## 0.74.0: the per-document docling timeout is configurable
 

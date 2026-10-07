@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.9.0
+- **Version:** 0.10.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -177,7 +177,7 @@ ingest:
     # Time limit in seconds for one docling CLI call on one document (td-004).
     # MUST be greater than 0. A timeout records a per-document error that names
     # the document and the limit. Env: DIR2MCP_DOCLING_TIMEOUT_SEC.
-    timeout_sec: 900
+    timeout_sec: 3600
   pdf:
     mode: ocr          # off|ocr|auto
   images:
@@ -376,6 +376,7 @@ security:
 
 ## Changelog
 
+- **0.10.0**: mirrors spec 0.77.0 (SPEC.md §16.2): the template lists `ingest.docling.timeout_sec: 3600`. The old default `900` failed a large PDF on a loaded CPU host.
 - **0.9.0**: mirrors spec 0.74.0 (SPEC.md §7.4.B, §16.2): the template lists `ingest.docling.timeout_sec: 900`, the time limit for one docling CLI call on one document.
 - **0.8.0**: mirrors spec 0.73.0 (SPEC.md §7.2): the `security.path_excludes` example lists `**/.env.local` and `**/.dir2mcp.yaml`, so a copied configuration keeps the server's own config and dotenv files out of the index.
 - **0.7.0** — rag: added §16.1.2, prompt rule references. `rag.system_prompt` may
