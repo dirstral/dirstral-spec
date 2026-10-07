@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.74.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.77.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1352,15 +1352,16 @@ diagnostics and by `dir2mcp doctor` (§7.7).
 **Per-document docling timeout.** One call of the local `docling` CLI on one
 document MUST have a time limit, so that one slow document cannot stop
 indexing. `ingest.docling.timeout_sec` sets this limit in seconds (env
-`DIR2MCP_DOCLING_TIMEOUT_SEC`). The default is `900` (15 minutes). The value
+`DIR2MCP_DOCLING_TIMEOUT_SEC`). The default is `3600` (1 hour). The value
 MUST be an integer greater than `0`; `0` or a negative value is
 `CONFIG_INVALID` at load. When the limit expires, the implementation MUST stop
 the command and record a non-fatal per-document error (§7.7). The error MUST
 name the document by its `rel_path` and MUST name the limit that applied, so
 an operator can find the document and raise the limit. The limit applies to
 the CLI transport only. The `docling-serve` transport keeps its own request
-bound. (Measured: docling on CPU took about 13 minutes for one 2.6 MB PDF with
-many tables, close to the fixed 15-minute limit that this key replaces.)
+bound. (Measured: docling on CPU took about 13 minutes for one 2.6 MB PDF of
+about 195 pages with many tables on an idle 16-core host, and about 20 minutes
+on the same host under load. A 15-minute default failed that document.)
 
 **Structured extraction (docling).** When the extractor emits a structured
 document model (docling's `DoclingDocument`, obtained via `--to json`), the
@@ -5639,7 +5640,7 @@ ingest:
     # Time limit in seconds for one docling CLI call on one document (§7.4.B).
     # MUST be greater than 0. A timeout records a per-document error that names
     # the document and the limit. Env: DIR2MCP_DOCLING_TIMEOUT_SEC.
-    timeout_sec: 900
+    timeout_sec: 3600
   pandoc:
     # Optional override for the pandoc binary (#393). Empty = resolve `pandoc`
     # from PATH. Capability-activated: a working binary activates the T2 matrix

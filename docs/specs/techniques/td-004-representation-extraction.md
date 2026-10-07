@@ -1,7 +1,7 @@
 # td-004: Representation generation & structured extraction
 
 - **ID:** td-004
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -283,7 +283,7 @@ disables extraction and **MUST NOT** silently fall back, mirroring explicit
 One call of the local `docling` CLI on one document **MUST** have a time limit,
 so that one slow document cannot stop indexing. `ingest.docling.timeout_sec`
 sets this limit in seconds (env `DIR2MCP_DOCLING_TIMEOUT_SEC`). The default is
-`900` (15 minutes). The value **MUST** be an integer greater than `0`; `0` or a
+`3600` (1 hour). The value **MUST** be an integer greater than `0`; `0` or a
 negative value is `CONFIG_INVALID` at load
 ([bs-011](../behavior/bs-011-configuration.md)). When the limit expires, the
 implementation **MUST** stop the command and record a non-fatal per-document
@@ -449,6 +449,9 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
+- **0.7.0**: mirrors spec 0.77.0 (SPEC.md §7.4.B): the default of
+  `ingest.docling.timeout_sec` is `3600` (was `900`). docling on CPU needed
+  about 20 minutes for one 195-page PDF on a loaded host.
 - **0.6.0**: mirrors spec 0.74.0 (SPEC.md §7.4.B): new "Per-document docling
   timeout" section. `ingest.docling.timeout_sec` (default `900`, greater than
   `0`) sets the limit for one docling CLI call on one document. A timeout error
