@@ -657,8 +657,9 @@ transcript exactly as it applies to an unreadable format.
 > (`media.subtitles.emit.enabled: false`).
 
 The write-back contract — what is written (VTT/SRT per transcript language, one
-bilingual TTML per document, never SMIL), where (beside the media, or under
-`media.subtitles.emit.dir`), the byte-identity with §8.6.3/§8.6.10 export, the
+TTML per document, bilingual when a translation exists, never SMIL), where
+(beside the media, or under `media.subtitles.emit.dir`), the cue identity with
+§8.6.3/§8.6.10 export plus the VTT/TTML provenance marker, the
 **ownership** rule that keeps a written file from being re-ingested as an
 authored sidecar (§8.6.4) or changing the document's identity, the
 `if_missing | refresh` overwrite policy, the atomic-write and
@@ -672,8 +673,9 @@ configuration keys are listed in bs-011 §16.2.
 
 - **0.7.0**: spec 0.78.0 added **subtitle write-back** (SPEC.md §8.6.14,
   opt-in, off by default): `media.subtitles.emit.*` writes VTT/SRT per
-  transcript language and one bilingual TTML per document beside the media,
-  byte-identical to §8.6.3/§8.6.10 export, under an ownership rule that keeps
+  transcript language and one TTML per document (bilingual when a translation
+  exists) beside the media, with the cues of §8.6.3/§8.6.10 export and a
+  provenance marker in VTT and TTML, under an ownership rule that keeps
   the written files from being re-ingested as authored sidecars. This document
   carries a cross-reference (§8.6.14) rather than a copy: SPEC.md is the one
   normative text for it.
