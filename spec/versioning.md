@@ -62,7 +62,7 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
 
-## 0.75.0: subtitles are written beside the media as the corpus is indexed
+## 0.78.0: subtitles are written beside the media as the corpus is indexed
 
 A new optional surface, off by default (`MINOR` per the pre-1.0 policy). A deployment that does not enable it is unchanged. Spec-first, ahead of the dir2mcp implementation.
 

@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.10.0
+- **Version:** 0.11.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -382,7 +382,7 @@ security:
 
 ## Changelog
 
-- **0.10.0**: mirrors spec 0.75.0 (SPEC.md §8.6.14, §16.2): the template lists the `media.subtitles.emit` block (`enabled`, `formats`, `languages`, `policy`, `dir`), opt-in subtitle write-back beside the media; `enabled: false` keeps the old behavior.
+- **0.11.0**: mirrors spec 0.78.0 (SPEC.md §8.6.14, §16.2): the template lists the `media.subtitles.emit` block (`enabled`, `formats`, `languages`, `policy`, `dir`), opt-in subtitle write-back beside the media; `enabled: false` keeps the old behavior.
 - **0.10.0**: mirrors spec 0.77.0 (SPEC.md §16.2): the template lists `ingest.docling.timeout_sec: 3600`. The old default `900` failed a large PDF on a loaded CPU host.
 - **0.9.0**: mirrors spec 0.74.0 (SPEC.md §7.4.B, §16.2): the template lists `ingest.docling.timeout_sec: 900`, the time limit for one docling CLI call on one document.
 - **0.8.0**: mirrors spec 0.73.0 (SPEC.md §7.2): the `security.path_excludes` example lists `**/.env.local` and `**/.dir2mcp.yaml`, so a copied configuration keeps the server's own config and dotenv files out of the index.

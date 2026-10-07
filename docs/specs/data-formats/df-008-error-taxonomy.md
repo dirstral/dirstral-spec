@@ -119,7 +119,7 @@ every error.
 ## Changelog
 
 - **0.2.0** — Added `SUBTITLE_WRITE_FAILED` (ingestion/extraction) for td-003
-  §8.6.14 subtitle write-back (spec 0.75.0).
+  §8.6.14 subtitle write-back (spec 0.78.0).
 - **0.1.0** — Migrated from SPEC.md §14. Added the error-result-shape table and
   the conformance note (implementations MUST emit the canonical code; flags the
   currently-unimplemented codes). Updated cross-references (`§8.6.6` → td-003;

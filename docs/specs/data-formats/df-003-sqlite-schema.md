@@ -300,7 +300,7 @@ and behaves exactly as before.
 - **0.8.0** — Added the additive `emitted_artifacts` table (§5.6) that records
   every subtitle file written by td-003 §8.6.14 write-back, so an owned output
   is never re-ingested as an authored sidecar. No change to existing tables;
-  a pre-feature index is unaffected (spec 0.75.0).
+  a pre-feature index is unaffected (spec 0.78.0).
 - **0.7.0** — Transcript `meta_json` gains the optional `coverage` object: which
   part of the recording a multi-window decode actually covered (td-003 §8.6.13).
   Additive; absent means no assertion, so a single-request decode and a sidecar

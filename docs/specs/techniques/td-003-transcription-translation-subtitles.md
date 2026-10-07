@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -670,7 +670,7 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
-- **0.7.0**: spec 0.75.0 added **subtitle write-back** (SPEC.md §8.6.14,
+- **0.7.0**: spec 0.78.0 added **subtitle write-back** (SPEC.md §8.6.14,
   opt-in, off by default): `media.subtitles.emit.*` writes VTT/SRT per
   transcript language and one bilingual TTML per document beside the media,
   byte-identical to §8.6.3/§8.6.10 export, under an ownership rule that keeps
