@@ -1,7 +1,7 @@
 # df-008: Error taxonomy (canonical codes)
 
 - **ID:** df-008
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -71,6 +71,9 @@ Each tool error returns an object with:
   quality gate (empty / repetition / low density).
 - `TRANSLATE_FAILED` — translation failed, including output rejected by the
   quality gate.
+- `SUBTITLE_WRITE_FAILED` — a subtitle write-back artifact (td-003 §8.6.14)
+  could not be written (directory not writable, temporary file or rename
+  failed). Non-fatal per document; the transcript stays indexed. Retryable.
 - `MEDIA_CLIP_FAILED` — clip extraction failed (`dir2mcp_open_media_clip`): the
   media is unreadable, the extraction tool (e.g. `ffmpeg`) is unavailable, or
   segment extraction errored. Distinct from `CLIP_TOO_LARGE` (a bounds rejection)
@@ -115,6 +118,8 @@ every error.
 
 ## Changelog
 
+- **0.2.0** — Added `SUBTITLE_WRITE_FAILED` (ingestion/extraction) for td-003
+  §8.6.14 subtitle write-back (spec 0.78.0).
 - **0.1.0** — Migrated from SPEC.md §14. Added the error-result-shape table and
   the conformance note (implementations MUST emit the canonical code; flags the
   currently-unimplemented codes). Updated cross-references (`§8.6.6` → td-003;

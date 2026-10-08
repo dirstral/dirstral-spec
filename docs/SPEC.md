@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.77.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.78.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2766,6 +2766,9 @@ stable across re-indexing.
   export MUST **fail open** (omit TTML/SMIL, do not fail the request). The
   **bilingual** TTML/SMIL packaging contract (cross-language cue alignment, SMIL
   track metadata) is defined in §8.6.10.
+* Export is **on demand**, one document per request. Writing every document's
+  subtitles beside its media as the corpus is indexed is **write-back**, §8.6.14
+  (opt-in, off by default).
 * The **exported language is selectable** (any language for which a transcript
   exists, §8.6.2). Requesting an export for a language with no transcript is
   `INVALID_FIELD`.
@@ -3340,6 +3343,126 @@ transcript exactly as it applies to an unreadable format.
   to it: an unknown fraction is not evidence of a low one, exactly as §8.2.1's
   floor does not apply when language coverage is undeclared. An implementation MAY
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
+
+#### 8.6.14 Subtitle write-back (emitted sidecars)
+
+> **Status: Planned.** Opt-in and **off by default**
+> (`media.subtitles.emit.enabled: false`). Domain-general: no language, format or
+> station default beyond what §8.6.2/§8.6.3 already define. Implementation lands
+> in a follow-up dir2mcp code PR.
+
+§8.6.3 export is on demand: one document, one format, one request. An archive
+whose editors, players or downstream tools read subtitle files from the media's
+own folder needs every document's subtitles **on disk**, without an operator
+issuing one export per file, and needs them to stay there as the corpus grows.
+Write-back is that surface: once a media document's transcript representations
+exist, the pipeline renders the configured subtitle formats and writes them
+beside the media.
+
+* **Off by default; output-neutral.** Enabling write-back changes no
+  representation, chunk, embedding or citation. It is a side effect of the
+  derivation step (§8.6.11): single-pass and two-phase runs write the same files
+  and index the same output.
+* **What is written.** `media.subtitles.emit.formats` is a subset of
+  `vtt | srt | ttml` (default `[vtt]`).
+  * VTT and SRT are written **once per transcript language** the document has
+    (§8.6.2 keying), in the §8.6.4 sidecar shape `<stem>.<lang>.<ext>`, so a
+    written file binds back to its media under the ordinary sidecar rules.
+    `media.subtitles.emit.languages` (default `[]`, meaning every language the
+    document has a transcript for) restricts which languages are written.
+  * TTML is written **once per document** as `<stem>.ttml`: bilingual (§8.6.10)
+    when a translated transcript exists — primary the source-language transcript,
+    secondary the first configured `media.translate.target_langs` entry the
+    document has — else monolingual. Listing `ttml` requires
+    `media.subtitles.ttml.enabled: true`; otherwise `CONFIG_INVALID`.
+  * **SMIL is never written by write-back.** A packaging manifest beside archive
+    media is owned by whatever pipeline produced the media; overwriting it would
+    break playback. SMIL stays an on-demand export (§8.6.10).
+* **Where.** With `media.subtitles.emit.dir: ""` (the default) files are written
+  **beside the media** in the corpus, where §8.6.4 would bind them (and the
+  ownership rule below is what keeps them from binding while they are unchanged).
+  When renditions are grouped (§8.6.5) the stem is the group's normalized stem,
+  so one set of files serves every rendition. A non-empty `dir` is an output
+  root under which the corpus-relative directory tree is mirrored; files there
+  are outputs only — sidecar discovery never looks outside the corpus, so they
+  neither bind nor need excluding. A non-empty `dir` MUST resolve **outside the
+  corpus root** (`CONFIG_INVALID` otherwise): an output root inside the corpus
+  would place a subtitle beside some other media file, where an edit could later
+  bind it as that file's authored transcript. A source with no writable filesystem
+  (`source.kind: s3`) MUST reject `dir: ""` as `CONFIG_INVALID`; writing into an
+  object store is out of scope here.
+* **Same bytes as export, plus a provenance marker.** The cues written for a
+  (document, language, format) MUST be exactly what §8.6.3/§8.6.10 export
+  produces for it under the same configuration: one renderer and one cue
+  pipeline (filter words, cleaning, segmentation) serve both. A written VTT or
+  TTML additionally carries a **provenance marker** (below) that export does
+  not; it is a comment both formats' parsers ignore, so the file parses to the
+  same cues. SRT has no comment syntax and carries none. Rendering is
+  deterministic.
+* **Ownership: a written file is output, not an authored sidecar.** The
+  implementation MUST record every artifact it writes — document, corpus-relative
+  path, format, language, size, mtime, content hash and the output root it was
+  written under (`""` for beside-the-media) — in state (§5.6). A record applies
+  only under the output root it was written under: after `dir` changes, rows
+  from the previous root neither exclude nor describe any file, so a stale row
+  can never mis-own an in-corpus file by sharing its corpus-relative path. A
+  recorded artifact whose size and mtime on disk are unchanged is **owned**; the
+  stat fields are the discovery-time test because discovery runs over every file
+  on every scan and MUST stay a stat, not a read. Ownership is a property of the
+  record, not of the configuration: it holds whether or not write-back is
+  currently enabled, so disabling the feature later never turns the files it
+  wrote into authored transcripts. Owned files MUST be excluded from sidecar
+  discovery (§8.6.4) and from the document's sidecar fingerprint (§7.6).
+  Consequently write-back never changes a document's identity, never triggers a
+  re-ingest of the document it was derived from, never suppresses STT or
+  translation, and never bypasses the output quality gate (§8.6.6): an owned file
+  is **never read back** as a transcript. A changed STT or translation identity
+  (§8.6.7) re-derives the transcript exactly as if no file existed. A recorded
+  artifact that **has changed** on disk (an editor fixed a cue) is no longer
+  owned: from then on it is an authored sidecar with §8.6.4 precedence, and the
+  record is dropped. **Before rewriting** an owned file (the `refresh` policy
+  below) the implementation MUST additionally verify that the on-disk content
+  hash equals the recorded hash, and MUST treat a mismatch as an edit — drop the
+  record, write nothing — so an edit that happens to preserve size and mtime is
+  never overwritten. An implementation MAY also verify the hash at discovery.
+* **Provenance marker: ownership survives the state.** The ownership record
+  lives in state, and state can be lost, reset or rebuilt; without more, every
+  written file would then bind as an authored sidecar and the corpus would never
+  re-derive those transcripts. So a written VTT MUST carry, immediately after its
+  `WEBVTT` header line, a `NOTE dir2mcp-emitted v1 sha256=<hex>` block, and a
+  written TTML MUST carry, immediately after its XML declaration, a
+  `<!-- dir2mcp-emitted v1 sha256=<hex> -->` comment, where `<hex>` is the
+  SHA-256 of every byte of the file after the marker. When discovery meets a
+  subtitle file with **no** ownership record, it MUST check for this marker: an
+  intact marker (hash matches) means the file is the implementation's own
+  unedited output, which MUST be treated as owned and SHOULD be re-recorded; a
+  marker whose hash does not match is an edited file and binds as authored; no
+  marker is authored. An implementation MAY rule out an unmarked file by reading
+  only its first bytes. An SRT written with no surviving record is
+  indistinguishable from an authored one; a deployment that needs SRT to survive
+  state loss SHOULD write it under a separate `dir`.
+* **Overwrite policy.** `media.subtitles.emit.policy` is `if_missing` (default)
+  or `refresh`.
+  * `if_missing` writes a (language, format) only when the document has **no
+    bound sidecar** of that format and language — owned or not, under any name
+    §8.6.4 binds. A file the implementation did not write is never overwritten;
+    an existing unowned file simply counts as present.
+  * `refresh` additionally rewrites an **owned** file whose recorded content hash
+    differs from the current render, so a re-derived transcript reaches disk.
+  * Neither policy ever writes over an unowned file.
+* **Writes are atomic** (temporary file in the target directory, then rename),
+  never partial. A write failure is a **non-fatal per-document outcome** (§7.7):
+  it is logged with the `rel_path`, recorded on the run manifest (§8.6.11) with
+  `SUBTITLE_WRITE_FAILED` (§14.4), and the transcript stays indexed.
+* **Manifest.** Every artifact written is recorded under the manifest record's
+  produced outputs as `<format>:<lang>` (`ttml` for TTML); a skipped one is not.
+  Emission order within a document is deterministic: formats, then languages,
+  each sorted.
+* **When.** Write-back runs **once per document after all of its transcript
+  representations for the run are persisted**: at the end of the document's
+  processing in single-pass mode, at the end of its derivation pass in two-phase
+  mode. The transcription pass of a two-phase run writes nothing, because the
+  translations it would need do not exist yet.
 
 ### 8.7 Distributed embedding (coordinator + workers)
 
@@ -4577,6 +4700,9 @@ Example tool execution error:
   not only a provider/transport failure.
 * `TRANSLATE_FAILED` — translation failed, including a translation output
   rejected by the degenerate-output quality gate (§8.6.6).
+* `SUBTITLE_WRITE_FAILED` — a subtitle write-back artifact (§8.6.14) could not
+  be written (target directory not writable, temporary file or rename failed).
+  Non-fatal per document: the transcript stays indexed; `retryable: true`.
 * `MEDIA_CLIP_FAILED` — clip extraction failed (returned by
   `dir2mcp_open_media_clip`, §15.11): the underlying media is unreadable, the
   extraction tool (e.g. `ffmpeg`) is unavailable, or the segment extraction
@@ -5765,6 +5891,12 @@ media:
     ttml:
       enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
       align_tolerance_ms: 2500 # bilingual cue cross-language alignment tolerance (§8.6.10)
+    emit:                     # subtitle write-back (§8.6.14): write subtitles beside media as it is indexed
+      enabled: false          # opt-in, off by default; output-neutral (changes no chunk or citation)
+      formats: [vtt]          # subset of vtt|srt|ttml; ttml requires ttml.enabled: true
+      languages: []           # [] => every transcript language the document has (VTT/SRT only)
+      policy: if_missing      # if_missing | refresh; a file dir2mcp did not write is never overwritten
+      dir: ""                 # "" => beside the media; else mirror the corpus tree under this root, outside the corpus
   sidecars:
     enabled: true             # ingest .vtt/.srt/.ttml next to media as the transcript (§8.6.4)
   variants:

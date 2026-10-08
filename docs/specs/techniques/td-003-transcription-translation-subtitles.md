@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -16,7 +16,8 @@ subtitle export (VTT/SRT always; TTML/SMIL optional), subtitle sidecar
 ingestion, multi-rendition selection, the degenerate-output quality gate,
 representation derivation identity / re-derivation, optional speaker
 diarization, word-level timing, bilingual broadcast packaging, and the optional
-two-phase batch ingest with progress reporting and a resumable run manifest.
+two-phase batch ingest with progress reporting and a resumable run manifest,
+and opt-in subtitle write-back beside the media (§8.6.14).
 
 **Status: Planned.** Implementation lands in follow-up dir2mcp code PRs once this
 spec change is merged. The contract is **domain-general**: it carries **no**
@@ -179,6 +180,9 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   export MUST **fail open** (omit TTML/SMIL, do not fail the request). The
   **bilingual** TTML/SMIL packaging contract (cross-language cue alignment, SMIL
   track metadata) is defined in §8.6.10.
+* Export is **on demand**, one document per request. Writing every document's
+  subtitles beside its media as the corpus is indexed is **write-back**, §8.6.14
+  (opt-in, off by default).
 * The **exported language is selectable** (any language for which a transcript
   exists, §8.6.2). Requesting an export for a language with no transcript is
   `INVALID_FIELD`.
@@ -647,7 +651,35 @@ transcript exactly as it applies to an unreadable format.
   floor does not apply when language coverage is undeclared. An implementation MAY
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
 
+### 8.6.14 Subtitle write-back (emitted sidecars)
+
+> **Status: Planned.** Opt-in and **off by default**
+> (`media.subtitles.emit.enabled: false`).
+
+The write-back contract — what is written (VTT/SRT per transcript language, one
+TTML per document, bilingual when a translation exists, never SMIL), where
+(beside the media, or under `media.subtitles.emit.dir`), the cue identity with
+§8.6.3/§8.6.10 export plus the VTT/TTML provenance marker, the
+**ownership** rule that keeps a written file from being re-ingested as an
+authored sidecar (§8.6.4) or changing the document's identity, the
+`if_missing | refresh` overwrite policy, the atomic-write and
+`SUBTITLE_WRITE_FAILED` (df-008) failure rules, the manifest `outputs` labels
+(§8.6.11) and the single-pass / two-phase timing — is specified **normatively in
+SPEC.md §8.6.14** and is not restated here, so there is one copy to maintain.
+The ownership rows are the df-003 §5.6 `emitted_artifacts` table; the
+configuration keys are listed in bs-011 §16.2.
+
 ## Changelog
+
+- **0.7.0**: spec 0.78.0 added **subtitle write-back** (SPEC.md §8.6.14,
+  opt-in, off by default): `media.subtitles.emit.*` writes VTT/SRT per
+  transcript language and one TTML per document (bilingual when a translation
+  exists) beside the media, with the cues of §8.6.3/§8.6.10 export and a
+  provenance marker in VTT and TTML, under an ownership rule that keeps
+  the written files from being re-ingested as authored sidecars. This document
+  carries a cross-reference (§8.6.14) rather than a copy: SPEC.md is the one
+  normative text for it.
+
 
 - **0.6.0**: mirrors spec 0.71.0 (SPEC.md §8.2.2, optional, off by default).
   §8.6.1 gains a fourth chunk-window close rule, a language change; §8.6.13

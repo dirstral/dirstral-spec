@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.77.0`
+**Current spec version:** `0.78.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,18 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.78.0: subtitles are written beside the media as the corpus is indexed
+
+A new optional surface, off by default (`MINOR` per the pre-1.0 policy). A deployment that does not enable it is unchanged. Spec-first, ahead of the dir2mcp implementation.
+
+- §8.6.14 (new): **subtitle write-back**. With `media.subtitles.emit.enabled: true`, once a media document's transcript representations exist the pipeline writes the configured formats (`vtt | srt | ttml`, default `[vtt]`) beside the media, one VTT/SRT per transcript language in the §8.6.4 sidecar shape and one TTML per document (bilingual when the document has a translated transcript, else monolingual). The cues are identical to what §8.6.3/§8.6.10 export produces; a written VTT or TTML also carries the provenance marker below, which export does not, and SRT carries none. SMIL is never written.
+- §8.6.14: a written file is an **owned output**, recorded in state (§5.6) and excluded from §8.6.4 sidecar discovery and the §7.6 sidecar fingerprint, so write-back never changes document identity, never re-ingests its own output, never bypasses the §8.6.6 gate and never blocks §8.6.7 re-derivation. Ownership is a property of the record, not of the feature flag. A file edited on disk stops being owned and becomes an authored sidecar; discovery decides by size and mtime (a stat), and a rewrite first verifies the on-disk hash so a same-size edit is never overwritten.
+- §8.6.14: `policy: if_missing` (default) never overwrites a file the implementation did not write; `refresh` rewrites owned files whose render changed. A remote source (`s3`) requires an output `dir`; a non-empty `dir` must resolve outside the corpus root; ownership rows record the root they were written under and apply only under it.
+- §8.6.14: written VTT and TTML carry a **provenance marker** (a comment holding the SHA-256 of the body). With no ownership record, discovery adopts a file whose marker is intact as the implementation's own output, so a lost or reset state database does not turn every written file into an authored transcript. An edited file fails the hash and is authored. SRT carries no marker.
+- §14.4: `SUBTITLE_WRITE_FAILED`, a non-fatal per-document code for a failed write.
+- §16.2: the template lists `media.subtitles.emit.{enabled, formats, languages, policy, dir}`.
+- Motivation: an archive pipeline being retired wrote `.ru.vtt`/`.en.vtt`/`.ttml` beside each video and skipped videos whose files existed. Its replacement must put the same files on disk without an operator exporting 140k documents one at a time, and must not then treat its own output as human-authored truth, which would freeze the archive at the first model that transcribed it.
 
 ## 0.77.0: the per-document docling timeout defaults to one hour
 
