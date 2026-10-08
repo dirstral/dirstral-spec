@@ -244,7 +244,8 @@ media:
                               #   stt_validation for the language (SPEC.md 8.2.3).
     on_route_error: fail      # fail|default (SPEC.md 8.2.4): a language_providers candidate that
                               #   fails is a failed window/item (fail) or is replaced once by the
-                              #   default STT profile, recorded as fallback_from (default).
+                              #   default STT profile (default), recorded as fallback_from
+                              #   under window scope and route_fallback_from under item scope.
     on_uncovered_language: warn  # warn|skip: response when the source language is outside
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;

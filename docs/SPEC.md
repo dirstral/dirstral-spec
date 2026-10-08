@@ -2573,15 +2573,32 @@ language list and no model ship, and every model choice stays the operator's.
     language is resolved from the text afterwards. It MUST NOT fail the item.
   * **Recording.** A transcript decoded with an identifier bound under `item`
     records `language_identifier` (the profile name), `language_scope: item`
-    and `language_routes` (the resolved route table in the same rendering as
-    under `window`) on its `meta_json` (§5.2), whatever the identifier
-    answered. When the identifier resolved a language the transcript also
-    records that language as `language` with `language_source: detected` and
-    its `language_confidence`, and `route`: the name of the STT provider
+    and `language_routes` (the resolved route table, shape below) on its
+    `meta_json` (§5.2), whatever the identifier answered. When the identifier
+    resolved a language the transcript also records that language as
+    `language` with `language_source: detected` and its
+    `language_confidence`, and `route`: the name of the STT provider
     profile that decoded the item, which is the default profile when no route
     matched. `provider` and `model` keep their §8.6.7 meaning (the active STT
     identity); `language_routes` carries the model each route binds, so the
     pair `(route, language_routes)` names the model that decoded the item.
+  * **`language_routes` shape.** A single string, not a time-ranged array: it
+    is a property of the configuration, not of a range of the recording, so it
+    is distinct from the §8.2.2 `coverage.languages` entries. It is a list of
+    `<key>=<value>` entries joined by `,` and sorted by key:
+    * `@identifier=<profile>|<model>|probe=<n>s`: the identifier binding and
+      the effective `language_probe_sec`. It sorts first.
+    * `<lang>=<candidate>+<candidate>...`: one entry for each
+      `language_providers` key, keyed by its lower-case primary subtag. Each
+      candidate is `<profile>|<model>`, the profile name and the STT model it
+      binds, in configured order. A candidate that `require_validation` makes
+      ineligible is left out. A profile that does not resolve is written as its
+      configured name.
+
+    A language with no entry has no route: the default STT profile decodes it,
+    and `route` names that profile. The default profile has no entry of its own
+    in `language_routes`; `provider` and `model` name it. Example:
+    `@identifier=lid|whisper-small|probe=30s,fa=fa-ft|whisper-fa,kk=kk-ft|whisper-kk+cloud|whisper-1`.
   * **Derivation identity.** Under `item`, when an identifier is bound, the
     identifier binding, the effective probe length, the candidate lists and
     their eligibility join the transcript's derivation identity (§8.6.7)
