@@ -1,7 +1,7 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.8.0
+- **Version:** 0.9.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -28,7 +28,7 @@ the conformance contract. Shared shapes — [df-005 `Span`](df-005-span.md) and
 | `dir2mcp_ask` (§15.3) | `ask.json` | `citations[]` `$ref`s `Citation`; `hits[]` `$ref`s `Hit`. |
 | `dir2mcp_open_file` (§15.4) | `open_file.json` | Returns `content` + a df-005 `Span` (incl. the `document` variant). |
 | `dir2mcp_list_files` (§15.5) | `list_files.json` | |
-| `dir2mcp_stats` (§15.6) | `stats.json` | SHOULD carry `format_version` (df-000). Optional additive `skip_reasons` coverage array (reason→count; closed reason enum) and `indexing.failed_chunks` standing failure counts (open category vocabulary). |
+| `dir2mcp_stats` (§15.6) | `stats.json` | SHOULD carry `format_version` (df-000). Optional additive `skip_reasons` coverage array (reason→count; closed reason enum), `indexing.failed_chunks` standing failure counts (open category vocabulary), and `evidence` (thresholds in effect and the null baseline, §9.4.3). |
 | `dir2mcp_transcribe` (§15.7) | `transcribe.json` | recommended tool. |
 | `dir2mcp_annotate` (§15.8) | `annotate.json` | recommended tool. |
 | `dir2mcp_transcribe_and_ask` (§15.9) | `transcribe_and_ask.json` | recommended tool. |
@@ -77,6 +77,7 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
+- **0.9.0**: `stats.json` gains the optional additive top-level `evidence` object (`cosine_threshold`, `cosine_threshold_source`, `rerank_threshold`, `null_baseline{probes, probe_set, p50, p90, max, chunks, embed_model, computed_at}`): the abstention thresholds in effect and the null baseline they were derived from. Mirrors spec 0.80.0. dir2mcp #1081.
 - **0.8.0** — `stats.json` `skip_reasons[].reason` enum gains `transcript_partial`:
   media whose windowed decode covered less of the recording than
   `media.stt.min_coverage` requires, dropped under

@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.79.0`
+**Current spec version:** `0.80.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,19 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.80.0: the evidence threshold calibrates itself from a null baseline
+
+A new optional config key with the old behaviour as its floor. A deployment that does not set it keeps the old behaviour wherever the baseline sits below the fixed value (`MINOR` per the pre-1.0 policy). Numbered after 0.79.0 (dirstral-spec#126, item-scope identifier and route fallback), which is on main.
+
+- §9.4.3: new block "Calibrated threshold from a null baseline (optional)". A server MAY derive the absolute threshold for a scale from the top signal of a fixed, shipped, versioned set of at least 16 probe questions against the corpus. The effective threshold is `max(fixed, statistic(baseline))`; the statistic MUST be a quantile that a few probes cannot move (the maximum is non-conformant); the baseline is per embedder and corpus and MUST be recomputed when the embed identity or the probe set changes; an unavailable baseline falls back to the fixed value and never refuses a request. Measured on the dir2mcp benchmark corpus with `nomic-embed-text`: the p90 rule refuses 1.5% of answerable, 0% of on-topic unanswerable and 26.6% of off-corpus questions; the fixed `0.05` refused none.
+- §9.4.3: `rag.evidence_threshold` (§16.2): `auto` (default) selects the calibrated rule; a number in `(0,1]` pins the cosine threshold; any other value is `CONFIG_INVALID`.
+- §9.4.3: a similarity threshold separates questions whose subject is absent from the corpus (AUC about 0.9) and cannot separate on-topic unanswered questions (AUC about 0.6). §9.4.4 is the control for that class.
+- §9.4.4: verification is named as the refusal control for on-topic unanswered questions, with the reference implementation's measured cost (dir2mcp #1084): refusals of unanswerable questions 25% to 75%, correct answers 75% to 67.5%, false refusals 6.2% to 22.5%.
+- §15.6: `dir2mcp_stats` MAY carry an optional additive top-level `evidence` object (`cosine_threshold`, `cosine_threshold_source: auto|config|floor`, `rerank_threshold`, and `null_baseline` with `probes`, `probe_set`, `p50`, `p90`, `max`, `chunks`, `embed_model`, `computed_at`). A server that calibrates MUST emit it. `stats.json` declares it.
+- §16.2: the template lists `rag.evidence_threshold: auto`.
+- Mirrors: bs-007 0.17.0, bs-011 0.13.0, df-007 0.9.0.
+- Motivation: dir2mcp #1081. With local embedders every unrelated question scores far above a constant that fits cloud providers, so the guard of 0.47.x never fired.
 
 ## 0.79.0: the language identifier runs under item scope, and a failed route can fall back to the default profile
 

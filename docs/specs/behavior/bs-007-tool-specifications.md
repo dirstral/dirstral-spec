@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.16.0
+- **Version:** 0.17.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -226,8 +226,8 @@ are:
 
 **Behavior.** Output carries `root`, `state_dir`, `protocol_version`,
 `doc_counts` (map of doc-type → integer), `total_docs`, `doc_counts_available`,
-`indexing`, and `models` (all required); `recent_failures` and `skip_reasons`
-are optional.
+`indexing`, and `models` (all required); `recent_failures`, `skip_reasons`
+and `evidence` are optional.
 
 - `indexing` carries `job_id`, `running`, `mode` (`incremental | full`),
   `scanned`, `indexed`, `skipped`, `deleted`, `representations`, `chunks_total`,
@@ -257,6 +257,13 @@ are optional.
   **not** "unsupported". `error_message` is single-line, length-capped
   (implementations SHOULD cap at 512 bytes on a UTF-8 rune boundary), with
   control characters stripped, and MUST NOT contain secrets or raw file content.
+- `evidence` (optional, spec 0.80.0) reports the absolute evidence thresholds
+  in effect (`cosine_threshold`, `cosine_threshold_source: auto | config |
+  floor`, `rerank_threshold`) and, once computed, the `null_baseline` they were
+  derived from (`probes`, `probe_set`, `p50`, `p90`, `max`, `chunks`,
+  `embed_model`, `computed_at`). A server that calibrates its threshold
+  (SPEC §9.4.3) MUST emit it; a client MUST treat omission as "not reported",
+  never as "no threshold". See `stats.json` (df-007).
 - `skip_reasons` (optional) is the honest-coverage breakdown: one
   `{reason, count}` entry per distinct reason a document was set to
   `status="skipped"` during ingest, with `count` the number of documents skipped
@@ -445,6 +452,7 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 ## Changelog
 
+- **0.17.0**: declared the optional `evidence` object on `dir2mcp_stats` (SPEC §9.4.3 and §15.6, spec 0.80.0; dir2mcp #1081): the abstention thresholds in effect and the null baseline behind them, so a caller can reproduce a verdict from published numbers.
 - **0.15.0**: declared two `dir2mcp_list_files` fields this document had
   omitted. `include_hidden` is a documented input in `list_files.json` and the
   reference server's advertised schema, and appeared in neither this document
