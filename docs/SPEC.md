@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.78.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.79.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2395,9 +2395,11 @@ operator's declaration (`stt_languages`) and the operator's route
   the following whatever the window count, and the §8.6.13 `coverage` object
   MUST be recorded even for a one-window decode when any window was refused:
   * `coverage.languages`: an array of `{start_ms, end_ms, language,
-    language_source, language_confidence?, route, covered}` in **absolute**
-    recording time, **coalesced** over adjacent windows whose `(language,
-    language_source, route, covered)` are identical, **non-overlapping**, in
+    language_source, language_confidence?, route, covered, fallback_from?}` in
+    **absolute** recording time, **coalesced** over adjacent windows whose
+    `(language, language_source, route, covered, fallback_from)` are identical
+    (`fallback_from` is the §8.2.4 route fallback record, absent otherwise),
+    **non-overlapping**, in
     **ascending** `start_ms` order, so an inherited stretch is always its own
     entry and nothing about which windows were inherited is lost. `route` names
     the STT provider profile that decoded the range. `language_confidence` is
@@ -2501,7 +2503,9 @@ no model is trained or adapted, and every model choice stays the operator's.
   validation): a route with no candidate is a configuration error, not a
   request for the default profile, which an absent key already expresses.
   * **Under `item`,** the first eligible candidate (below) decodes the item.
-    The list adds nothing else under `item`.
+    The list adds nothing else under `item`. Which language selects the list
+    under `item` is the pin (§8.2.1) or, when an identifier is bound, its
+    report (§8.2.4).
   * **Under `window`,** a window whose resolved language matches the key is
     decoded by the first eligible candidate. When that candidate's window is
     **refused** (§8.2.2: `language_uncovered` under `skip`, or `quality_gate`),
@@ -2538,6 +2542,114 @@ no model is trained or adapted, and every model choice stays the operator's.
   a different slice can resolve one window to another language and route while
   the representation language stays the same. The informational validation
   fields are not part of the identity.
+
+#### 8.2.4 Item-scope identifier and route fallback (optional)
+
+§8.2.3 binds the language identifier under `window` scope only. Under the
+default `item` scope the source language is resolved after transcription, from
+the text, and `language_providers` applies only to an operator pin (§8.2.1).
+A corpus whose recordings are each in one language, but not the same language,
+therefore never reaches a per-language route unless every file is pinned. This
+subsection closes that gap and adds a bounded fallback for a route that fails.
+Both controls are **optional**, **off by default**, and **domain-general**: no
+language list and no model ship, and every model choice stays the operator's.
+
+* **Identifier under `item`.** When `media.stt.language_identifier` is bound and
+  `media.stt.language_scope` is `item`, the item's language is resolved
+  **before** transcription: the implementation sends the identifier a probe of
+  the item (§8.2.3 "cost": a centred slice of at most `language_probe_sec`,
+  or the whole audio when it is shorter) and reads the language and confidence
+  it reports. The report is the `detected` signal of §8.8 for the item and keeps
+  the §8.2.3 precedence: `configured`, then `declared`, then the identifier,
+  then text detection. A pin or declaration disables the identifier for the
+  item, exactly as under `window`.
+  * **Routing.** The item is decoded by the first eligible candidate of
+    `language_providers` for the resolved language (§8.2.3 "under `item`"), or
+    by the default STT profile when no key matches or no candidate is eligible.
+    The §8.2.1 floor is evaluated against the profile that decodes.
+  * **No signal.** An identifier report that is empty, below the floor, or
+    fails (transport or provider error) is no signal (§8.2.3), and the item is
+    decoded exactly as it is today: the default profile decodes, and the
+    language is resolved from the text afterwards. It MUST NOT fail the item.
+  * **Recording.** A transcript decoded with an identifier bound under `item`
+    records `language_identifier` (the profile name), `language_scope: item`
+    and `language_routes` (the resolved route table, shape below) on its
+    `meta_json` (§5.2), whatever the identifier answered. When the identifier
+    resolved a language the transcript also records that language as
+    `language` with `language_source: detected` and its
+    `language_confidence`, and `route`: the name of the STT provider
+    profile that decoded the item, which is the default profile when no route
+    matched. `provider` and `model` keep their §8.6.7 meaning (the active STT
+    identity); `language_routes` carries the model each route binds, so the
+    pair `(route, language_routes)` names the model that decoded the item.
+  * **`language_routes` shape.** A single string, not a time-ranged array: it
+    is a property of the configuration, not of a range of the recording, so it
+    is distinct from the §8.2.2 `coverage.languages` entries. It is a list of
+    `<key>=<value>` entries joined by `,` and sorted by key:
+    * `@identifier=<profile>|<model>|probe=<n>s`: the identifier binding and
+      the effective `language_probe_sec`. It sorts first.
+    * `<lang>=<candidate>+<candidate>...`: one entry for each
+      `language_providers` key, keyed by its lower-case primary subtag. Each
+      candidate is `<profile>|<model>`, the profile name and the STT model it
+      binds, in configured order. A candidate that `require_validation` makes
+      ineligible is left out. A profile that does not resolve is written as its
+      configured name.
+
+    A language with no entry has no route: the default STT profile decodes it,
+    and `route` names that profile. The default profile has no entry of its own
+    in `language_routes`; `provider` and `model` name it. Example:
+    `@identifier=lid|whisper-small|probe=30s,fa=fa-ft|whisper-fa,kk=kk-ft|whisper-kk+cloud|whisper-1`.
+  * **Derivation identity.** Under `item`, when an identifier is bound, the
+    identifier binding, the effective probe length, the candidate lists and
+    their eligibility join the transcript's derivation identity (§8.6.7)
+    exactly as §8.2.3 has them join under `window`. With no identifier bound the
+    `item` identity is unchanged, so every existing corpus's identity is
+    byte-stable.
+* **Route fallback on error.** `media.stt.on_route_error` is `fail | default`,
+  default `fail`. It governs what happens when a **route candidate** (a profile
+  that `language_providers` selected for a resolved language, not the default
+  profile) fails with a transport or provider error:
+  * **`fail`** (default): today's behaviour. Under `window` the window is a
+    failed window (§8.6.13, §8.2.3); under `item` the item fails
+    (`TRANSCRIBE_FAILED`).
+  * **`default`**: the same audio is decoded **once** on the default STT
+    profile. A failure of that decode is then the failed window or item. The
+    fallback costs at most one extra decode per window or item, never more; it
+    does not retry the failed candidate and does not advance a §8.2.3
+    candidate list. The §8.2.1 floor is evaluated against the default profile,
+    which is the one that decoded.
+  * **Recording.** A fallback MUST be visible in the record, because the text
+    was produced by a model the operator did not choose for that language.
+    Under `window` the `coverage.languages` entry records `route` as the
+    default profile and `fallback_from` as the candidate that failed;
+    `fallback_from` joins the coalescing key of §8.2.2, so a fallen-back
+    stretch is always its own entry. Under `item` the transcript records
+    `route` as the default profile and `route_fallback_from` as the candidate
+    that failed. A log line names the candidate, the error class and the
+    range or item.
+  * **Scope.** Under `item` the fallback applies to the route the identifier
+    selected (above). A corpus routed by an operator pin (§8.2.1) keeps the
+    failed item: the pin asserts the route, and decoding a pinned corpus on
+    another model behind the operator's back is the silent degradation this
+    section exists to prevent.
+* **Static validation.** Every `media.stt.language_providers` key MUST be a
+  BCP-47 language tag whose primary subtag is 2 to 8 ASCII letters; any other
+  key is `CONFIG_INVALID`. A key that can never match a resolved language
+  (`fa_IR`, `f`, an empty string) is a configuration error, not a route that
+  silently never fires. This is a shape check only: no language list ships,
+  so no registry lookup is made. `media.stt.on_route_error` outside `fail |
+  default` is `CONFIG_INVALID`.
+* **Observability.** `dir2mcp doctor` MUST report the resolved STT route table
+  as its own check (`stt_routes`): the identifier binding (profile, scope,
+  probe length) when one is bound; for each language key, in sorted order, its
+  candidates in order, each with the profile name and the STT model it binds,
+  and whether it is eligible under `require_validation`; and the
+  `on_route_error` policy. A language whose candidates are all ineligible is
+  reported as a warning naming the language and the default profile that
+  decodes it instead. With no route table and no identifier the check reports
+  that positively ("no language routes configured"), because an omitted line
+  and a clean configuration read the same (§7.7). The informational
+  `stt_validation` fields are surfaced unchanged (§8.2.3).
 
 ### 8.3 Note on TTS
 
@@ -5845,11 +5957,18 @@ media:
                               #   decoded per passage, with coverage.languages/refused recorded.
     # language_identifier: ""  # optional STT-capable profile used ONLY to identify the language
                               #   (§8.2.3); outranks the decoder's own report. Unset => §8.2.2.
+                              #   Under item scope it runs BEFORE transcription on a probe and
+                              #   routes the item through language_providers (§8.2.4).
     # language_probe_sec: 30   # at most this much audio is sent to the identifier (§8.2.3)
     # require_validation: false  # true => a language_providers candidate is eligible only when
                               #   its profile declares stt_validation for that language (§8.2.3).
                               # language_providers values may also be ordered lists; under
                               #   window a refused window falls through to the next candidate.
+    on_route_error: fail      # fail|default (§8.2.4): what happens when a language_providers
+                              #   candidate fails with a transport or provider error. fail
+                              #   (default) keeps the failed window/item; default decodes the
+                              #   same audio once on the default STT profile and records
+                              #   fallback_from / route_fallback_from on the transcript.
     on_uncovered_language: warn  # warn|skip: response when the source language is outside
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;
