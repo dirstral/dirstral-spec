@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -154,6 +154,11 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
   - compute `rep_hash`; if unchanged → **skip** chunk rebuild
 - Chunk-level:
   - compute `text_hash`; if unchanged → **skip** embedding
+- Media identity: an audio/video `content_hash` is the whole-file hash under
+  `ingest.media_identity: full` (default) or a size + three-slice hash under
+  `sampled`, which also defers reading the bytes until a representation needs
+  them. The normative rule, its trade-off and the derivation-pass read rule are
+  in SPEC.md §7.6.
 
 ### 7.7 Per-document error handling
 
@@ -470,6 +475,7 @@ re-indexes it.
 
 ## Changelog
 
+- **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript
   coverage. 0.63.0 of the spec made a partial transcript record its own
   coverage, per representation; nothing summed it. `media.stt.on_partial_transcript`
