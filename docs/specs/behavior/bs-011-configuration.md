@@ -195,7 +195,8 @@ ingest:
   follow_symlinks: false
   max_file_mb: 20
   media_identity: full  # full|sampled (SPEC.md 7.6): sampled hashes size + 3 x 4 MiB slices of
-                        #   audio/video and reads the rest only when STT needs it
+                        #   audio/video; it reads the rest only when a representation
+                        #   needs the bytes (STT, direct media embedding)
   # Late chunking (opt-in, off by default; td-001 §8.1.9): embed the whole
   # document through a long-context model, then apply chunk boundaries and
   # mean-pool each chunk's token vectors. Requires an embed provider that exposes

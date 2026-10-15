@@ -62,11 +62,11 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
 
-## 0.81.0: a media file can be identified by a sample, so a subtitled video is never read in full
+## 0.81.0: a media file can be identified by a sample, so a subtitled video is not read in full only to hash it
 
 A new optional key with the old behavior as its default (`MINOR` per the pre-1.0 policy).
 
-- §7.6: `ingest.media_identity: full | sampled` (default `full`). Under `sampled` an audio/video `content_hash` is SHA-256 over a domain tag, the size, and three 4 MiB slices (start, middle, end); a file of at most 12 MiB is hashed whole, identically to `full`. The rest of the file MUST NOT be read unless a representation needs it, so a media document whose transcript comes from a sidecar is never read in full. The trade-off, a same-size edit outside the slices going unseen, is stated.
+- §7.6: `ingest.media_identity: full | sampled` (default `full`). Under `sampled` an audio/video `content_hash` is SHA-256 over a domain tag, the size, and three 4 MiB slices (start, middle, end); a file of at most 12 MiB is hashed whole, identically to `full`. The rest of the file MUST NOT be read unless a representation needs the bytes (STT, direct media embedding). A sidecar removes only the transcription read: a media document whose transcript comes from a sidecar, and that no other representation reads, is never read in full. The digest input is normative: the tag and a `0x00` byte, the size in ASCII decimal and a `0x00` byte, then the three slices with no framing; the middle slice starts at `floor(size / 2) - 2 MiB`. Test vectors are given. The trade-off, a same-size edit outside the slices going unseen, is stated.
 - §7.6: the two-phase derivation pass MUST NOT read a media document's bytes when it has nothing to derive (no model-derived transcript, or every target language present under a current derivation identity).
 - §7.8: the `(size, mtime)` confirm step reads only the slices under `sampled`.
 - §16.2: the template lists `ingest.media_identity: full`.

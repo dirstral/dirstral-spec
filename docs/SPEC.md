@@ -1525,9 +1525,42 @@ is bound to the corpus via the embed identity (§8.1.4).
   `size/2 - 2 MiB`, and at `size - 4 MiB`. A file no larger than 12 MiB is hashed
   whole, exactly as under `full`. Under `sampled` an implementation MUST NOT read
   the rest of the file unless a representation needs the bytes (STT, direct media
-  embedding, §8.1.7); a media document whose transcript comes from a sidecar
-  (§8.6.4) is therefore never read in full. The sidecar fingerprint is folded in
-  as under `full`.
+  embedding, §8.1.7). When a representation needs them, the implementation reads
+  the whole file. A sidecar (§8.6.4) removes only the transcription read: a media
+  document whose transcript comes from a sidecar, and that no other
+  representation reads, is never read in full.
+
+  **Sampled digest (normative).** Let `size` be the file size in bytes and
+  `S = 4194304` (4 MiB). The digest input is these bytes, in this order, with
+  no other separator, length prefix or padding:
+
+  1. the domain tag `dir2mcp-media-identity-v1` as UTF-8 (25 bytes), then one
+     `0x00` byte;
+  2. `size` as ASCII decimal digits, with no sign and no leading zeros, then one
+     `0x00` byte;
+  3. the head slice: bytes `[0, S)`;
+  4. the middle slice: bytes `[m, m + S)`, where `m = floor(size / 2) - S / 2`
+     (integer division, so an odd `size` rounds down);
+  5. the tail slice: bytes `[size - S, size)`.
+
+  The identity is the SHA-256 of that input, as 64 lowercase hex characters.
+  The sampled digest applies only when `size > 3 * S` (12582912 bytes). Then
+  each slice is exactly `S` bytes and the three slices do not overlap. When
+  `size <= 3 * S`, the implementation reads the whole file and computes
+  `content_hash` exactly as under `full`; the domain tag and the size are not
+  hashed. When the document has a sidecar fingerprint `F`, `content_hash` is the
+  lowercase hex SHA-256 of the identity's 64 hex characters (ASCII), one `0x00`
+  byte, and `F` (UTF-8). This is the same fold as under `full`, where the input
+  is the file bytes, one `0x00` byte, and `F`. With no sidecar, `content_hash`
+  is the identity.
+
+  Test vector: a file of 20971521 bytes where byte `i` is `i mod 251`, with no
+  sidecar, has the sampled identity
+  `a580fb302c21e6fc1d57e4ea3a080387a4f13894e1e27bb7ac3a9b698ec91b93`
+  (`m = 8388608`). The same pattern at 12582913 bytes gives
+  `a14342b2bdf68415cdf65512b51113621f7cda9a10e5fab3c0c0e11fa49b883e`. At
+  12582912 bytes the file is hashed whole and gives
+  `b6967a4c54cdab8a16907be0774af71e5db8198045f91933ebed106ddba22dfb`.
 
   The trade-off is stated, not hidden: an in-place edit that changes only bytes
   outside the three slices and keeps the size identical is not a change under
@@ -6019,7 +6052,8 @@ ingest:
   follow_symlinks: false
   max_file_mb: 20
   media_identity: full  # full|sampled (§7.6): sampled hashes size + 3 x 4 MiB slices of
-                        #   audio/video and reads the rest only when STT needs it
+                        #   audio/video; it reads the rest only when a representation
+                        #   needs the bytes (STT, direct media embedding)
   # Directory names that discovery does not descend into (SPEC 7.1). A present
   # key REPLACES the default list; it does not add to it. Absent = the default
   # list below. `.dir2mcp` is always added back, because the state directory
