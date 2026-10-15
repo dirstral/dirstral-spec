@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.81.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.82.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2697,13 +2697,106 @@ language list and no model ship, and every model choice stays the operator's.
     failed item: the pin asserts the route, and decoding a pinned corpus on
     another model behind the operator's back is the silent degradation this
     section exists to prevent.
+* **A fallback result is provisional.** A transcript that records
+  `route_fallback_from` (under `item`), or a window whose `coverage.languages`
+  entry records `fallback_from` (under `window`), holds text from a model the
+  operator did not choose for that language. This is a **fallback result**. It
+  is a temporary answer to a failed route, not a permanent one. The rules below
+  apply to a fallback result on each run, before a cached transcript is used
+  (§8.6.7, §8.6.13). They apply to unchanged media too, as the §8.6.7 identity
+  check does.
+  * **The policy is not part of the identity.** `media.stt.on_route_error` MUST
+    NOT join the transcript's derivation identity (§8.6.7). A route decode that
+    succeeds gives the same text under both policies. With the policy in the
+    identity, a change of policy would re-derive every transcript of the corpus.
+    The policy acts on fallback results only, through the rules below.
+  * **Under `fail`, a fallback result is stale.** A cached fallback result MUST
+    be re-derived. The implementation decodes the same audio once on the
+    candidate that the current configuration selects for the recorded
+    language. When that decode succeeds, its text replaces the fallback text
+    and the fallback record is removed. When it fails, the `fail` policy
+    applies: under `item` the item fails (`TRANSCRIBE_FAILED`); under `window`
+    the window is a failed window (§8.6.13) and its range leaves
+    `coverage.ranges`. The implementation MUST NOT serve the fallback text in
+    place of a failed decode under `fail`. It retires the fallback text from
+    the index (the transcript representations and chunks that carry it, and
+    the translations derived from them) as §8.6.13 retires a refused
+    transcript. A cached result with no fallback record stays valid. A change
+    of policy from `default` to `fail` therefore re-derives only the fallback
+    results. The cache entry of the fallback result is not purged, for the
+    reason §8.6.13 gives: when the operator selects `default` again, the entry
+    is a fallback result under the next rule and costs no decode until it is
+    due.
+  * **Under `default`, a fallback result is retried when it is due.** A
+    retry on every run would decode a broken checkpoint on every run, which
+    on an archive is GPU time with no result. A fallback result is **due**
+    when one of these is true:
+    1. its `route_fallback_at` is older than `media.stt.route_retry_after`
+       (the current time minus `route_fallback_at` is equal to or greater
+       than the interval);
+    2. the transcript records no `route_fallback_at`, or the value is not a
+       valid RFC 3339 time. An unknown age is treated as due.
+
+    A due fallback result is decoded once more on the candidate that the
+    current configuration selects for the recorded language. When that decode
+    succeeds, its text replaces the fallback text, the fallback record and
+    `route_fallback_at` are removed, and the representation is re-chunked and
+    re-embedded (§8.6.7). When it fails, the implementation keeps the cached
+    fallback text and its record and sets `route_fallback_at` to the time of
+    the retry. It MUST NOT decode on the default profile again: the cached
+    fallback text is that decode. A retry therefore costs at most one decode
+    per fallback window or item per interval.
+  * **A change of route is not delayed.** The identity of a candidate (its
+    profile name and the STT model it binds, as `language_routes` records it)
+    and the candidate lists are part of the derivation identity (§8.2.3, and
+    under `item` the identifier rule above). A change to the candidate in a
+    fallback record therefore makes the whole transcript stale under §8.6.7 on
+    the next run. `route_retry_after` MUST NOT delay that re-derivation.
+  * **The retry scope.** Under `window`, a retry decodes only the decode
+    windows inside the ranges of the `coverage.languages` entries that record
+    `fallback_from`. It MUST NOT decode the other windows again: their cached
+    text and entries stay as they are. The retried windows keep their recorded
+    language and their place in the merged transcript (§8.6.13). A window
+    whose retry succeeds gets an entry with the candidate as `route` and no
+    `fallback_from`. Under `item`, a retry decodes the item on the route for
+    the recorded `language`. It does not run the identifier again, because the
+    identifier binding and probe are unchanged (they are in the identity).
+  * **`route_fallback_at`.** A transcript that holds a fallback result MUST
+    record `route_fallback_at` on its `meta_json` (§5.2): the RFC 3339 UTC time
+    of the last decode or retry that left a fallback record in place. There is
+    one value per transcript under both scopes; under `window` it is the time
+    of the latest decode of any fallback window. It is not part of the
+    derivation identity. It MUST be persisted with the cached text and restored
+    on a cache hit, for the reason §8.6.13 gives for coverage. A transcript
+    with no fallback record does not record it.
+  * **`media.stt.route_retry_after`.** A duration (`24h`, `90m`, `0`), default
+    `24h`, env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`. `0` makes a fallback
+    result due on every run. It applies under `on_route_error: default` only;
+    under `fail` a fallback result is stale on every run. The default is one
+    day: a daily reindex retries a broken route once per day, a restart loop
+    or a watch rescan on the same day does not decode it again, and an
+    operator who repairs a checkpoint waits at most one day for the corpus to
+    take it.
+  * **A forced retry needs no flag.** To retry every fallback result now, an
+    operator sets `route_retry_after` to `0` for one run (for example
+    `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER=0 dir2mcp reindex`). The retry scope
+    above still applies, so only the fallback windows and items are decoded.
+    A partial-transcript repair (dir2mcp `reindex
+    --redecode-partial-transcripts`) does not cover a fallback result: a
+    fallback result can cover the whole recording, so it is not partial, and
+    that repair decodes every window of the items it names.
+  * **Logging.** A retry logs one line per item, not one per window: the
+    item, the candidate, under `window` the number of windows retried, and
+    the result (the route recovered, or it failed again with the error class
+    and the next due time).
 * **Static validation.** Every `media.stt.language_providers` key MUST be a
   BCP-47 language tag whose primary subtag is 2 to 8 ASCII letters; any other
   key is `CONFIG_INVALID`. A key that can never match a resolved language
   (`fa_IR`, `f`, an empty string) is a configuration error, not a route that
   silently never fires. This is a shape check only: no language list ships,
   so no registry lookup is made. `media.stt.on_route_error` outside `fail |
-  default` is `CONFIG_INVALID`.
+  default` is `CONFIG_INVALID`. A `media.stt.route_retry_after` that is
+  negative or is not a duration is `CONFIG_INVALID`.
 * **Observability.** `dir2mcp doctor` MUST report the resolved STT route table
   as its own check (`stt_routes`): the identifier binding (profile, scope,
   probe length) when one is bound; for each language key, in sorted order, its
@@ -2714,7 +2807,11 @@ language list and no model ship, and every model choice stays the operator's.
   decodes it instead. With no route table and no identifier the check reports
   that positively ("no language routes configured"), because an omitted line
   and a clean configuration read the same (§7.7). The informational
-  `stt_validation` fields are surfaced unchanged (§8.2.3).
+  `stt_validation` fields are surfaced unchanged (§8.2.3). The check SHOULD
+  also report the fallback results: how many transcripts hold one, and when
+  the next is due (the earliest `route_fallback_at` plus
+  `route_retry_after`, or "due on the next run" when one has no time, the
+  interval is `0`, or the policy is `fail`). With none it says so positively.
 
 ### 8.3 Note on TTS
 
@@ -3077,6 +3174,15 @@ stable across re-indexing.
   STT provider/model derivation identity and MUST NOT be invalidated by an STT
   model change. (A change to the sidecar file itself still re-ingests via the
   mtime gate, §8.6.4.)
+* **A route-fallback transcript is provisional.** A transcript, or a window of
+  one, that the default profile decoded after a route candidate failed
+  (§8.2.4, `route_fallback_from` or `coverage.languages[].fallback_from`) has
+  the same derivation identity as a route decode, and
+  `media.stt.on_route_error` is not part of that identity. A cache hit on such
+  a transcript is not final: under `on_route_error: fail` the fallback result
+  is stale and MUST be re-derived, and under `default` it MUST be retried once
+  it is due under `media.stt.route_retry_after`. A transcript with no fallback
+  record is valid under both policies. §8.2.4 is the normative text.
 * **Contextual-retrieval context is a derived, content-addressed artifact**
   (§8.1.8). The per-chunk `chunk_context` string (§5.3) is generated by the chat
   provider and is content-addressed by the same derivation-identity machinery as
@@ -6128,6 +6234,11 @@ media:
                               #   (default) keeps the failed window/item; default decodes the
                               #   same audio once on the default STT profile and records
                               #   fallback_from / route_fallback_from on the transcript.
+    route_retry_after: 24h    # duration (§8.2.4): a fallback result is provisional. Under
+                              #   on_route_error: default it is decoded again on its route
+                              #   once it is older than this (0 => every run; negative is
+                              #   CONFIG_INVALID). Under fail it re-derives on every run.
+                              #   Env DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER.
     on_uncovered_language: warn  # warn|skip: response when the source language is outside
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;

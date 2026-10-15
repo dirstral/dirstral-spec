@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.81.0`
+**Current spec version:** `0.82.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,21 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.82.0: a route-fallback transcript is provisional
+
+One new optional config key and one new transcript field (`MINOR` per the pre-1.0 policy). A deployment that never falls back (`on_route_error: fail`, the default, with no fallback record in its cache) is unchanged, and no derivation identity changes. The number follows `0.81.0`, which spec PR #129 (sampled media identity) holds.
+
+- §8.2.4: a transcript with `route_fallback_from` (`item`) or a window with `coverage.languages[].fallback_from` (`window`) is a **fallback result**. It is provisional, not permanent. `media.stt.on_route_error` MUST NOT join the derivation identity.
+- §8.2.4: under `on_route_error: fail` a cached fallback result is stale and MUST be re-derived on its route; a failure then fails the item (`TRANSCRIBE_FAILED`) or the window (§8.6.13), and the fallback text is retired from the index. A cached result with no fallback record stays valid, so a change of policy re-derives only fallback results.
+- §8.2.4: under `default` a fallback result is due when its `route_fallback_at` is older than `media.stt.route_retry_after` (a duration, default `24h`, `0` every run, negative `CONFIG_INVALID`, env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`), or when it records no valid `route_fallback_at`. A due result is decoded once on its route. Success replaces the text; failure keeps the cached fallback text and resets `route_fallback_at`, with no second default decode. A change to the candidate (profile or model) already changes the derivation identity, and the interval MUST NOT delay it.
+- §8.2.4: under `window` a retry decodes only the windows with a fallback record. Under `item` it reuses the recorded language and does not run the identifier again.
+- §8.2.4: `route_fallback_at` (RFC 3339 UTC) is recorded on a transcript that holds a fallback result and is persisted and restored with the cached text. It is not part of the identity.
+- §8.2.4: a retry logs one line per item. `dir2mcp doctor` `stt_routes` SHOULD count the fallback results and name the next due time. No new CLI flag: `route_retry_after: 0` for one run forces a retry.
+- §8.6.7: a pointer bullet states that a cache hit on a fallback result is not final.
+- §16.2: the template lists `media.stt.route_retry_after: 24h`.
+- Mirrors: bs-011 0.15.0, td-001 0.10.0, td-003 0.8.0.
+- Motivation: dir2mcp #1122. A fallback transcript was cached under the same identity as a route decode, so it was served after the policy changed to `fail` and after the failed checkpoint worked again.
 
 ## 0.81.0: a media file can be identified by a sample, so a subtitled video is not read in full only to hash it
 
