@@ -315,14 +315,8 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   STT provider/model derivation identity and MUST NOT be invalidated by an STT
   model change. (A change to the sidecar file itself still re-ingests via the
   mtime gate, §8.6.4.)
-* **A route-fallback transcript is provisional** (SPEC.md §8.2.4, spec 0.82.0).
-  A transcript or window that the default profile decoded after a route
-  candidate failed has the same derivation identity as a route decode, and
-  `media.stt.on_route_error` is not part of it. Under `fail` such a cached
-  result is stale and MUST be re-derived; under `default` it MUST be retried
-  once it is due under `media.stt.route_retry_after`. A transcript with no
-  fallback record is valid under both policies. SPEC.md §8.2.4 is the
-  normative text.
+* **A route-fallback transcript** (spec 0.82.0): when a cached one is decoded
+  again is defined in SPEC.md §8.2.4 and §8.6.7, the authoritative text.
 
 ### 8.6.8 Speaker diarization (optional)
 
@@ -679,9 +673,8 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
-- **0.8.0**: spec 0.82.0: §8.6.7 notes that a route-fallback transcript
-  (SPEC.md §8.2.4) is provisional: stale under `on_route_error: fail`, retried
-  after `media.stt.route_retry_after` under `default`. Cross-reference only.
+- **0.8.0**: spec 0.82.0: §8.6.7 points to the SPEC.md §8.2.4 rules for a
+  route-fallback transcript. Cross-reference only.
 - **0.7.0**: spec 0.78.0 added **subtitle write-back** (SPEC.md §8.6.14,
   opt-in, off by default): `media.subtitles.emit.*` writes VTT/SRT per
   transcript language and one TTML per document (bilingual when a translation

@@ -71,10 +71,11 @@ One new optional config key and one new transcript field (`MINOR` per the pre-1.
 - §8.2.4: under `default` a fallback result is due when its `route_fallback_at` is older than `media.stt.route_retry_after` (a duration, default `24h`, `0` every run, negative `CONFIG_INVALID`, env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`), or when it records no valid `route_fallback_at`. A due result is decoded once on its route. Success replaces the text; failure keeps the cached fallback text and resets `route_fallback_at`, with no second default decode. A change to the candidate (profile or model) already changes the derivation identity, and the interval MUST NOT delay it.
 - §8.2.4: under `window` a retry decodes only the windows with a fallback record. Under `item` it reuses the recorded language and does not run the identifier again.
 - §8.2.4: `route_fallback_at` (RFC 3339 UTC) is recorded on a transcript that holds a fallback result and is persisted and restored with the cached text. It is not part of the identity.
+- §8.2.4: `route_fallback_by` (`<profile>|<model>` of the default profile that decoded the fallback text, one value per transcript) is recorded, persisted and restored the same way. When it differs from the current default profile, or is absent, the fallback result is stale on the next run under both policies, without regard to the interval: the route candidate decodes first, then `on_route_error` applies. It records the producer and is not part of the identity.
 - §8.2.4: a retry logs one line per item. `dir2mcp doctor` `stt_routes` SHOULD count the fallback results and name the next due time. No new CLI flag: `route_retry_after: 0` for one run forces a retry.
-- §8.6.7: a pointer bullet states that a cache hit on a fallback result is not final.
+- §8.6.7: a pointer bullet states that a cache hit on a fallback result is not final, and names the producer rule.
 - §16.2: the template lists `media.stt.route_retry_after: 24h`.
-- Mirrors: bs-011 0.15.0, td-001 0.10.0, td-003 0.8.0.
+- Mirrors: bs-011 0.15.0, td-001 0.10.0, td-003 0.8.0. They carry the key and pointers only; SPEC.md holds the rules.
 - Motivation: dir2mcp #1122. A fallback transcript was cached under the same identity as a route decode, so it was served after the policy changed to `fail` and after the failed checkpoint worked again.
 
 ## 0.81.0: a media file can be identified by a sample, so a subtitled video is not read in full only to hash it

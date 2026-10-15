@@ -458,14 +458,9 @@ primary subtag is `CONFIG_INVALID`, and `dir2mcp doctor` reports the resolved
 route table as `stt_routes`. Until this document is Stable, SPEC.md §8.2.4 is
 the authoritative text.
 
-SPEC.md §8.2.4 (0.82.0) makes a fallback result provisional. `on_route_error`
-stays out of the derivation identity. Under `fail` a cached fallback result is
-stale and is decoded again on its route; a failure then fails the item or
-window. Under `default` it is decoded again on its route once its
-`route_fallback_at` is older than `media.stt.route_retry_after` (default `24h`,
-`0` every run); a failed retry keeps the cached fallback text. Under `window`
-only the fallback windows are decoded again. `doctor` `stt_routes` counts the
-fallback results and names the next due time.
+Spec 0.82.0 adds rules for when a route-fallback transcript is decoded again
+(`media.stt.route_retry_after`, `route_fallback_at`, `route_fallback_by`). See
+SPEC.md §8.2.4, the authoritative text.
 
 ### 8.3 Note on TTS
 
@@ -588,9 +583,8 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
-- **0.10.0**: §8.2.4 (spec 0.82.0): a route-fallback result is provisional:
-  stale under `fail`, retried after `media.stt.route_retry_after` under
-  `default`, recorded with `route_fallback_at`. Pointer to SPEC.md §8.2.4.
+- **0.10.0**: §8.2.4 (spec 0.82.0): a pointer to the SPEC.md §8.2.4 rules for
+  a route-fallback transcript.
 - **0.9.0**: §8.2.4 added (spec 0.79.0): the identifier under `item` scope, the
   `on_route_error` route fallback, the `language_providers` key check and the
   `doctor` `stt_routes` report. Pointer to SPEC.md §8.2.4.

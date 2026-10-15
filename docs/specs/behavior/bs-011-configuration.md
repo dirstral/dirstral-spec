@@ -254,11 +254,8 @@ media:
                               #   fails is a failed window/item (fail) or is replaced once by the
                               #   default STT profile (default), recorded as fallback_from
                               #   under window scope and route_fallback_from under item scope.
-    route_retry_after: 24h    # duration (SPEC.md 8.2.4): a fallback result is provisional. Under
-                              #   on_route_error: default it is decoded again on its route once
-                              #   it is older than this (0 => every run; negative is
-                              #   CONFIG_INVALID). Under fail it re-derives on every run.
-                              #   Env DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER.
+    route_retry_after: 24h    # duration; env DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER.
+                              #   Rules: SPEC.md 8.2.4 and 16.2.
     on_uncovered_language: warn  # warn|skip: response when the source language is outside
                               #   the model's declared stt_languages and no route covers it.
                               #   warn (default, fail-open) transcribes + records covered=false;
@@ -406,7 +403,7 @@ security:
 
 ## Changelog
 
-- **0.15.0**: mirrors spec 0.82.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.route_retry_after: 24h` (env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`), the interval after which a route-fallback transcript is decoded again on its route.
+- **0.15.0**: mirrors spec 0.82.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.route_retry_after: 24h` (env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`), with a pointer to SPEC.md §8.2.4 and §16.2 for its rules.
 - **0.14.0**: mirrors spec 0.81.0 (SPEC.md §7.6, §16.2): the template lists `ingest.media_identity: full`; `sampled` hashes the size and three 4 MiB slices of audio/video.
 - **0.13.0**: mirrors spec 0.80.0 (SPEC.md §9.4.3, §16.2): the template lists `rag.evidence_threshold: auto`, the calibrated absolute evidence threshold; a number in (0,1] pins it.
 - **0.12.0**: mirrors spec 0.79.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.on_route_error: fail`, and syncs the 0.72.0 identifier keys (`language_identifier`, `language_probe_sec`, `require_validation`) that were missing here, with the item-scope note.
