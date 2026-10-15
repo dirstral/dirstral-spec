@@ -2739,9 +2739,11 @@ language list and no model ship, and every model choice stays the operator's.
 
     A due fallback result is decoded once more on the candidate that the
     current configuration selects for the recorded language. When that decode
-    succeeds, its text replaces the fallback text, the fallback record,
-    `route_fallback_at` and `route_fallback_by` are removed, and the representation is re-chunked and
-    re-embedded (§8.6.7). When it fails, the implementation keeps the cached
+    succeeds, its text replaces the fallback text, its fallback record is
+    removed, and the representation is re-chunked and re-embedded (§8.6.7).
+    `route_fallback_at` and `route_fallback_by` are removed only when no
+    fallback window or item remains in the transcript; while one remains,
+    they stay, so its retry still follows `route_retry_after`. When it fails, the implementation keeps the cached
     fallback text and its record and sets `route_fallback_at` to the time of
     the retry. While `route_fallback_by` matches the current default profile
     (below), it MUST NOT decode on the default profile again: the cached
@@ -2837,8 +2839,9 @@ language list and no model ship, and every model choice stays the operator's.
   `stt_validation` fields are surfaced unchanged (§8.2.3). The check SHOULD
   also report the fallback results: how many transcripts hold one, and when
   the next is due (the earliest `route_fallback_at` plus
-  `route_retry_after`, or "due on the next run" when one has no time, the
-  interval is `0`, or the policy is `fail`). With none it says so positively.
+  `route_retry_after`, or "due on the next run" when one has no time, its
+  `route_fallback_by` is absent or differs from the current default profile,
+  the interval is `0`, or the policy is `fail`). With none it says so positively.
 
 ### 8.3 Note on TTS
 

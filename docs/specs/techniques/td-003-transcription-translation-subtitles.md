@@ -315,8 +315,9 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   STT provider/model derivation identity and MUST NOT be invalidated by an STT
   model change. (A change to the sidecar file itself still re-ingests via the
   mtime gate, §8.6.4.)
-* **A route-fallback transcript** (spec 0.82.0): when a cached one is decoded
-  again is defined in SPEC.md §8.2.4 and §8.6.7, the authoritative text.
+* **A route-fallback transcript** (spec 0.82.0): the rules for when a cached
+  route-fallback transcript is decoded again are in SPEC.md §8.2.4 and §8.6.7,
+  the authoritative text.
 
 ### 8.6.8 Speaker diarization (optional)
 

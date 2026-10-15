@@ -64,7 +64,7 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 
 ## 0.82.0: a route-fallback transcript is provisional
 
-One new optional config key and one new transcript field (`MINOR` per the pre-1.0 policy). A deployment that never falls back (`on_route_error: fail`, the default, with no fallback record in its cache) is unchanged, and no derivation identity changes. The number follows `0.81.0`, which spec PR #129 (sampled media identity) holds.
+One new optional config key and two new transcript fields (`MINOR` per the pre-1.0 policy). A deployment that never falls back (`on_route_error: fail`, the default, with no fallback record in its cache) is unchanged, and no derivation identity changes. The number follows `0.81.0`, which spec PR #129 (sampled media identity) holds.
 
 - §8.2.4: a transcript with `route_fallback_from` (`item`) or a window with `coverage.languages[].fallback_from` (`window`) is a **fallback result**. It is provisional, not permanent. `media.stt.on_route_error` MUST NOT join the derivation identity.
 - §8.2.4: under `on_route_error: fail` a cached fallback result is stale and MUST be re-derived on its route; a failure then fails the item (`TRANSCRIBE_FAILED`) or the window (§8.6.13), and the fallback text is retired from the index. A cached result with no fallback record stays valid, so a change of policy re-derives only fallback results.
