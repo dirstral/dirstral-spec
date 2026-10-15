@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.80.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.81.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1516,6 +1516,69 @@ is bound to the corpus via the embed identity (§8.1.4).
 
   * compute `text_hash`; if unchanged → skip embedding
 
+**Media identity (`ingest.media_identity`).** For an audio or video document the
+`content_hash` is computed in one of two ways:
+
+* `full` (default): the hash of the whole file, as for every other document.
+* `sampled` (opt-in): SHA-256 over a domain tag (`dir2mcp-media-identity-v1`),
+  the file size in bytes, and three fixed slices of 4 MiB each, at offset 0, at
+  `size/2 - 2 MiB`, and at `size - 4 MiB`. A file no larger than 12 MiB is hashed
+  whole, exactly as under `full`. Under `sampled` an implementation MUST NOT read
+  the rest of the file unless a representation needs the bytes (STT, direct media
+  embedding, §8.1.7). When a representation needs them, the implementation reads
+  the whole file. A sidecar (§8.6.4) removes only the transcription read: a media
+  document whose transcript comes from a sidecar, and that no other
+  representation reads, is never read in full.
+
+  **Sampled digest (normative).** Let `size` be the file size in bytes and
+  `S = 4194304` (4 MiB). The digest input is these bytes, in this order, with
+  no other separator, length prefix or padding:
+
+  1. the domain tag `dir2mcp-media-identity-v1` as UTF-8 (25 bytes), then one
+     `0x00` byte;
+  2. `size` as ASCII decimal digits, with no sign and no leading zeros, then one
+     `0x00` byte;
+  3. the head slice: bytes `[0, S)`;
+  4. the middle slice: bytes `[m, m + S)`, where `m = floor(size / 2) - S / 2`
+     (integer division, so an odd `size` rounds down);
+  5. the tail slice: bytes `[size - S, size)`.
+
+  The identity is the SHA-256 of that input, as 64 lowercase hex characters.
+  The sampled digest applies only when `size > 3 * S` (12582912 bytes). Then
+  each slice is exactly `S` bytes and the three slices do not overlap. When
+  `size <= 3 * S`, the implementation reads the whole file and computes
+  `content_hash` exactly as under `full`; the domain tag and the size are not
+  hashed. When the document has a sidecar fingerprint `F`, `content_hash` is the
+  lowercase hex SHA-256 of the identity's 64 hex characters (ASCII), one `0x00`
+  byte, and `F` (UTF-8). This is the same fold as under `full`, where the input
+  is the file bytes, one `0x00` byte, and `F`. With no sidecar, `content_hash`
+  is the identity.
+
+  Test vector: a file of 20971521 bytes where byte `i` is `i mod 251`, with no
+  sidecar, has the sampled identity
+  `a580fb302c21e6fc1d57e4ea3a080387a4f13894e1e27bb7ac3a9b698ec91b93`
+  (`m = 8388608`). The same pattern at 12582913 bytes gives
+  `a14342b2bdf68415cdf65512b51113621f7cda9a10e5fab3c0c0e11fa49b883e`. At
+  12582912 bytes the file is hashed whole and gives
+  `b6967a4c54cdab8a16907be0774af71e5db8198045f91933ebed106ddba22dfb`.
+
+  The trade-off is stated, not hidden: an in-place edit that changes only bytes
+  outside the three slices and keeps the size identical is not a change under
+  `sampled`. Transcoded media is not edited that way; a corpus where it may be
+  keeps `full`. Switching the setting changes the identity of every media
+  document larger than 12 MiB once (one re-processing pass; derivation caches
+  keyed on the bytes still hit). Any other value is `CONFIG_INVALID`.
+
+  Motivation: on a video archive the first scan under `full` reads every file in
+  full only to hash it, even when its transcript then comes from a sidecar. On an
+  archive of 145k videos that is weeks of NFS reads for no information.
+
+* **Derivation pass (§8.6.11).** The derivation pass MUST NOT read a media
+  document's bytes when it has nothing to derive: when the document has no
+  model-derived transcript (§8.6.2 translates only those), or when every
+  configured target language is already present and the derivation identity
+  (§8.6.7) is current.
+
 ### 7.7 Per-document error handling
 
 Non-fatal per-doc errors:
@@ -1674,7 +1737,9 @@ root/prefix MUST be rejected (`PATH_OUTSIDE_ROOT`).
 **Change-detection identity.** Incremental indexing (§7.6) keys off a cheap
 signal first, then confirms with `content_hash`:
 
-* `local` / `nfs`: the cheap pre-check is `(size, mtime)`; on a change,
+* `local` / `nfs`: the cheap pre-check is `(size, mtime)` (for an audio/video
+  document under `ingest.media_identity: sampled`, §7.6, the confirm step reads
+  only the sampled slices); on a change,
   `content_hash` over the file body **confirms** before re-ingest.
 * `s3`: the cheap signal is the object **ETag** (alongside `size` and
   `last_modified`). The ETag MUST NOT be treated as a content hash: multipart and
@@ -5986,6 +6051,9 @@ ingest:
     mode: deep         # off|shallow|deep
   follow_symlinks: false
   max_file_mb: 20
+  media_identity: full  # full|sampled (§7.6): sampled hashes size + 3 x 4 MiB slices of
+                        #   audio/video; it reads the rest only when a representation
+                        #   needs the bytes (STT, direct media embedding)
   # Directory names that discovery does not descend into (SPEC 7.1). A present
   # key REPLACES the default list; it does not add to it. Absent = the default
   # list below. `.dir2mcp` is always added back, because the state directory

@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.13.0
+- **Version:** 0.14.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -194,6 +194,9 @@ ingest:
     mode: deep         # off|shallow|deep
   follow_symlinks: false
   max_file_mb: 20
+  media_identity: full  # full|sampled (SPEC.md 7.6): sampled hashes size + 3 x 4 MiB slices of
+                        #   audio/video; it reads the rest only when a representation
+                        #   needs the bytes (STT, direct media embedding)
   # Late chunking (opt-in, off by default; td-001 §8.1.9): embed the whole
   # document through a long-context model, then apply chunk boundaries and
   # mean-pool each chunk's token vectors. Requires an embed provider that exposes
@@ -398,6 +401,7 @@ security:
 
 ## Changelog
 
+- **0.14.0**: mirrors spec 0.81.0 (SPEC.md §7.6, §16.2): the template lists `ingest.media_identity: full`; `sampled` hashes the size and three 4 MiB slices of audio/video.
 - **0.13.0**: mirrors spec 0.80.0 (SPEC.md §9.4.3, §16.2): the template lists `rag.evidence_threshold: auto`, the calibrated absolute evidence threshold; a number in (0,1] pins it.
 - **0.12.0**: mirrors spec 0.79.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.on_route_error: fail`, and syncs the 0.72.0 identifier keys (`language_identifier`, `language_probe_sec`, `require_validation`) that were missing here, with the item-scope note.
 - **0.11.0**: mirrors spec 0.78.0 (SPEC.md §8.6.14, §16.2): the template lists the `media.subtitles.emit` block (`enabled`, `formats`, `languages`, `policy`, `dir`), opt-in subtitle write-back beside the media; `enabled: false` keeps the old behavior.
