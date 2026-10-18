@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.9.0
+- **Version:** 0.10.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -458,6 +458,10 @@ primary subtag is `CONFIG_INVALID`, and `dir2mcp doctor` reports the resolved
 route table as `stt_routes`. Until this document is Stable, SPEC.md §8.2.4 is
 the authoritative text.
 
+Spec 0.82.0 adds rules for when a route-fallback transcript is decoded again
+(`media.stt.route_retry_after`, `route_fallback_at`, `route_fallback_by`). See
+SPEC.md §8.2.4, the authoritative text.
+
 ### 8.3 Note on TTS
 
 * TTS is optional and not required for core retrieval/inspection functionality.
@@ -579,6 +583,8 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.10.0**: §8.2.4 (spec 0.82.0): a pointer to the SPEC.md §8.2.4 rules for
+  a route-fallback transcript.
 - **0.9.0**: §8.2.4 added (spec 0.79.0): the identifier under `item` scope, the
   `on_route_error` route fallback, the `language_providers` key check and the
   `doctor` `stt_routes` report. Pointer to SPEC.md §8.2.4.
