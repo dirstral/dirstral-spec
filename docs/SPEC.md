@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.82.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.83.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3001,6 +3001,31 @@ stable across re-indexing.
   is `CONFIG_INVALID`. Any other value is `CONFIG_INVALID`. The key is read only
   when translation is enabled. The prompt-side keys below (`glossary`,
   `name_hints`) apply to the `chat` engine only.
+* **Translated segment timing.** A `chat`-engine translation keeps each source
+  line's timestamp marker verbatim, so a translated transcript's segments MUST
+  carry the **spoken span** of the source segments they translate: the same
+  `start_ms`, and an `end_ms` that is the spoken end of the source line (the
+  latest per-word end among the source words that start in that line's window,
+  §8.6.9) when the source carries word timings. A translated line's `end_ms`
+  MUST NOT be derived from the next line's start: the silence between two source
+  segments belongs to neither, and a translated segment that inherited it would
+  be spread across that silence by broadcast re-segmentation (§8.6.3), one word
+  per cue. When the source has no word timings, or a source line has no words
+  of its own while other lines do, the translated segment carries the source
+  segment's stored span unchanged. The spoken end never crosses the next source
+  marker: a source word that runs past it is capped there. This rule sets the
+  boundary of a TRANSLATED segment from the source words; the §8.6.9 rule that
+  word timing never changes segment boundaries applies to the source
+  transcript's own chunking and is not affected. A `whisper`-engine translation
+  yields its own segment and word timings (below) and is not re-timed.
+  A translated transcript produced under this rule records
+  `span_rule: "source-spoken"` in its `meta_json`. The rule does not join the
+  derivation identity (§8.6.7): the translated TEXT is unchanged, so a stored
+  translation is not re-translated on upgrade. A stored `chat` translation
+  without the marker carries the older spans; an implementation MUST re-time it
+  from its stored text and the source transcript's word timings, without
+  re-translation, in a later reconcile pass, and until then MUST serve the
+  recorded spans as they are.
 * **Terminology guidance (optional).** When translation runs on a chat provider
   (`media.translate.engine: chat`), the operator MAY supply a
   **`media.translate.glossary`** — a mapping of source term/phrase → preferred
@@ -3362,7 +3387,8 @@ finer, **optional** refinement layered on top of it.
   parser, not a replacement: the Mistral `[mm:ss]` segment path is unaffected.
 * **Word arrays do not change chunking.** Reaffirming §8.6.1: `words` is metadata
   on the segment span only. It MUST NOT create extra chunks, MUST NOT alter chunk
-  `text`, and MUST NOT change segment boundaries. The chunker behaves identically
+  `text`, and MUST NOT change segment boundaries (a TRANSLATED segment's end
+  follows §8.6.2, which is the one exception). The chunker behaves identically
   whether or not word timing is present, so a transcript chunks the **same** with
   word timing added or removed (deterministic, citation-stable).
 * **Optional word-level span surfacing.** A `time` span (§5.4, §9.2) MAY OPTIONALLY
