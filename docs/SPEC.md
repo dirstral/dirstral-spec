@@ -3001,6 +3001,18 @@ stable across re-indexing.
   is `CONFIG_INVALID`. Any other value is `CONFIG_INVALID`. The key is read only
   when translation is enabled. The prompt-side keys below (`glossary`,
   `name_hints`) apply to the `chat` engine only.
+* **Translated segment timing.** A `chat`-engine translation keeps each source
+  line's timestamp marker verbatim, so a translated transcript's segments MUST
+  carry the **spoken span** of the source segments they translate: the same
+  `start_ms`, and an `end_ms` that is the spoken end of the source line (the
+  latest per-word end among the source words that start in that line's window,
+  §8.6.9) when the source carries word timings. A translated line's `end_ms`
+  MUST NOT be derived from the next line's start: the silence between two source
+  segments belongs to neither, and a translated segment that inherited it would
+  be spread across that silence by broadcast re-segmentation (§8.6.3), one word
+  per cue. When the source has no word timings, the translated segment carries
+  the source segment's stored span unchanged. A `whisper`-engine translation
+  yields its own segment and word timings (below) and is not re-timed.
 * **Terminology guidance (optional).** When translation runs on a chat provider
   (`media.translate.engine: chat`), the operator MAY supply a
   **`media.translate.glossary`** — a mapping of source term/phrase → preferred

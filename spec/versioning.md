@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.82.0`
+**Current spec version:** `0.83.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,14 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.83.0: a translated segment carries the spoken span of its source segment
+
+A timing rule for translated transcripts (`MINOR` per the pre-1.0 policy: it changes stored spans of `chat`-engine translations; no new key, tool or field). A deployment without translation, or with the `whisper` engine, is unchanged. No derivation identity changes.
+
+- §8.6.2 **Translated segment timing**: a `chat`-engine translated segment MUST carry the spoken span of the source segment it translates (same `start_ms`; `end_ms` = the latest per-word end of the source line when word timings exist, else the source segment's stored span). It MUST NOT take the next line's start as its end. Motivation: on RFE/RL order 2022600662 the silence after a source cue was handed to its translation, and broadcast re-segmentation (§8.6.3) spread the translated words across that silence, one word per cue, tens of seconds apart, in 41% of the Russian and 32% of the Ukrainian English tracks (2026-11-03). The source track, re-segmented from word timings, was clean.
+- Implementation: dir2mcp `fix/translated-segment-ends`.
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.82.0: a route-fallback transcript is provisional
 
