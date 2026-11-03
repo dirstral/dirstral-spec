@@ -3010,9 +3010,22 @@ stable across re-indexing.
   MUST NOT be derived from the next line's start: the silence between two source
   segments belongs to neither, and a translated segment that inherited it would
   be spread across that silence by broadcast re-segmentation (§8.6.3), one word
-  per cue. When the source has no word timings, the translated segment carries
-  the source segment's stored span unchanged. A `whisper`-engine translation
+  per cue. When the source has no word timings, or a source line has no words
+  of its own while other lines do, the translated segment carries the source
+  segment's stored span unchanged. The spoken end never crosses the next source
+  marker: a source word that runs past it is capped there. This rule sets the
+  boundary of a TRANSLATED segment from the source words; the §8.6.9 rule that
+  word timing never changes segment boundaries applies to the source
+  transcript's own chunking and is not affected. A `whisper`-engine translation
   yields its own segment and word timings (below) and is not re-timed.
+  A translated transcript produced under this rule records
+  `span_rule: "source-spoken"` in its `meta_json`. The rule does not join the
+  derivation identity (§8.6.7): the translated TEXT is unchanged, so a stored
+  translation is not re-translated on upgrade. A stored `chat` translation
+  without the marker carries the older spans; an implementation MUST re-time it
+  from its stored text and the source transcript's word timings, without
+  re-translation, in a later reconcile pass, and until then MUST serve the
+  recorded spans as they are.
 * **Terminology guidance (optional).** When translation runs on a chat provider
   (`media.translate.engine: chat`), the operator MAY supply a
   **`media.translate.glossary`** — a mapping of source term/phrase → preferred
@@ -3374,7 +3387,8 @@ finer, **optional** refinement layered on top of it.
   parser, not a replacement: the Mistral `[mm:ss]` segment path is unaffected.
 * **Word arrays do not change chunking.** Reaffirming §8.6.1: `words` is metadata
   on the segment span only. It MUST NOT create extra chunks, MUST NOT alter chunk
-  `text`, and MUST NOT change segment boundaries. The chunker behaves identically
+  `text`, and MUST NOT change segment boundaries (a TRANSLATED segment's end
+  follows §8.6.2, which is the one exception). The chunker behaves identically
   whether or not word timing is present, so a transcript chunks the **same** with
   word timing added or removed (deterministic, citation-stable).
 * **Optional word-level span surfacing.** A `time` span (§5.4, §9.2) MAY OPTIONALLY
