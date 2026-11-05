@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.86.0`
+**Current spec version:** `0.87.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,17 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.87.0: a translated cue is not timed across a pause in the source speech
+
+A timing rule for broadcast cues of a translation, and one new key (`MINOR` per the pre-1.0 policy: it changes exported cue timing; no stored data, tool or field changes).
+
+- §8.6.3 **Translated cues follow the source speech**: under `media.subtitles.segmentation: broadcast`, a translated transcript without its own word timings is spread over synthesized word times per segment (this states the existing behavior, which the text called a `chunk` fallback). New: when the source segment carries word timings, it is split at each source pause of at least `media.subtitles.source_pause_ms` (default `2000`; `0` = off), the translated tokens are given to the spoken runs in proportion to their source words, and each share is timed inside its run only. No translated cue starts or ends in a source pause, and display-time relaxation never carries a cue past the start of the next spoken run. Applies to broadcast TTML (§8.6.14) too.
+- Export timing only: stored segments, chunk `text`, citations and the derivation identity are unchanged. The `chunk` builder is unchanged.
+- §16.2: template line for `media.subtitles.source_pause_ms`.
+- Mirror: td-003 0.9.0 (pointer only; SPEC.md holds the rule).
+- Motivation: dirstral-spec #135. On a broadcast pilot of 12,420 subtitle pairs after the 0.83.0 fix, 98% to 99.7% of the English time in source gaps was one unbroken tail from the previous cue, and translated cues stayed on screen through source pauses for 69 h and 86 h in the two language sets. The gaps were real non-speech (VAD speech in 6.7% of gap time, against 84.7% inside cues).
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.86.0: write-back can caption a video in its existing SMIL
 

@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.86.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.87.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3106,11 +3106,42 @@ stable across re-indexing.
   stored transcript segment; `broadcast` re-segments from the per-word timings
   (§8.6.9) into legible cues (at most 6 s, at most two lines of 42 characters,
   reading-speed aware). A span with no word timings falls back to the `chunk`
-  builder, so output is unchanged where the timings are absent. Any other value
-  is `CONFIG_INVALID`. The key never affects ingest, and never affects TTML:
+  builder, so output is unchanged where the timings are absent, except for a
+  translated transcript (next item). Any other value is `CONFIG_INVALID`. The key never affects ingest, and never affects TTML:
   the TTML cue region is the alignment unit of bilingual packaging (§8.6.10)
   and MUST stay the stored transcript segment span, unless the separate
   `media.subtitles.ttml.segmentation: broadcast` (§8.6.14) is set.
+* **Translated cues follow the source speech (0.87.0).** A translated
+  transcript with no word timings of its own (a `chat` translation, §8.6.2) is
+  re-segmented under `broadcast` from synthesized word times: the span of each
+  translated segment is spread over its own tokens in proportion to token
+  length, and no token gets a time outside its own segment. A translated
+  segment carries the spoken span of its source segment (§8.6.2), and that span
+  can hold a pause. So when the source segment carries word timings (§8.6.9),
+  the spreading MUST follow the source speech:
+  * A **source pause** is a gap of at least `media.subtitles.source_pause_ms`
+    (default `2000`) between the end of one source word and the start of the
+    next word in the same source segment. `0` turns the rule off. A negative
+    value, or a value that is not an integer, is `CONFIG_INVALID`.
+  * The source segment is split at each source pause into **spoken runs**. The
+    translated tokens are given to the runs in order, in proportion to each
+    run's share of the source words, rounded so that the token counts add up to
+    the total and each run that has source words gets at least one token while
+    tokens remain. The tokens of a run are spread over that run only.
+  * So no translated token, and no cue built from them, starts or ends inside a
+    source pause. Display-time relaxation (above) MAY extend a cue into the
+    pause that follows it, but MUST NOT extend it past the start of the next
+    spoken run.
+  * A source segment without word timings, or with no source pause, keeps the
+    per-segment spreading above. The rule changes export timing only: stored
+    transcript segments, chunk `text`, citations and the derivation identity
+    (§8.6.7) are unchanged, and the `chunk` builder still emits one cue per
+    stored segment.
+  The rule exists because a translation line has no word times: spread over a
+  span that holds a pause, its words land in the silence, and the cue before
+  the pause stays on screen through it. TTML under
+  `media.subtitles.ttml.segmentation: broadcast` (§8.6.14) builds its cues like
+  these, so the rule applies there too.
 * **Export-time cue cleaning (optional, every filter off by default).** Before
   cues are written, an implementation MAY apply operator-configured,
   deterministic filters under `media.subtitles.*` to the rendered cue text.
@@ -6508,6 +6539,8 @@ media:
                               #   armenian|han|hangul|devanagari); "" => off; unknown name => CONFIG_INVALID
     segmentation: chunk       # chunk (default) | broadcast: re-segment VTT/SRT from word timings (§8.6.3);
                               #   never affects ingest or TTML
+    source_pause_ms: 2000     # broadcast cues of a translation (§8.6.3, 0.87.0): no translated word
+                              #   is timed inside a source pause of at least this many ms; 0 => off
     glossary: []              # export-time cue cleaning (§8.6.3): ["pattern=>replacement", ...]; rewrites,
                               #   never drops; export-only, the index keeps the pre-glossary spelling
     drop_urls: false          # drop a cue that is a URL / bare domain / credit line (whole-cue verdict)
