@@ -4531,23 +4531,36 @@ script group or **no verdict**.
 **Answer text.** Before the rule runs on an answer, and only on an answer, the
 server MUST remove the text that is not the answer's own words, in this order:
 
-1. **Code:** a fenced block from ```` ``` ```` to the next ```` ``` ```` (or from
+1. **Attribution footer:** a trailing `Sources:` block, exactly the block that
+   the §9.4.1 rule for a model-generated footer removes. That is the LAST line
+   that opens with `Sources:`, `Source:`, `References:` or `Reference:` (any
+   case), together with every line after it, when every line after it is blank,
+   a list item or a line that opens with `[`, and the block either names a
+   document (a token with a `/` or a file extension) or the label line holds
+   nothing but the label. This check runs BEFORE that §9.4.1 post-processing,
+   so without this step a footer in another script could decide the verdict.
+2. **Code:** a fenced block from ```` ``` ```` to the next ```` ``` ```` (or from
    `~~~` to the next `~~~`), across lines, and an inline code span between two
    backticks on one line.
-2. **URLs:** the destination of a Markdown link (`](...)`, the link label
+3. **URLs:** the destination of a Markdown link (`](...)`, the link label
    stays), an autolink (`<scheme://...>`) and a bare URL (a token that starts
    with `scheme://` or `www.` and ends at white space or `<` / `>`).
-3. **Quoted passages:** text between a pair of quotation marks (`"` and `"`,
+4. **Quoted passages:** text between a pair of quotation marks (`"` and `"`,
    `“` and `”`, `«` and `»`, `„` and `“` or `”`, `「` and `」`, `『` and `』`),
    on one line or across lines, and every line whose first non-blank character
    is `>` (a block quote). The single quote is not a quotation mark here,
    because it is also the apostrophe. The prompt lets a quote keep its own
    spelling, so an answer that quotes a long passage in the document's script
    is not a mismatch.
-4. **Citation tags:** a bracketed tag in the §9.3 form that names a document
-   (its path carries a `/` or ends in a file extension of 1 to 6 letters or
-   digits). A bracket that names no document, such as a Markdown link label,
-   stays: it is answer text.
+5. **Citation tags:** a bracketed tag (with no `[` or `]` inside) that is
+   EITHER a §9.3 tag by its locator, that is a path token with no white space
+   followed by `:L`, `#p=` or `@t=` and a digit (the path may be a root-level
+   name with no `/` and no extension, such as `[LICENSE:L1-L3]`), OR a bracket
+   whose leading token, after any §9.3 locator (`:L<n>`, `:<n>`, `#...`,
+   `@...`) and breadcrumb (` › ...`) is cut, carries a `/` or ends in a file
+   extension of 1 to 6 letters or digits (such as `[report.pdf]` or
+   `[report.pdf#p=3 › Results]`). Any other bracket, such as `[README]` or a
+   Markdown link label, stays: it is answer text.
 
 The question is not stripped.
 
