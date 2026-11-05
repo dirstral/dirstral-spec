@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.85.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.86.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3716,9 +3716,41 @@ beside the media.
     secondary the first configured `media.translate.target_langs` entry the
     document has — else monolingual. Listing `ttml` requires
     `media.subtitles.ttml.enabled: true`; otherwise `CONFIG_INVALID`.
-  * **SMIL is never written by write-back.** A packaging manifest beside archive
-    media is owned by whatever pipeline produced the media; overwriting it would
-    break playback. SMIL stays an on-demand export (§8.6.10).
+  * **SMIL is never created by write-back.** A packaging manifest beside archive
+    media is owned by whatever pipeline produced the media. With
+    `media.subtitles.emit.smil: ttml | vtt` (default `off`) write-back MAY add
+    caption entries to an EXISTING SMIL, under these rules:
+    * The SMIL is `<stem>.smil` beside the media. It is used only when its
+      `body` holds a `<switch>` with at least one `<video>`; otherwise it MUST be
+      left untouched and reported as `SMIL_INVALID` (§14.4).
+    * Only **managed** `<textstream>` entries are replaced: those whose source
+      (ignoring a leading `mp4:`) is the document's `<stem>.<lang>.vtt`,
+      `<stem>.ttml`, `<stem>_<N>p.ttml` or the TTML name in use. Every other
+      `<textstream>`, every `<video>` and every other element MUST be kept.
+    * `ttml` wants one entry for the written (or already present) TTML, whose
+      `system-language` lists the TTML's languages joined by `,`; `vtt` wants one
+      entry per VTT. An entry is wanted only for a file that exists. Each entry
+      carries the configured `media.subtitles.emit.smil_params` as
+      `<param name value valuetype="data"/>` children.
+      `media.subtitles.emit.smil_language_codes` is `bcp47` (default) or
+      `iso639_2` (three-letter codes, e.g. `rus,eng`).
+    * When the managed entries already equal the wanted set (compared as a set,
+      ignoring attribute order and formatting), the SMIL MUST NOT be written.
+      Otherwise only the managed entries change; every other byte SHOULD be kept.
+    * Before a change the SMIL MUST be copied to `<smil>.bak.<YYYYmmdd_HHMMSS>`;
+      if that copy cannot be made, nothing is written. The SMIL is then replaced
+      atomically with its file mode kept. A failed write is `SMIL_PATCH_FAILED`
+      (§14.4), non-fatal: the document stays indexed.
+    * The patch requires `media.subtitles.emit.dir: ""` and the referenced format
+      in `media.subtitles.emit.formats`; otherwise `CONFIG_INVALID`.
+  * **TTML name and cues.** `media.subtitles.emit.ttml_name` is `group` (default,
+    `<stem>.ttml`) or `top_rendition`: the stem of the SMIL's `<video>` with the
+    greatest `height` (e.g. `<stem>_1080p.ttml`), falling back to the media
+    file's own stem when no usable SMIL exists. Some streaming servers resolve a
+    caption file against a rendition name. `media.subtitles.ttml.segmentation` is
+    `chunk` (default: one cue per stored transcript segment, as in §8.6.10) or
+    `broadcast` (TTML cues built like §8.6.3 broadcast VTT/SRT cues, then
+    aligned). It applies to TTML export and write-back alike.
 * **Where.** With `media.subtitles.emit.dir: ""` (the default) files are written
   **beside the media** in the corpus, where §8.6.4 would bind them (and the
   ownership rule below is what keeps them from binding while they are unchanged).
@@ -5230,6 +5262,11 @@ Example tool execution error:
 * `SUBTITLE_WRITE_FAILED` — a subtitle write-back artifact (§8.6.14) could not
   be written (target directory not writable, temporary file or rename failed).
   Non-fatal per document: the transcript stays indexed; `retryable: true`.
+* `SMIL_INVALID` — a SMIL caption patch (§8.6.14) found no usable SMIL beside
+  the media (missing, unreadable, unparseable, no `<switch>`, no `<video>`). The
+  SMIL is left untouched. Non-fatal; `retryable: false` until the SMIL is fixed.
+* `SMIL_PATCH_FAILED` — a SMIL caption patch could not be written (backup,
+  temporary file or rename failed). Non-fatal; `retryable: true`.
 * `MEDIA_CLIP_FAILED` — clip extraction failed (returned by
   `dir2mcp_open_media_clip`, §15.11): the underlying media is unreadable, the
   extraction tool (e.g. `ffmpeg`) is unavailable, or the segment extraction
@@ -6467,12 +6504,17 @@ media:
     ttml:
       enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
       align_tolerance_ms: 2500 # bilingual cue cross-language alignment tolerance (§8.6.10)
+      segmentation: chunk     # chunk | broadcast: TTML cues built like broadcast VTT/SRT (§8.6.14)
     emit:                     # subtitle write-back (§8.6.14): write subtitles beside media as it is indexed
       enabled: false          # opt-in, off by default; output-neutral (changes no chunk or citation)
       formats: [vtt]          # subset of vtt|srt|ttml; ttml requires ttml.enabled: true
       languages: []           # [] => every transcript language the document has (VTT/SRT only)
       policy: if_missing      # if_missing | refresh; a file dir2mcp did not write is never overwritten
       dir: ""                 # "" => beside the media; else mirror the corpus tree under this root, outside the corpus
+      smil: off               # off | ttml | vtt: add caption entries to the EXISTING <stem>.smil (never created)
+      smil_params: []         # <param> children of each entry, "name=value" (e.g. isWowzaCaptionStream=true)
+      smil_language_codes: bcp47  # bcp47 | iso639_2 ("rus,eng")
+      ttml_name: group        # group (<stem>.ttml) | top_rendition (<stem>_1080p.ttml, from the SMIL)
   sidecars:
     enabled: true             # ingest .vtt/.srt/.ttml next to media as the transcript (§8.6.4)
   variants:

@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.85.0`
+**Current spec version:** `0.86.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,16 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.86.0: write-back can caption a video in its existing SMIL
+
+New optional keys, all off or unchanged by default (`MINOR` per the pre-1.0 policy).
+
+- §8.6.14: `media.subtitles.emit.smil: off | ttml | vtt` adds caption `<textstream>` entries to the EXISTING `<stem>.smil` beside the media. A SMIL is never created; a missing or malformed one is reported (`SMIL_INVALID`) and left alone. Only entries for the document's own `<stem>.<lang>.vtt`, `<stem>.ttml`, `<stem>_<N>p.ttml` are replaced; other entries and elements are kept. Entries carry `smil_params` as `<param>` children and `system-language` in `bcp47` or `iso639_2` form. A SMIL whose entries are already right is not written; otherwise it is backed up to `<smil>.bak.<YYYYmmdd_HHMMSS>` and replaced atomically with its mode kept.
+- §8.6.14: `media.subtitles.emit.ttml_name: group | top_rendition` names the TTML after the SMIL's highest rendition (some streaming servers resolve captions against a rendition name). `media.subtitles.ttml.segmentation: chunk | broadcast` builds TTML cues like broadcast VTT/SRT cues.
+- §14.4: `SMIL_INVALID`, `SMIL_PATCH_FAILED`, both non-fatal.
+- §16.2: the template lists the five keys.
+- Motivation: the archive pipeline dir2mcp replaces (livevtt) wired captions into each video's Wowza SMIL; the channel still plays from Wowza, so the replacement must do the same, without rewriting SMILs that are already correct.
 
 ## 0.85.0: the `media.language` pin, and a long text is sampled for its language
 
