@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.88.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.89.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3753,11 +3753,21 @@ transcript exactly as it applies to an unreadable format.
     transcript without `redecode_rule` SHOULD be checked in a later reconcile
     pass. That pass MAY find candidate windows from the stored text alone (the
     §8.8 detector run on the segments of each window span, against the item
-    language) and MUST decode again only the windows that qualify under the
-    first bullet, or, when the stored transcript has no per-window decoder
-    report, the windows whose text the detector assigns to another language at
-    a confidence at or above the §8.8 floor. Until then the stored transcript
-    is served as recorded.
+    language). A window that qualifies under the first bullet, from a stored
+    per-window decoder report, MAY be decoded again directly. Otherwise a
+    candidate is only a suspect: the text cannot tell a window that the decoder
+    wrote in the wrong language from a passage that IS in another language
+    (questions in one language, answers in another). So before the pass decodes
+    a suspect again with the item language, it MUST probe the window (0.89.0):
+    it decodes, with no language hint, one slice of at most
+    `media.stt.language_probe_sec` (default 30 s) centred in the window, and
+    takes the decoder's reported language and confidence for that slice. The
+    window is decoded again only when the probe reports the item language at a
+    confidence at or above `media.stt.redecode_below`. A probe that reports the
+    window's own text language, reports a confidence below the threshold, or
+    fails, leaves the window as recorded. The record of a window decoded again
+    names the probe in `first_language` and `first_confidence`. Until the pass
+    runs the stored transcript is served as recorded.
   * Every decision is deterministic for identical audio and decoder output.
 
 #### 8.6.14 Subtitle write-back (emitted sidecars)
