@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.84.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.85.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3940,10 +3940,25 @@ MUST NOT make ingestion fail.
   per-provider `stt_language`, §16.2; an analogous pin for non-media text is
   implementation-defined and optional). No fixed or default language is assumed —
   the surface is general-purpose and language-agnostic.
+* **The source-language pin (`media.language`).** `media.language` is a BCP-47
+  language tag that pins the source language of every media item in the corpus.
+  It applies to each provider profile that sets no `stt_language` of its own; a
+  profile's `stt_language` is more specific and wins for that profile. The pin
+  reaches every consumer of the profile's language: the transcription request,
+  the `media.stt.language_providers` route (§8.2.1), the derivation identity
+  (§8.6.7), and the identifiers of §8.2.2 to §8.2.4, which a pin disables.
+  `media.stt.language` is an accepted alias of `media.language`. When the config
+  sets both keys, the two values MUST be equal ignoring case; different values
+  are `CONFIG_INVALID`, so one config never yields two source languages. A value
+  that is not a BCP-47 language tag (a primary subtag of 2 to 8 letters) is
+  `CONFIG_INVALID`. Unset, or empty, means no pin.
 * **Resolution precedence.** When more than one signal is available, the recorded
   effective `language` MUST be resolved deterministically with this precedence,
   and `language_source` MUST record which signal won:
-  1. **`configured`** — an explicit operator pin always wins (§16.2).
+  1. **`configured`** — an explicit operator pin always wins (§16.2). For a
+     provider profile, the pin is its own `stt_language` when set, else
+     `media.language` (or its alias). The full order is: profile `stt_language`,
+     then `media.language`, then `declared`, then `detected`.
   2. **`declared`** — a language asserted by the source itself (sidecar suffix
      §8.6.4, document/track language tag, OCR-provider-reported language).
   3. **`detected`** — an auto-detector's best-effort result.
@@ -3960,12 +3975,22 @@ MUST NOT make ingestion fail.
   `detected` language (leaving it unknown). Once a `language` value is written it
   is authoritative for retrieval matching (§9.5); `language_confidence` is
   informational and MUST NOT be re-applied as a filter at query time.
+* **A long text is sampled across its length.** A detector that reads a bounded
+  amount of a long text MUST NOT read only its start. It SHOULD read samples
+  spread over the whole text, skip a sample that has too little text or a
+  confidence below the floor, and resolve the language by a confidence-weighted
+  vote of the other samples. The rule exists for a transcript: its first decode
+  window can hold a jingle, an intro or music in another language, and a
+  prefix read lets that window decide the language of the whole item. A text
+  that fits in one sample is read whole. The vote is deterministic for identical
+  input, as the stability rule below requires.
 * **Stability & re-derivation.** Detection MUST be deterministic for identical
-  input + detector so the recorded language is stable across re-indexing. The
-  detector/pin is **not** part of a representation's derivation identity (§8.6.7)
-  unless an implementation chooses to make a *pin change* trigger re-derivation;
-  a pure detector change MAY refresh `language` opportunistically without forcing
-  re-embedding (language metadata does not change chunk `text`).
+  input + detector so the recorded language is stable across re-indexing. A
+  `configured` or `declared` language is part of a representation's derivation
+  identity (§8.6.7): a pin change, for example `en` to `fr`, MUST re-derive the
+  item. A `detected` language is **not** part of the identity: a pure detector
+  change MAY refresh `language` opportunistically without forcing re-embedding
+  (language metadata does not change chunk `text`).
 
 ---
 
@@ -6365,7 +6390,9 @@ stt:
 # Media transcription/translation/subtitle surface (§8.6; Status: Planned).
 # Domain-general: no built-in language list, no default target language.
 media:
-  # language: ""              # optional pin; omit => auto-detect source language
+  # language: ""              # optional pin (BCP-47, §8.8); omit => auto-detect source language.
+                              #   A profile's own stt_language wins for that profile.
+                              #   Alias: media.stt.language.
   transcript_chunk_sec: 40    # merge consecutive transcript segments into retrieval
                               #   chunks of up to this many seconds (§8.6.1).
                               #   0 => one chunk per provider segment (pre-0.62 behavior).
