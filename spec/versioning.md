@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.86.0`
+**Current spec version:** `0.88.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,17 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.88.0: a low-confidence window in another language is decoded again
+
+One rule and one key (`MINOR` per the pre-1.0 policy: it changes transcript text for an affected window; no tool or wire change). The number follows `0.87.0` (spec PR #137).
+
+- §8.6.13 **Re-decode of a low-confidence window**: under `language_scope: item` with no pin, declaration or identifier hint, a window whose decoder-reported language differs from the item language `L` (§8.8) at a confidence below `media.stt.redecode_below` (default `0.5`; `0` = off), while another window reported `L` at or above it, is decoded once more with `L` as the request language. The second decode replaces the window only when it yields content. Recorded as `redecoded_windows` (or `redecode_rule` with none). Not under `window` scope.
+- Not part of the derivation identity, so an upgrade does not re-transcribe stored items. A stored transcript without the marker SHOULD be checked in a later reconcile pass, which finds candidate windows from the stored text and decodes again only those windows.
+- §16.2: template line for `media.stt.redecode_below`.
+- Mirror: td-003 0.10.0 (pointer only; SPEC.md holds the rule).
+- Motivation: dir2mcp #1143. A Ukrainian broadcast recording with an English jingle in its first seconds had its first 600 s window decoded as English (reported confidence 0.34), while the other windows were Ukrainian at 0.99 and 1.00. Spec 0.85.0 fixed the recorded item language; this rule fixes the text of the window.
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.86.0: write-back can caption a video in its existing SMIL
 

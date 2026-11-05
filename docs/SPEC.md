@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.86.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.88.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3689,6 +3689,46 @@ transcript exactly as it applies to an unreadable format.
   floor does not apply when language coverage is undeclared. An implementation MAY
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
 
+* **A low-confidence window in another language is decoded again (0.88.0).**
+  Under `media.stt.language_scope: item`, with no pin (`configured`), no
+  declaration (`declared`) and no identifier result that hints the decode
+  (§8.2.3, §8.2.4), each window is decoded without a language hint. The decoder
+  then picks the language from the start of the window, so a window that opens
+  with a jingle, an intro or music in another language can be decoded whole in
+  that language, at a low confidence. When the transcript has two or more
+  decoded windows, the implementation MUST apply this rule after it resolves
+  the item language `L` (§8.8):
+  * A window qualifies when the decoder reported a language other than `L` for
+    it, at a confidence below `media.stt.redecode_below` (default `0.5`; `0`
+    turns the rule off; a value outside `[0,1]` is `CONFIG_INVALID`), and at
+    least one other window reported `L` at a confidence at or above the same
+    value. A window with no reported confidence does not qualify.
+  * A qualifying window is decoded once more, on the same route and model, with
+    `L` as the request language. The second decode replaces the window's
+    segments only when it yields transcript content; otherwise, and when the
+    second request fails, the first decode stands. A window is decoded again at
+    most once, and the rule never runs on a second decode.
+  * The transcript records each such window in `meta_json` as
+    `redecoded_windows`: a list of `{start_ms, end_ms, first_language,
+    first_confidence, language, replaced}` in ascending `start_ms` order, where
+    `replaced` says whether the second decode was kept. With the rule on and no
+    qualifying window, the transcript records `redecode_rule: "low-confidence"`
+    and no list, so a consumer can tell "checked, none" from "not checked".
+  * Under `language_scope: window` (§8.2.2) the rule does not apply: a language
+    change between windows is the intended result there, and §8.2.2's
+    inheritance already covers a low-confidence window.
+  * The rule and `redecode_below` do not join the derivation identity (§8.6.7),
+    so an upgrade does not decode every stored transcript again. A stored
+    transcript without `redecode_rule` SHOULD be checked in a later reconcile
+    pass. That pass MAY find candidate windows from the stored text alone (the
+    §8.8 detector run on the segments of each window span, against the item
+    language) and MUST decode again only the windows that qualify under the
+    first bullet, or, when the stored transcript has no per-window decoder
+    report, the windows whose text the detector assigns to another language at
+    a confidence at or above the §8.8 floor. Until then the stored transcript
+    is served as recorded.
+  * Every decision is deterministic for identical audio and decoder output.
+
 #### 8.6.14 Subtitle write-back (emitted sidecars)
 
 > **Status: Planned.** Opt-in and **off by default**
@@ -6462,6 +6502,9 @@ media:
                               #   Under item scope it runs BEFORE transcription on a probe and
                               #   routes the item through language_providers (§8.2.4).
     # language_probe_sec: 30   # at most this much audio is sent to the identifier (§8.2.3)
+    redecode_below: 0.5       # item scope, no hint (§8.6.13, 0.88.0): a window decoded in another
+                              #   language than the item's, below this confidence, is decoded again
+                              #   with the item language; 0 => off
     # require_validation: false  # true => a language_providers candidate is eligible only when
                               #   its profile declares stt_validation for that language (§8.2.3).
                               # language_providers values may also be ordered lists; under
