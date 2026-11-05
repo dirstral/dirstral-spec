@@ -3109,7 +3109,8 @@ stable across re-indexing.
   builder, so output is unchanged where the timings are absent. Any other value
   is `CONFIG_INVALID`. The key never affects ingest, and never affects TTML:
   the TTML cue region is the alignment unit of bilingual packaging (§8.6.10)
-  and MUST stay the stored transcript segment span.
+  and MUST stay the stored transcript segment span, unless the separate
+  `media.subtitles.ttml.segmentation: broadcast` (§8.6.14) is set.
 * **Export-time cue cleaning (optional, every filter off by default).** Before
   cues are written, an implementation MAY apply operator-configured,
   deterministic filters under `media.subtitles.*` to the rendered cue text.
@@ -3426,7 +3427,10 @@ languages in one document**.
   language-tagged (`xml:lang`). Both languages MUST map back to the **same
   transcript segment span** (§8.6.1) so a TTML cue is traceable to its
   `start_ms`/`end_ms` and chunk. Monolingual TTML (one configured language) is
-  also valid.
+  also valid. Exception: under `media.subtitles.ttml.segmentation: broadcast`
+  (§8.6.14) the time region is a primary-language broadcast cue (§8.6.3), which
+  MAY span or split stored segments; the secondary text is still aligned to that
+  same region by the cross-language rule below.
 * **Cross-language cue alignment.** Source and translated transcripts (§8.6.2) are
   distinct representations whose segment boundaries MAY differ slightly. The
   exporter MUST align the secondary language to the primary segment's time region
@@ -3711,7 +3715,8 @@ beside the media.
     written file binds back to its media under the ordinary sidecar rules.
     `media.subtitles.emit.languages` (default `[]`, meaning every language the
     document has a transcript for) restricts which languages are written.
-  * TTML is written **once per document** as `<stem>.ttml`: bilingual (§8.6.10)
+  * TTML is written **once per document** as `<stem>.ttml` (or the name
+    `media.subtitles.emit.ttml_name` selects, below): bilingual (§8.6.10)
     when a translated transcript exists — primary the source-language transcript,
     secondary the first configured `media.translate.target_langs` entry the
     document has — else monolingual. Listing `ttml` requires
@@ -3734,11 +3739,19 @@ beside the media.
       `<param name value valuetype="data"/>` children.
       `media.subtitles.emit.smil_language_codes` is `bcp47` (default) or
       `iso639_2` (three-letter codes, e.g. `rus,eng`).
+    * A source is managed only as a bare file name beside the SMIL (an optional
+      `./` aside): `other/<stem>.ttml` is not managed.
+    * When no wanted file exists (none written yet, or the write failed), an
+      existing managed entry whose file is present MUST be kept; only managed
+      entries whose file is missing are removed. A failed subtitle write
+      therefore never unlinks working captions.
     * When the managed entries already equal the wanted set (compared as a set,
       ignoring attribute order and formatting), the SMIL MUST NOT be written.
       Otherwise only the managed entries change; every other byte SHOULD be kept.
-    * Before a change the SMIL MUST be copied to `<smil>.bak.<YYYYmmdd_HHMMSS>`;
-      if that copy cannot be made, nothing is written. The SMIL is then replaced
+    * Before a change the SMIL MUST be copied to a new file
+      `<smil>.bak.<YYYYmmdd_HHMMSS>` (with a `.<n>` suffix when that name
+      exists; an existing backup is never reused or overwritten); if that copy
+      cannot be made, nothing is written. The SMIL is then replaced
       atomically with its file mode kept. A failed write is `SMIL_PATCH_FAILED`
       (§14.4), non-fatal: the document stays indexed.
     * The patch requires `media.subtitles.emit.dir: ""` and the referenced format

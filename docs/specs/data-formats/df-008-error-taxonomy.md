@@ -75,7 +75,8 @@ Each tool error returns an object with:
   could not be written (directory not writable, temporary file or rename
   failed). Non-fatal per document; the transcript stays indexed. Retryable.
 - `SMIL_INVALID` — a SMIL caption patch (SPEC §8.6.14) found no usable SMIL
-  beside the media; it is left untouched. Non-fatal.
+  beside the media; it is left untouched. Non-fatal; not retryable
+  (`retryable: false`) until the SMIL is fixed.
 - `SMIL_PATCH_FAILED` — a SMIL caption patch could not be written. Non-fatal;
   retryable.
 - `MEDIA_CLIP_FAILED` — clip extraction failed (`dir2mcp_open_media_clip`): the
