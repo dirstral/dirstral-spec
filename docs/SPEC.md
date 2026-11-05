@@ -3765,8 +3765,10 @@ transcript exactly as it applies to an unreadable format.
     window is decoded again only when the probe reports the item language at a
     confidence at or above `media.stt.redecode_below`. A probe that reports the
     window's own text language, reports a confidence below the threshold, or
-    fails, leaves the window as recorded. The record of a window decoded again
-    names the probe in `first_language` and `first_confidence`. Until the pass
+    fails, leaves the window as recorded. In the record of a window decoded
+    again, `first_language` and `first_confidence` name the probe result when a
+    probe ran, and the stored decoder report when the window qualified from
+    that report. Until the pass
     runs the stored transcript is served as recorded.
   * Every decision is deterministic for identical audio and decoder output.
 
