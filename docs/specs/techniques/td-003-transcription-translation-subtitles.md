@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.9.0
+- **Version:** 0.10.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -658,6 +658,12 @@ transcript exactly as it applies to an unreadable format.
   to it: an unknown fraction is not evidence of a low one, exactly as SPEC.md §8.2.1's
   floor does not apply when language coverage is undeclared. An implementation MAY
   re-decode to obtain a record; it MUST NOT refuse a transcript for lacking one.
+* **A low-confidence window in another language is decoded again (spec
+  0.88.0).** Under item scope with no language hint, a window decoded in another
+  language than the item's, below `media.stt.redecode_below` (default `0.5`), is
+  decoded once more with the item language. Stored transcripts are repaired by
+  a later reconcile pass that decodes again only the affected windows. SPEC.md
+  §8.6.13 holds the rule.
 
 ### 8.6.14 Subtitle write-back (emitted sidecars)
 
@@ -679,6 +685,8 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.10.0**: spec 0.88.0: §8.6.13 pointer to the SPEC.md rule that decodes a
+  low-confidence window in another language again. Cross-reference only.
 - **0.9.0**: spec 0.87.0: §8.6.3 pointer to the SPEC.md rule that a translated
   broadcast cue is not timed across a source pause. Cross-reference only.
 - **0.8.0**: spec 0.82.0: §8.6.7 points to the SPEC.md §8.2.4 rules for a
