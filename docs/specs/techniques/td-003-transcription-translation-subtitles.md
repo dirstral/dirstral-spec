@@ -195,6 +195,11 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   is `CONFIG_INVALID`. The key never affects ingest, and never affects TTML:
   the TTML cue region is the alignment unit of bilingual packaging (§8.6.10)
   and MUST stay the stored transcript segment span.
+* **Translated cues follow the source speech (spec 0.87.0).** Under
+  `broadcast`, a translation without its own word timings is timed from
+  synthesized word times, and no translated word is placed inside a source
+  pause of at least `media.subtitles.source_pause_ms` (default `2000`). SPEC.md
+  §8.6.3 holds the rule.
 * **Export-time cue cleaning (optional, every filter off by default).** Before
   cues are written, an implementation MAY apply operator-configured,
   deterministic filters under `media.subtitles.*` to the rendered cue text.
@@ -681,8 +686,9 @@ configuration keys are listed in bs-011 §16.2.
 ## Changelog
 
 - **0.10.0**: spec 0.88.0: §8.6.13 pointer to the SPEC.md rule that decodes a
-  low-confidence window in another language again. Cross-reference only. (0.9.0
-  is spec 0.87.0, spec PR #137.)
+  low-confidence window in another language again. Cross-reference only.
+- **0.9.0**: spec 0.87.0: §8.6.3 pointer to the SPEC.md rule that a translated
+  broadcast cue is not timed across a source pause. Cross-reference only.
 - **0.8.0**: spec 0.82.0: §8.6.7 points to the SPEC.md §8.2.4 rules for a
   route-fallback transcript. Cross-reference only.
 - **0.7.0**: spec 0.78.0 added **subtitle write-back** (SPEC.md §8.6.14,
