@@ -4504,11 +4504,16 @@ question, and MAY generate the answer once more when they differ.
 * **Only a clear verdict counts.** The check applies only when the question has
   a dominant script AND the answer has a dominant script. A text with too few
   letters, or with no script that clearly leads, has no dominant script and is
-  not checked. Inline citation tags (§9.3) MUST NOT count toward the answer's
-  script: they carry file names, not the answer's words.
+  not checked. Only the answer's own words count. Inline citation tags (§9.3)
+  and link destinations MUST NOT count: they carry file names and URLs. A
+  passage in quotation marks MUST NOT count either: the prompt lets a quote keep
+  its own spelling, so an answer that quotes a long passage in the document's
+  script is not a mismatch.
 * **One writing system is one script.** Scripts that one language writes
-  together (Han, Hiragana and Katakana) MUST count as one script for the
-  comparison, so a Japanese answer to a Japanese question is not a mismatch.
+  together (Han, Hiragana and Katakana) MUST count as one script, and their
+  letters MUST be added together BEFORE the dominance rule runs. A Japanese text
+  that splits its letters between Han and kana then still has a clear verdict,
+  and a Japanese answer to a Japanese question is not a mismatch.
 * **The operator's rule wins.** The check applies only when the prompt in force
   states the answer-language rule. An operator who fixed one answer language
   replaced that rule, and the server MUST NOT push the answer toward the
