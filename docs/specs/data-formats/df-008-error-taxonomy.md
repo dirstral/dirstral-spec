@@ -1,7 +1,7 @@
 # df-008: Error taxonomy (canonical codes)
 
 - **ID:** df-008
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -74,6 +74,11 @@ Each tool error returns an object with:
 - `SUBTITLE_WRITE_FAILED` — a subtitle write-back artifact (td-003 §8.6.14)
   could not be written (directory not writable, temporary file or rename
   failed). Non-fatal per document; the transcript stays indexed. Retryable.
+- `SMIL_INVALID` — a SMIL caption patch (SPEC §8.6.14) found no usable SMIL
+  beside the media; it is left untouched. Non-fatal; not retryable
+  (`retryable: false`) until the SMIL is fixed.
+- `SMIL_PATCH_FAILED` — a SMIL caption patch could not be written. Non-fatal;
+  retryable.
 - `MEDIA_CLIP_FAILED` — clip extraction failed (`dir2mcp_open_media_clip`): the
   media is unreadable, the extraction tool (e.g. `ffmpeg`) is unavailable, or
   segment extraction errored. Distinct from `CLIP_TOO_LARGE` (a bounds rejection)
@@ -118,6 +123,7 @@ every error.
 
 ## Changelog
 
+- **0.3.0** — Added `SMIL_INVALID` and `SMIL_PATCH_FAILED` for the SMIL caption patch of SPEC §8.6.14 (spec 0.86.0).
 - **0.2.0** — Added `SUBTITLE_WRITE_FAILED` (ingestion/extraction) for td-003
   §8.6.14 subtitle write-back (spec 0.78.0).
 - **0.1.0** — Migrated from SPEC.md §14. Added the error-result-shape table and

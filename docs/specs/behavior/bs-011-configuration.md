@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.15.0
+- **Version:** 0.16.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -277,12 +277,17 @@ media:
     ttml:
       enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
       align_tolerance_ms: 2500 # bilingual cue cross-language alignment tolerance (td-003)
+      segmentation: chunk     # chunk | broadcast: TTML cues built like broadcast VTT/SRT (SPEC.md 8.6.14)
     emit:                     # subtitle write-back (td-003 §8.6.14): write subtitles beside media as it is indexed
       enabled: false          # opt-in, off by default; output-neutral (changes no chunk or citation)
       formats: [vtt]          # subset of vtt|srt|ttml; ttml requires ttml.enabled: true
       languages: []           # [] => every transcript language the document has (VTT/SRT only)
       policy: if_missing      # if_missing | refresh; a file dir2mcp did not write is never overwritten
       dir: ""                 # "" => beside the media; else mirror the corpus tree under this root, which must lie outside the corpus (required for s3)
+      smil: off               # off | ttml | vtt: add caption entries to the EXISTING <stem>.smil (never created)
+      smil_params: []         # <param> children of each entry, "name=value" (e.g. isWowzaCaptionStream=true)
+      smil_language_codes: bcp47  # bcp47 | iso639_2 ("rus,eng")
+      ttml_name: group        # group (<stem>.ttml) | top_rendition (<stem>_1080p.ttml, from the SMIL)
   sidecars:
     enabled: true             # ingest .vtt/.srt/.ttml next to media as the transcript (td-003)
   variants:
@@ -403,6 +408,7 @@ security:
 
 ## Changelog
 
+- **0.16.0**: mirrors spec 0.86.0 (SPEC.md §8.6.14, §16.2): the template lists `media.subtitles.emit.{smil, smil_params, smil_language_codes, ttml_name}` and `media.subtitles.ttml.segmentation`, all off or unchanged by default.
 - **0.15.0**: mirrors spec 0.82.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.route_retry_after: 24h` (env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`), with a pointer to SPEC.md §8.2.4 and §16.2 for its rules.
 - **0.14.0**: mirrors spec 0.81.0 (SPEC.md §7.6, §16.2): the template lists `ingest.media_identity: full`; `sampled` hashes the size and three 4 MiB slices of audio/video.
 - **0.13.0**: mirrors spec 0.80.0 (SPEC.md §9.4.3, §16.2): the template lists `rag.evidence_threshold: auto`, the calibrated absolute evidence threshold; a number in (0,1] pins it.
