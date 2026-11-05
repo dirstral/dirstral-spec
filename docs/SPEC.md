@@ -3947,13 +3947,18 @@ MUST NOT make ingestion fail.
   reaches every consumer of the profile's language: the transcription request,
   the `media.stt.language_providers` route (§8.2.1), the derivation identity
   (§8.6.7), and the identifiers of §8.2.2 to §8.2.4, which a pin disables.
-  `media.stt.language` is an accepted alias of `media.language`. A value that is
-  not a BCP-47 language tag (a primary subtag of 2 to 8 letters) is
+  `media.stt.language` is an accepted alias of `media.language`. When the config
+  sets both keys, the two values MUST be equal ignoring case; different values
+  are `CONFIG_INVALID`, so one config never yields two source languages. A value
+  that is not a BCP-47 language tag (a primary subtag of 2 to 8 letters) is
   `CONFIG_INVALID`. Unset, or empty, means no pin.
 * **Resolution precedence.** When more than one signal is available, the recorded
   effective `language` MUST be resolved deterministically with this precedence,
   and `language_source` MUST record which signal won:
-  1. **`configured`** — an explicit operator pin always wins (§16.2).
+  1. **`configured`** — an explicit operator pin always wins (§16.2). For a
+     provider profile, the pin is its own `stt_language` when set, else
+     `media.language` (or its alias). The full order is: profile `stt_language`,
+     then `media.language`, then `declared`, then `detected`.
   2. **`declared`** — a language asserted by the source itself (sidecar suffix
      §8.6.4, document/track language tag, OCR-provider-reported language).
   3. **`detected`** — an auto-detector's best-effort result.
@@ -3980,11 +3985,12 @@ MUST NOT make ingestion fail.
   that fits in one sample is read whole. The vote is deterministic for identical
   input, as the stability rule below requires.
 * **Stability & re-derivation.** Detection MUST be deterministic for identical
-  input + detector so the recorded language is stable across re-indexing. The
-  detector/pin is **not** part of a representation's derivation identity (§8.6.7)
-  unless an implementation chooses to make a *pin change* trigger re-derivation;
-  a pure detector change MAY refresh `language` opportunistically without forcing
-  re-embedding (language metadata does not change chunk `text`).
+  input + detector so the recorded language is stable across re-indexing. A
+  `configured` or `declared` language is part of a representation's derivation
+  identity (§8.6.7): a pin change, for example `en` to `fr`, MUST re-derive the
+  item. A `detected` language is **not** part of the identity: a pure detector
+  change MAY refresh `language` opportunistically without forcing re-embedding
+  (language metadata does not change chunk `text`).
 
 ---
 

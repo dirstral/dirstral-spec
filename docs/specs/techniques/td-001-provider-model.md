@@ -575,14 +575,16 @@ it MUST NOT make ingestion fail.
   is authoritative for retrieval matching (bs-003 §9.5); `language_confidence` is
   informational and MUST NOT be re-applied as a filter at query time.
 * **Stability & re-derivation.** Detection MUST be deterministic for identical
-  input + detector so the recorded language is stable across re-indexing. The
-  detector/pin is **not** part of a representation's derivation identity (td-003
-  §8.6.7) unless an implementation chooses to make a *pin change* trigger
-  re-derivation; a pure detector change MAY refresh `language` opportunistically
-  without forcing re-embedding (language metadata does not change chunk `text`).
+  input + detector so the recorded language is stable across re-indexing. A
+  `configured` or `declared` language is part of a representation's derivation
+  identity (td-003 §8.6.7): a pin change re-derives the item. A `detected`
+  language is **not** part of the identity: a pure detector change MAY refresh
+  `language` opportunistically without forcing re-embedding (language metadata
+  does not change chunk `text`).
 * **Pin key and sampled detection (spec 0.85.0).** `media.language` (alias
   `media.stt.language`) fills the `stt_language` of each profile that sets none,
-  and a profile's own `stt_language` wins. A detector that reads a bounded
+  and a profile's own `stt_language` wins. Both keys set with different values
+  is `CONFIG_INVALID`. A detector that reads a bounded
   amount of a long text samples it across its length and votes; it never reads
   only the start. SPEC.md §8.8 holds the rules.
 
