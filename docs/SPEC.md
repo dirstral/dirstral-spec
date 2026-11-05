@@ -4504,6 +4504,108 @@ an empty `citations` array already describes that outcome in full.
 A server MUST NOT emit either field unless it advertises a schema that
 declares it (§15.1.1).
 
+#### 9.4.6 Answer script check (optional)
+
+The answer-language rule (`${rag.answer_language_rule}`, §16.1.2) tells the
+model in words to answer in the language of the question. A small local model
+does not always obey it. In a 344-question run of the reference benchmark
+(English questions, English corpus, `qwen2.5:7b-instruct` through Ollama, the
+shipped prompt), one answer came back in Chinese (dir2mcp #1083). The words of
+the rule cannot remove this. A check of the output can.
+
+A server MAY compare the script of a generated answer with the script of the
+question, and MAY generate the answer once more when they differ.
+
+* **Script, not language.** The check counts letters per Unicode script. It
+  MUST NOT guess the language of the question: a trigram language detector is
+  not reliable on a short question, and a wrong verdict is worse than no
+  verdict.
+* **The operator's rule wins.** The check applies only when the prompt in force
+  states the answer-language rule. An operator who fixed one answer language
+  replaced that rule, and the server MUST NOT push the answer toward the
+  question's script against the operator's instruction.
+
+**Dominant script (normative).** The check uses one decision rule, the same on
+the question, on the first answer and on the second answer. It returns either a
+script group or **no verdict**.
+
+1. **Groups.** The script groups are Latin, Cyrillic, Greek, Arabic, Hebrew,
+   Devanagari, "Han and Kana", Hangul, Georgian, Armenian, Thai, Bengali, Tamil
+   and Ethiopic, by the Unicode Script property. Han, Hiragana and Katakana are
+   ONE group, "Han and Kana", because one language writes them together. Their
+   letters MUST be added together before steps 4 and 5 run.
+2. **Letters.** Only code points with the Unicode general category `L` (Letter)
+   count. Digits, punctuation, symbols, marks and white space do not. Every
+   letter counts toward the total `N`. A letter in a script that no group
+   lists counts toward `N` and toward no group.
+3. **Minimum.** When `N < 8`, the result is no verdict.
+4. **Share.** Let `B` be the largest group count. When `B / N < 0.6`, the
+   result is no verdict.
+5. **Lead.** When `B < 2 × (N − B)`, the result is no verdict: the leading group
+   must hold at least twice the letters of all other letters together,
+   unlisted scripts included. Two groups that tie for the largest count
+   therefore never give a verdict.
+6. Otherwise the result is the group that holds `B`.
+
+**Answer text.** Before the rule runs on an answer, and only on an answer, the
+server MUST remove the text that is not the answer's own words, in this order:
+
+1. **Attribution footer:** a trailing `Sources:` block, exactly the block that
+   the §9.4.1 rule for a model-generated footer removes. That is the LAST line
+   that opens with `Sources:`, `Source:`, `References:` or `Reference:` (any
+   case), together with every line after it, when every line after it is blank,
+   a list item or a line that opens with `[`, and the block either names a
+   document (a token with a `/` or a file extension) or the label line holds
+   nothing but the label. This check runs BEFORE that §9.4.1 post-processing,
+   so without this step a footer in another script could decide the verdict.
+2. **Code:** a fenced block from ```` ``` ```` to the next ```` ``` ```` (or from
+   `~~~` to the next `~~~`), across lines, and an inline code span between two
+   backticks on one line.
+3. **URLs:** the destination of a Markdown link (`](...)`, the link label
+   stays), an autolink (`<scheme://...>`) and a bare URL (a token that starts
+   with `scheme://` or `www.` and ends at white space or `<` / `>`).
+4. **Quoted passages:** text between a pair of quotation marks (`"` and `"`,
+   `“` and `”`, `«` and `»`, `„` and `“` or `”`, `「` and `」`, `『` and `』`),
+   on one line or across lines, and every line whose first non-blank character
+   is `>` (a block quote). The single quote is not a quotation mark here,
+   because it is also the apostrophe. The prompt lets a quote keep its own
+   spelling, so an answer that quotes a long passage in the document's script
+   is not a mismatch.
+5. **Citation tags:** a bracketed tag (with no `[` or `]` inside) that is
+   EITHER a §9.3 tag by its locator, that is a path token with no white space
+   followed by `:L`, `#p=` or `@t=` and a digit (the path may be a root-level
+   name with no `/` and no extension, such as `[LICENSE:L1-L3]`), OR a bracket
+   whose leading token, after any §9.3 locator (`:L<n>`, `:<n>`, `#...`,
+   `@...`) and breadcrumb (` › ...`) is cut, carries a `/` or ends in a file
+   extension of 1 to 6 letters or digits (such as `[report.pdf]` or
+   `[report.pdf#p=3 › Results]`). Any other bracket, such as `[README]` or a
+   Markdown link label, stays: it is answer text.
+
+The question is not stripped.
+
+**Decision.**
+
+* **No verdict means no retry.** When the question or the first answer has no
+  verdict, the check does nothing and the first answer is published.
+* **A mismatch** is a first answer whose group differs from the question's
+  group. Only a mismatch causes a retry.
+* **Bounded cost.** A mismatch causes at most ONE more generation per request.
+  The second prompt is the first prompt plus an instruction that names the
+  script of the question. That instruction speaks only about the script and the
+  language of the answer, so it cannot be read as a change to grounding,
+  citation or injection rules.
+* **The retry must earn its place.** The second answer replaces the first only
+  when its dominant script is the question's script (one writing system, as
+  above). A second answer with no dominant script does not pass: the absence of
+  a verdict is not a pass. Otherwise the first answer stands. When the
+  second generation fails, the first answer stands too: it is a generated
+  answer, so this is not a §9.4.5 `retrieval_only` case.
+* **The published answer is the one that is checked downstream.** The §9.4.1
+  citation rules and the optional §9.4.4 verification apply to the answer that
+  is published, after this check.
+* **No wire change.** The check adds no field to the answer surfaces. A server
+  SHOULD log each mismatch and its outcome (corrected, or kept).
+
 ### 9.5 Per-language retrieval filter (optional)
 
 `dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept an **optional**

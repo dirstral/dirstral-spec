@@ -64,12 +64,23 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 
 ## 0.85.0: the `media.language` pin, and a long text is sampled for its language
 
-One config alias and two rules (`MINOR` per the pre-1.0 policy). A deployment without `media.language` and with no long mixed-language text is unchanged. The number follows `0.84.0`, which spec PR #133 holds.
+One config alias and two rules (`MINOR` per the pre-1.0 policy). A deployment without `media.language` and with no long mixed-language text is unchanged. The number follows `0.84.0` (spec PR #133).
 
 - §8.8 **The source-language pin**: `media.language` (already in the §16.2 template and named by §8.2.1 and §8.8) is now defined. It is a BCP-47 tag that fills the `stt_language` of each provider profile that sets none; a profile's own `stt_language` wins for that profile. It reaches the transcription request, the `language_providers` route, the derivation identity and the §8.2.2 to §8.2.4 identifiers (which a pin disables). `media.stt.language` is an accepted alias. A value that is not a BCP-47 language tag is `CONFIG_INVALID`. Motivation: dir2mcp #1136. The implementation read neither key, so an operator who followed the spec got no pin.
 - §8.8 **A long text is sampled across its length**: a detector that reads a bounded amount of a long text MUST NOT read only its start, and SHOULD vote over samples spread across the text, weighted by confidence, skipping a sample with too little text or a confidence below the floor. Motivation: dir2mcp #1135. A broadcast transcript whose first decode window held an English jingle was recorded as English, although its other two windows were in another language.
 - §16.2: the template comment on `media.language` names the precedence and the alias.
 - Mirror: td-001 0.11.0 (pointer only; SPEC.md holds the rules).
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
+
+## 0.84.0: an answer in the wrong script may be generated once more
+
+An optional output check on generated answers (`MINOR` per the pre-1.0 policy: it changes which generated answer an ask may publish; no new key, tool or field). A server that does not implement it is unchanged and conformant.
+
+- bs-003, answer script check (new; full rule in `docs/SPEC.md` under RAG generation): a server MAY compare the Unicode script of a generated answer with the script of the question, and on a clear mismatch MAY generate the answer once more. The check counts letters per script and MUST NOT guess a language. The dominant-script decision is normative: letters only (Unicode category `L`), at least 8 letters, the leading group holds at least 60% of them and at least twice all other letters together, otherwise no verdict; Han, Hiragana and Katakana are one group, added together before the rule runs. On an answer, a model-written `Sources:` footer, code, URLs, quoted passages and citation tags (by citation locator or by path shape) are removed first, in that order. No verdict on the question or the first answer means no retry. It applies only when the prompt in force states the answer-language rule, so an operator who fixed one answer language is never overruled.
+- bs-003, answer script check: at most one more generation per request. The second prompt adds an instruction that speaks only about the answer's script and language. The second answer replaces the first only when its dominant script is the question's (a second answer with no dominant script does not pass); otherwise, and when the second call fails, the first answer stands. A kept first answer is generated, not `retrieval_only` (answer provenance, bs-007). The grounding rules for citations and the optional answer faithfulness check (bs-003, bs-007) apply to the published answer.
+- No wire change. A server SHOULD log each mismatch and its outcome.
+- Mirror: bs-003 0.4.0 carries a pointer; SPEC.md holds the rule.
+- Motivation: dir2mcp #1083. In a 344-question benchmark run, `qwen2.5:7b-instruct` answered one English question about an English corpus in Chinese, with the answer-language rule, the trailing reminder (#892) and the script reminder (#957) all in the prompt.
 - `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.83.0: a translated segment carries the spoken span of its source segment
