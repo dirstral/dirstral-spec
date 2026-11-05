@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.83.0`
+**Current spec version:** `0.84.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,17 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.84.0: an answer in the wrong script may be generated once more
+
+An optional output check on generated answers (`MINOR` per the pre-1.0 policy: it changes which generated answer an ask may publish; no new key, tool or field). A server that does not implement it is unchanged and conformant.
+
+- §9.4.6 (new): a server MAY compare the Unicode script of a generated answer with the script of the question, and on a clear mismatch MAY generate the answer once more. The check counts letters per script and MUST NOT guess a language. It applies only when both texts have a dominant script; inline citation tags do not count; Han, Hiragana and Katakana count as one script. It applies only when the prompt in force states the answer-language rule, so an operator who fixed one answer language is never overruled.
+- §9.4.6: at most one more generation per request. The second prompt adds an instruction that speaks only about the answer's script and language. The second answer replaces the first only when it passes the same check; otherwise, and when the second call fails, the first answer stands. A kept first answer is generated, not `retrieval_only` (§9.4.5). §9.4.1 and §9.4.4 apply to the published answer.
+- No wire change. A server SHOULD log each mismatch and its outcome.
+- Mirror: bs-003 0.4.0 carries a pointer; SPEC.md holds the rule.
+- Motivation: dir2mcp #1083. In a 344-question benchmark run, `qwen2.5:7b-instruct` answered one English question about an English corpus in Chinese, with the answer-language rule, the trailing reminder (#892) and the script reminder (#957) all in the prompt.
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.83.0: a translated segment carries the spoken span of its source segment
 

@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.83.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.84.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -4484,6 +4484,49 @@ an empty `citations` array already describes that outcome in full.
 
 A server MUST NOT emit either field unless it advertises a schema that
 declares it (§15.1.1).
+
+#### 9.4.6 Answer script check (optional)
+
+The answer-language rule (`${rag.answer_language_rule}`, §16.1.2) tells the
+model in words to answer in the language of the question. A small local model
+does not always obey it. In a 344-question run of the reference benchmark
+(English questions, English corpus, `qwen2.5:7b-instruct` through Ollama, the
+shipped prompt), one answer came back in Chinese (dir2mcp #1083). The words of
+the rule cannot remove this. A check of the output can.
+
+A server MAY compare the script of a generated answer with the script of the
+question, and MAY generate the answer once more when they differ.
+
+* **Script, not language.** The check counts the letters of each Unicode
+  script. It MUST NOT guess the language of the question: a trigram language
+  detector is not reliable on a short question, and a wrong verdict is worse
+  than no verdict.
+* **Only a clear verdict counts.** The check applies only when the question has
+  a dominant script AND the answer has a dominant script. A text with too few
+  letters, or with no script that clearly leads, has no dominant script and is
+  not checked. Inline citation tags (§9.3) MUST NOT count toward the answer's
+  script: they carry file names, not the answer's words.
+* **One writing system is one script.** Scripts that one language writes
+  together (Han, Hiragana and Katakana) MUST count as one script for the
+  comparison, so a Japanese answer to a Japanese question is not a mismatch.
+* **The operator's rule wins.** The check applies only when the prompt in force
+  states the answer-language rule. An operator who fixed one answer language
+  replaced that rule, and the server MUST NOT push the answer toward the
+  question's script against the operator's instruction.
+* **Bounded cost.** A mismatch causes at most ONE more generation per request.
+  The second prompt is the first prompt plus an instruction that names the
+  script of the question. That instruction speaks only about the script and the
+  language of the answer, so it cannot be read as a change to grounding,
+  citation or injection rules.
+* **The retry must earn its place.** The second answer replaces the first only
+  when it passes the same check. Otherwise the first answer stands. When the
+  second generation fails, the first answer stands too: it is a generated
+  answer, so this is not a §9.4.5 `retrieval_only` case.
+* **The published answer is the one that is checked downstream.** The §9.4.1
+  citation rules and the optional §9.4.4 verification apply to the answer that
+  is published, after this check.
+* **No wire change.** The check adds no field to the answer surfaces. A server
+  SHOULD log each mismatch and its outcome (corrected, or kept).
 
 ### 9.5 Per-language retrieval filter (optional)
 

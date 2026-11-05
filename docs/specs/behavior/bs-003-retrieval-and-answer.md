@@ -1,7 +1,7 @@
 # bs-003: Retrieval and answer generation
 
 - **ID:** bs-003
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -139,6 +139,11 @@ If disabled or `mode=search_only`:
 
 - return hits only.
 
+A server MAY check the Unicode script of a generated answer against the script
+of the question and, on a clear mismatch, generate the answer once more (at
+most one extra generation). The second answer replaces the first only when it
+passes the same check. The full rule is SPEC.md §9.4.6.
+
 ### Per-language retrieval filter (optional)
 
 `dir2mcp_search` and `dir2mcp_ask` (tool definitions;
@@ -220,6 +225,7 @@ migration and no breaking change.
 
 ## Changelog
 
+- **0.4.0**: mirrors spec 0.84.0 (SPEC.md §9.4.6): an optional answer script check, with at most one more generation on a mismatch.
 - **0.3.0**: mirrors spec 0.73.0 (SPEC.md §9.1): under `index=auto` a query that is not code-oriented searches both axes on a corpus holding text and code chunks.
 - **0.2.0** — Per-language retrieval filter: added the OPTIONAL `language_match`
   mode (`"primary"` default / `"strict"` opt-in). `"strict"` selects BCP-47 Basic
