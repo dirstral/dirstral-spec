@@ -142,7 +142,10 @@ If disabled or `mode=search_only`:
 A server MAY check the Unicode script of a generated answer against the script
 of the question and, on a clear mismatch, generate the answer once more (at
 most one extra generation). The second answer replaces the first only when its
-dominant script is the question's. The full rule is SPEC.md §9.4.6.
+dominant script is the question's. The full rule, with the normative
+dominant-script decision, is the "Answer script check" subsection of RAG
+generation in `docs/SPEC.md`, which stays authoritative for it until this
+document is Stable.
 
 ### Per-language retrieval filter (optional)
 
@@ -225,7 +228,7 @@ migration and no breaking change.
 
 ## Changelog
 
-- **0.4.0**: mirrors spec 0.84.0 (SPEC.md §9.4.6): an optional answer script check, with at most one more generation on a mismatch.
+- **0.4.0**: mirrors spec 0.84.0 (the "Answer script check" in `docs/SPEC.md`): an optional answer script check, with at most one more generation on a mismatch.
 - **0.3.0**: mirrors spec 0.73.0 (SPEC.md §9.1): under `index=auto` a query that is not code-oriented searches both axes on a corpus holding text and code chunks.
 - **0.2.0** — Per-language retrieval filter: added the OPTIONAL `language_match`
   mode (`"primary"` default / `"strict"` opt-in). `"strict"` selects BCP-47 Basic

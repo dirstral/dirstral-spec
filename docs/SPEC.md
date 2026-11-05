@@ -4497,29 +4497,66 @@ the rule cannot remove this. A check of the output can.
 A server MAY compare the script of a generated answer with the script of the
 question, and MAY generate the answer once more when they differ.
 
-* **Script, not language.** The check counts the letters of each Unicode
-  script. It MUST NOT guess the language of the question: a trigram language
-  detector is not reliable on a short question, and a wrong verdict is worse
-  than no verdict.
-* **Only a clear verdict counts.** The check applies only when the question has
-  a dominant script AND the answer has a dominant script. A text with too few
-  letters, or with no script that clearly leads, has no dominant script and is
-  not checked. Only the answer's own words count. Inline citation tags (§9.3),
-  URLs (link destinations, autolinks and bare URLs) and code (fenced blocks and inline code spans) MUST NOT
-  count: they carry file names, URLs and program text. A
-  quoted passage (in quotation marks, on one line or across lines, or in a
-  block quote) MUST NOT count either: the prompt lets a quote keep
-  its own spelling, so an answer that quotes a long passage in the document's
-  script is not a mismatch.
-* **One writing system is one script.** Scripts that one language writes
-  together (Han, Hiragana and Katakana) MUST count as one script, and their
-  letters MUST be added together BEFORE the dominance rule runs. A Japanese text
-  that splits its letters between Han and kana then still has a clear verdict,
-  and a Japanese answer to a Japanese question is not a mismatch.
+* **Script, not language.** The check counts letters per Unicode script. It
+  MUST NOT guess the language of the question: a trigram language detector is
+  not reliable on a short question, and a wrong verdict is worse than no
+  verdict.
 * **The operator's rule wins.** The check applies only when the prompt in force
   states the answer-language rule. An operator who fixed one answer language
   replaced that rule, and the server MUST NOT push the answer toward the
   question's script against the operator's instruction.
+
+**Dominant script (normative).** The check uses one decision rule, the same on
+the question, on the first answer and on the second answer. It returns either a
+script group or **no verdict**.
+
+1. **Groups.** The script groups are Latin, Cyrillic, Greek, Arabic, Hebrew,
+   Devanagari, "Han and Kana", Hangul, Georgian, Armenian, Thai, Bengali, Tamil
+   and Ethiopic, by the Unicode Script property. Han, Hiragana and Katakana are
+   ONE group, "Han and Kana", because one language writes them together. Their
+   letters MUST be added together before steps 4 and 5 run.
+2. **Letters.** Only code points with the Unicode general category `L` (Letter)
+   count. Digits, punctuation, symbols, marks and white space do not. Every
+   letter counts toward the total `N`. A letter in a script that no group
+   lists counts toward `N` and toward no group.
+3. **Minimum.** When `N < 8`, the result is no verdict.
+4. **Share.** Let `B` be the largest group count. When `B / N < 0.6`, the
+   result is no verdict.
+5. **Lead.** When `B < 2 × (N − B)`, the result is no verdict: the leading group
+   must hold at least twice the letters of all other letters together,
+   unlisted scripts included. Two groups that tie for the largest count
+   therefore never give a verdict.
+6. Otherwise the result is the group that holds `B`.
+
+**Answer text.** Before the rule runs on an answer, and only on an answer, the
+server MUST remove the text that is not the answer's own words, in this order:
+
+1. **Code:** a fenced block from ```` ``` ```` to the next ```` ``` ```` (or from
+   `~~~` to the next `~~~`), across lines, and an inline code span between two
+   backticks on one line.
+2. **URLs:** the destination of a Markdown link (`](...)`, the link label
+   stays), an autolink (`<scheme://...>`) and a bare URL (a token that starts
+   with `scheme://` or `www.` and ends at white space or `<` / `>`).
+3. **Quoted passages:** text between a pair of quotation marks (`"` and `"`,
+   `“` and `”`, `«` and `»`, `„` and `“` or `”`, `「` and `」`, `『` and `』`),
+   on one line or across lines, and every line whose first non-blank character
+   is `>` (a block quote). The single quote is not a quotation mark here,
+   because it is also the apostrophe. The prompt lets a quote keep its own
+   spelling, so an answer that quotes a long passage in the document's script
+   is not a mismatch.
+4. **Citation tags:** a bracketed tag in the §9.3 form that names a document
+   (its path carries a `/` or ends in a file extension of 1 to 6 letters or
+   digits). A bracket that names no document, such as a Markdown link label,
+   stays: it is answer text.
+
+The question is not stripped.
+
+**Decision.**
+
+* **No verdict means no retry.** When the question or the first answer has no
+  verdict, the check does nothing and the first answer is published.
+* **A mismatch** is a first answer whose group differs from the question's
+  group. Only a mismatch causes a retry.
 * **Bounded cost.** A mismatch causes at most ONE more generation per request.
   The second prompt is the first prompt plus an instruction that names the
   script of the question. That instruction speaks only about the script and the
