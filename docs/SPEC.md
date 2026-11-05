@@ -4505,7 +4505,7 @@ question, and MAY generate the answer once more when they differ.
   a dominant script AND the answer has a dominant script. A text with too few
   letters, or with no script that clearly leads, has no dominant script and is
   not checked. Only the answer's own words count. Inline citation tags (§9.3),
-  link destinations and code (fenced blocks and inline code spans) MUST NOT
+  URLs (link destinations, autolinks and bare URLs) and code (fenced blocks and inline code spans) MUST NOT
   count: they carry file names, URLs and program text. A
   quoted passage (in quotation marks, on one line or across lines, or in a
   block quote) MUST NOT count either: the prompt lets a quote keep
