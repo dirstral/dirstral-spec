@@ -141,8 +141,8 @@ If disabled or `mode=search_only`:
 
 A server MAY check the Unicode script of a generated answer against the script
 of the question and, on a clear mismatch, generate the answer once more (at
-most one extra generation). The second answer replaces the first only when it
-passes the same check. The full rule is SPEC.md §9.4.6.
+most one extra generation). The second answer replaces the first only when its
+dominant script is the question's. The full rule is SPEC.md §9.4.6.
 
 ### Per-language retrieval filter (optional)
 

@@ -4519,7 +4519,9 @@ question, and MAY generate the answer once more when they differ.
   language of the answer, so it cannot be read as a change to grounding,
   citation or injection rules.
 * **The retry must earn its place.** The second answer replaces the first only
-  when it passes the same check. Otherwise the first answer stands. When the
+  when its dominant script is the question's script (one writing system, as
+  above). A second answer with no dominant script does not pass: the absence of
+  a verdict is not a pass. Otherwise the first answer stands. When the
   second generation fails, the first answer stands too: it is a generated
   answer, so this is not a §9.4.5 `retrieval_only` case.
 * **The published answer is the one that is checked downstream.** The §9.4.1
