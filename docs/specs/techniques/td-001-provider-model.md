@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.10.0
+- **Version:** 0.11.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -580,8 +580,16 @@ it MUST NOT make ingestion fail.
   §8.6.7) unless an implementation chooses to make a *pin change* trigger
   re-derivation; a pure detector change MAY refresh `language` opportunistically
   without forcing re-embedding (language metadata does not change chunk `text`).
+* **Pin key and sampled detection (spec 0.85.0).** `media.language` (alias
+  `media.stt.language`) fills the `stt_language` of each profile that sets none,
+  and a profile's own `stt_language` wins. A detector that reads a bounded
+  amount of a long text samples it across its length and votes; it never reads
+  only the start. SPEC.md §8.8 holds the rules.
 
 ## Changelog
+
+- **0.11.0**: §8.8 (spec 0.85.0): pointers to the `media.language` pin rules and
+  the sampled-detection rule for a long text.
 
 - **0.10.0**: §8.2.4 (spec 0.82.0): a pointer to the SPEC.md §8.2.4 rules for
   a route-fallback transcript.

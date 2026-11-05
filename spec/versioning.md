@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.83.0`
+**Current spec version:** `0.85.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,16 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.85.0: the `media.language` pin, and a long text is sampled for its language
+
+One config alias and two rules (`MINOR` per the pre-1.0 policy). A deployment without `media.language` and with no long mixed-language text is unchanged. The number follows `0.84.0`, which spec PR #133 holds.
+
+- §8.8 **The source-language pin**: `media.language` (already in the §16.2 template and named by §8.2.1 and §8.8) is now defined. It is a BCP-47 tag that fills the `stt_language` of each provider profile that sets none; a profile's own `stt_language` wins for that profile. It reaches the transcription request, the `language_providers` route, the derivation identity and the §8.2.2 to §8.2.4 identifiers (which a pin disables). `media.stt.language` is an accepted alias. A value that is not a BCP-47 language tag is `CONFIG_INVALID`. Motivation: dir2mcp #1136. The implementation read neither key, so an operator who followed the spec got no pin.
+- §8.8 **A long text is sampled across its length**: a detector that reads a bounded amount of a long text MUST NOT read only its start, and SHOULD vote over samples spread across the text, weighted by confidence, skipping a sample with too little text or a confidence below the floor. Motivation: dir2mcp #1135. A broadcast transcript whose first decode window held an English jingle was recorded as English, although its other two windows were in another language.
+- §16.2: the template comment on `media.language` names the precedence and the alias.
+- Mirror: td-001 0.11.0 (pointer only; SPEC.md holds the rules).
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.83.0: a translated segment carries the spoken span of its source segment
 
