@@ -4504,8 +4504,9 @@ question, and MAY generate the answer once more when they differ.
 * **Only a clear verdict counts.** The check applies only when the question has
   a dominant script AND the answer has a dominant script. A text with too few
   letters, or with no script that clearly leads, has no dominant script and is
-  not checked. Only the answer's own words count. Inline citation tags (§9.3)
-  and link destinations MUST NOT count: they carry file names and URLs. A
+  not checked. Only the answer's own words count. Inline citation tags (§9.3),
+  link destinations and code (fenced blocks and inline code spans) MUST NOT
+  count: they carry file names, URLs and program text. A
   passage in quotation marks MUST NOT count either: the prompt lets a quote keep
   its own spelling, so an answer that quotes a long passage in the document's
   script is not a mismatch.
