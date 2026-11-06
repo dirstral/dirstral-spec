@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.11.0
+- **Version:** 0.12.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -677,7 +677,8 @@ TTML per document, bilingual when a translation exists, never SMIL), where
 §8.6.3/§8.6.10 export plus the VTT/TTML provenance marker, the
 **ownership** rule that keeps a written file from being re-ingested as an
 authored sidecar (§8.6.4) or changing the document's identity, the
-`if_missing | refresh` overwrite policy, the atomic-write and
+`if_missing | refresh` overwrite policy, the SMIL caption patch and its
+backups (which discovery never indexes, bs-002 §7.1), the atomic-write and
 `SUBTITLE_WRITE_FAILED` (df-008) failure rules, the manifest `outputs` labels
 (§8.6.11) and the single-pass / two-phase timing — is specified **normatively in
 SPEC.md §8.6.14** and is not restated here, so there is one copy to maintain.
@@ -686,6 +687,8 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.12.0**: spec 0.90.0: the §8.6.14 pointer names the SMIL caption patch
+  and states that discovery never indexes its backups. Cross-reference only.
 - **0.11.0**: spec 0.89.0: the §8.6.13 pointer names the probe check of the
   reconcile pass. Cross-reference only.
 - **0.10.0**: spec 0.88.0: §8.6.13 pointer to the SPEC.md rule that decodes a

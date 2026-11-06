@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -33,6 +33,13 @@ deletion/tombstone semantics are in bs-008.
 - Symlink policy:
   - default: do **not** follow symlinks
   - if enabled: follow **only** if the target resolves under the root
+- **SMIL backups are never indexed.** Discovery MUST skip a file whose name ends
+  in `.smil.bak.<YYYYmmdd_HHMMSS>`, with or without a `.<n>` suffix. This is the
+  backup name of the SMIL caption patch (td-003 §8.6.14). The rule applies to
+  every scan, to watch mode and to every corpus source, whether or not
+  write-back is enabled. The test uses the file name only and is
+  case-sensitive. The SMIL itself (`<stem>.smil`) is not skipped. SPEC.md §7.1
+  holds the full rule.
 
 ### 7.2 Safety exclusions (default)
 
@@ -475,6 +482,7 @@ re-indexes it.
 
 ## Changelog
 
+- **0.5.0** (§7.1): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed.
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript
   coverage. 0.63.0 of the spec made a partial transcript record its own

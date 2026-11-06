@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.89.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.90.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1056,6 +1056,22 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   * default: do not follow symlinks
   * if enabled: follow only if target resolves under root
+* **SMIL backups are never indexed.** Discovery MUST skip a file whose name
+  ends in `.smil.bak.<YYYYmmdd_HHMMSS>`, with or without a `.<n>` suffix
+  (`<n>` is one or more decimal digits). This is the backup name of the SMIL
+  caption patch (§8.6.14).
+  * A backup is a copy of an older SMIL. To index it would add one stale
+    document for each patched video.
+  * The rule applies to every scan, to watch mode and to every corpus source.
+    It applies whether or not write-back is enabled, so a backup from an
+    earlier run, or from another tool that uses the same name, is skipped too.
+  * The test uses the file name only. It is case-sensitive and reads no bytes
+    of the file.
+  * A backup that an earlier version indexed is no longer discovered. It is
+    tombstoned like any other file that is gone (§5.1, §6.6).
+  * The rule does not apply to the SMIL itself. `<stem>.smil` is classified by
+    §7.3 like any other file. A patch changes its bytes, so the next scan
+    indexes the new version.
 
 ### 7.2 Safety exclusions (default)
 
@@ -3834,7 +3850,8 @@ beside the media.
     * Before a change the SMIL MUST be copied to a new file
       `<smil>.bak.<YYYYmmdd_HHMMSS>` (with a `.<n>` suffix when that name
       exists; an existing backup is never reused or overwritten); if that copy
-      cannot be made, nothing is written. The SMIL is then replaced
+      cannot be made, nothing is written. Discovery never indexes a backup
+      (§7.1). The SMIL is then replaced
       atomically with its file mode kept. A failed write is `SMIL_PATCH_FAILED`
       (§14.4), non-fatal: the document stays indexed.
     * The patch requires `media.subtitles.emit.dir: ""` and the referenced format

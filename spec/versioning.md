@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.89.0`
+**Current spec version:** `0.90.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,17 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.90.0: discovery skips the SMIL backups of write-back
+
+One discovery rule (`MINOR` per the pre-1.0 policy: it removes files from the index; no key, tool or field is added).
+
+- §7.1 **SMIL backups are never indexed**: discovery MUST skip a file whose name ends in `.smil.bak.<YYYYmmdd_HHMMSS>`, with or without a `.<n>` suffix. This is the backup that the SMIL caption patch (§8.6.14) writes before each change. The rule applies to every scan, to watch mode and to every corpus source, whether or not write-back is enabled. The test uses the file name only. A backup that an earlier version indexed is tombstoned like any other file that is gone.
+- The SMIL itself is unchanged: `<stem>.smil` is still classified by §7.3 like any other file, and a patched SMIL is indexed again at its new version.
+- §8.6.14: the backup rule points to §7.1.
+- Mirrors: bs-002 0.5.0 (§7.1 rule), td-003 0.12.0 (pointer only).
+- Motivation: dir2mcp #1144 review. Each SMIL change writes one backup into the corpus. Its extension is unknown, so discovery indexed it as a text document: one stale copy for each patched video.
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.89.0: the reconcile pass probes a suspect window before it forces the item language
 
