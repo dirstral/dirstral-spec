@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.88.0`
+**Current spec version:** `0.89.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,15 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.89.0: the reconcile pass probes a suspect window before it forces the item language
+
+A safety rule for the 0.88.0 reconcile pass (`MINOR` per the pre-1.0 policy: it changes which stored windows the pass may decode again; no key, tool or field is added).
+
+- td-003 (SPEC.md §8.6.13) **Probe before a forced re-decode**: the reconcile pass finds suspect windows from stored text, but text alone cannot tell a window decoded in the wrong language from a real passage in another language. Before it decodes a suspect window again with the item language, the pass MUST decode one centred slice of at most `media.stt.language_probe_sec` without a language hint, and decode the window again only when that probe reports the item language at or above `media.stt.redecode_below`. Otherwise the window stays as recorded. A window that qualifies from a stored per-window decoder report is unchanged by this rule; its record keeps that report as `first_language` and `first_confidence`, and only a probed window records the probe result there.
+- Motivation: dir2mcp #1148 review. Under 0.88.0 a stored item with Russian questions and Ukrainian answers, indexed under `item` scope, would have its confident Ukrainian windows decoded again as Russian. The jingle case still qualifies: away from its opening the window's speech reports the item language.
+- Mirror: td-003 0.11.0 (pointer only; SPEC.md holds the rule).
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.88.0: a low-confidence window in another language is decoded again
 

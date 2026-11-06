@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.10.0
+- **Version:** 0.11.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -662,8 +662,9 @@ transcript exactly as it applies to an unreadable format.
   0.88.0).** Under item scope with no language hint, a window decoded in another
   language than the item's, below `media.stt.redecode_below` (default `0.5`), is
   decoded once more with the item language. Stored transcripts are repaired by
-  a later reconcile pass that decodes again only the affected windows. SPEC.md
-  §8.6.13 holds the rule.
+  a later reconcile pass that decodes again only the affected windows, after an
+  unhinted probe of each suspect window confirms the item language (spec
+  0.89.0). SPEC.md §8.6.13 holds the rules.
 
 ### 8.6.14 Subtitle write-back (emitted sidecars)
 
@@ -685,6 +686,8 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.11.0**: spec 0.89.0: the §8.6.13 pointer names the probe check of the
+  reconcile pass. Cross-reference only.
 - **0.10.0**: spec 0.88.0: §8.6.13 pointer to the SPEC.md rule that decodes a
   low-confidence window in another language again. Cross-reference only.
 - **0.9.0**: spec 0.87.0: §8.6.3 pointer to the SPEC.md rule that a translated
