@@ -1071,7 +1071,8 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
     tombstoned like any other file that is gone (§5.1, §6.6).
   * The rule does not apply to the SMIL itself. `<stem>.smil` is classified by
     §7.3 like any other file. A patch changes its bytes, so the next scan
-    indexes the new version.
+    indexes the new version, also when its size and mtime look unchanged
+    (§7.8, §8.6.14).
 
 ### 7.2 Safety exclusions (default)
 
@@ -1757,6 +1758,9 @@ signal first, then confirms with `content_hash`:
   document under `ingest.media_identity: sampled`, §7.6, the confirm step reads
   only the sampled slices); on a change,
   `content_hash` over the file body **confirms** before re-ingest.
+  * A SMIL that the caption patch rewrote is an exception (§8.6.14). The patch
+    invalidates the cached signal of that SMIL. The next scan MUST confirm it
+    by `content_hash`, also when its `(size, mtime)` is unchanged.
 * `s3`: the cheap signal is the object **ETag** (alongside `size` and
   `last_modified`). The ETag MUST NOT be treated as a content hash: multipart and
   SSE-KMS ETags are **not** MD5 of the body. `content_hash` therefore still
@@ -3854,6 +3858,12 @@ beside the media.
       (§7.1). The SMIL is then replaced
       atomically with its file mode kept. A failed write is `SMIL_PATCH_FAILED`
       (§14.4), non-fatal: the document stays indexed.
+    * A patch invalidates the cached change signal of the SMIL (§7.8). A
+      patch can keep the byte length, for example when it swaps one managed
+      entry for another of the same length. On a filesystem with a coarse
+      mtime, the SMIL can then keep its `(size, mtime)`. The next scan MUST
+      therefore check the SMIL by its content, so the patched bytes are
+      indexed even when the size and the observed mtime are unchanged.
     * The patch requires `media.subtitles.emit.dir: ""` and the referenced format
       in `media.subtitles.emit.formats`; otherwise `CONFIG_INVALID`.
   * **TTML name and cues.** `media.subtitles.emit.ttml_name` is `group` (default,

@@ -69,8 +69,9 @@ One discovery rule (`MINOR` per the pre-1.0 policy: it removes files from the in
 - §7.1 **SMIL backups are never indexed**: discovery MUST skip a file whose name ends in `.smil.bak.<YYYYmmdd_HHMMSS>`, with or without a `.<n>` suffix. This is the backup that the SMIL caption patch (§8.6.14) writes before each change. The rule applies to every scan, to watch mode and to every corpus source, whether or not write-back is enabled. The test uses the file name only. A backup that an earlier version indexed is tombstoned like any other file that is gone.
 - The SMIL itself is unchanged: `<stem>.smil` is still classified by §7.3 like any other file, and a patched SMIL is indexed again at its new version.
 - §8.6.14: the backup rule points to §7.1.
-- Mirrors: bs-002 0.5.0 (§7.1 rule), td-003 0.12.0 (pointer only).
-- Motivation: dir2mcp #1144 review. Each SMIL change writes one backup into the corpus. Its extension is unknown, so discovery indexed it as a text document: one stale copy for each patched video.
+- §8.6.14 **A patch invalidates the cached change signal of the SMIL**: a patch can keep the byte length of the SMIL, and a filesystem with a coarse mtime can then show the same `(size, mtime)`. The next scan MUST check the SMIL by its content, so the patched bytes are indexed even when the size and the observed mtime are unchanged. §7.8 notes this exception at the `(size, mtime)` pre-check, and §7.1 points to it.
+- Mirrors: bs-002 0.5.0 (§7.1 rule, §7.8 exception), td-003 0.12.0 (pointer only).
+- Motivation: dir2mcp #1144 review. Each SMIL change writes one backup into the corpus. Its extension is unknown, so discovery indexed it as a text document: one stale copy for each patched video. A second finding: a same-size patch on a filesystem with a coarse mtime could pass the `(size, mtime)` pre-check, and the old SMIL would stay indexed.
 - `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.89.0: the reconcile pass probes a suspect window before it forces the item language
