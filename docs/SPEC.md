@@ -3510,7 +3510,15 @@ languages in one document**.
   languages by three-letter code (Wowza requires them): a code such as `rus` is
   not the canonical BCP 47 tag (`ru`) that `xml:lang` expects, so a strict TTML
   consumer MAY reject it or fail to match it. `bcp47` stays the
-  standards-conforming output. Any other value of either key is
+  standards-conforming output.
+  `iso639_2` can make two languages of one document indistinguishable: tags
+  that share a primary subtag (`pt-BR` and `pt-PT` both become `por`) get the
+  same code. The TTML then still carries one `<div>` per language, primary
+  first, each with that code, and the SMIL entry lists the code twice; a player
+  that matches tracks by code cannot tell them apart. Use `bcp47` for a corpus
+  whose transcript languages differ only below the primary subtag, where the
+  player accepts BCP 47 tags.
+  Any other value of either key is
   `CONFIG_INVALID`. Both keys apply to TTML export and write-back (§8.6.14)
   alike; neither changes ingest, a chunk or a citation. With write-back and the
   SMIL caption patch, `language_codes` SHOULD equal
