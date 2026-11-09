@@ -3540,6 +3540,10 @@ languages in one document**.
   video **width/height** when applicable — and references the companion subtitle
   document(s). Track metadata is obtained via `ffprobe` (reusing `internal/avutil`,
   §1) and MAY be cached. SMIL is emitted alongside TTML under the same enable flag.
+  The SMIL's caption `systemLanguage` is written with the same
+  `media.subtitles.ttml.language_codes` mapping as the TTML's `xml:lang`, so
+  under `iso639_2` both carry the ISO 639-2/T code (e.g. `eng`) and a player
+  can match them.
 * **Fail-open on missing metadata.** Consistent with §8.6.3, when required codec/
   track metadata is absent or `ffprobe` is unavailable, the export MUST **fail
   open**: omit SMIL (and any metadata-dependent TTML attributes) and still emit the

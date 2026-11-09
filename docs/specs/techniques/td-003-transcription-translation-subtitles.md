@@ -483,7 +483,7 @@ languages in one document**.
   `en-US` → `eng`, `fr` → `fra` (never the bibliographic `fre`), `de` → `deu`.
   A tag whose primary subtag has no ISO 639-2 code is written unchanged. The
   SMIL caption patch (`media.subtitles.emit.smil_language_codes: iso639_2`,
-  SPEC.md §8.6.14) uses this same mapping, so equal settings give equal codes. It
+  §8.6.14) uses this same mapping, so equal settings give equal codes. It
   applies to every `xml:lang` the TTML carries, including the document-level
   one. `iso639_2` is a **compatibility choice** for players that match caption
   languages by three-letter code (Wowza requires them): a code such as `rus` is
@@ -498,7 +498,7 @@ languages in one document**.
   whose transcript languages differ only below the primary subtag, where the
   player accepts BCP 47 tags.
   Any other value of either key is
-  `CONFIG_INVALID`. Both keys apply to TTML export and write-back (SPEC.md §8.6.14)
+  `CONFIG_INVALID`. Both keys apply to TTML export and write-back (§8.6.14)
   alike; neither changes ingest, a chunk or a citation. With write-back and the
   SMIL caption patch, `language_codes` SHOULD equal
   `media.subtitles.emit.smil_language_codes`, so a `<div xml:lang>` matches the
@@ -519,7 +519,10 @@ languages in one document**.
   video **width/height** when applicable — and references the companion subtitle
   document(s). Track metadata is obtained via `ffprobe` (reusing `internal/avutil`,
   df-000 §1) and MAY be cached. SMIL is emitted alongside TTML under the same
-  enable flag.
+  enable flag. The SMIL's caption `systemLanguage` is written with the same
+  `media.subtitles.ttml.language_codes` mapping as the TTML's `xml:lang`, so
+  under `iso639_2` both carry the ISO 639-2/T code (e.g. `eng`) and a player
+  can match them.
 * **Fail-open on missing metadata.** Consistent with §8.6.3, when required codec/
   track metadata is absent or `ffprobe` is unavailable, the export MUST **fail
   open**: omit SMIL (and any metadata-dependent TTML attributes) and still emit the
