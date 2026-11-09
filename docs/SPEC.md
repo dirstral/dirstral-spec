@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.90.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.91.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1740,6 +1740,12 @@ scheme:
 discovery, symlink, and ignore rules as §7.1 (they are ordinary directory trees).
 `s3` enumerates objects under `bucket`/`prefix` (a flat object listing, not a
 filesystem walk).
+
+**Writes from another host.** An `nfs` mount reports no filesystem event for a
+write made by another host. The file watcher sees such a write only at its
+periodic safety rescan, which stats every file under the root. A client that
+knows a path changed MAY ask the server to reconcile that path now with
+`dir2mcp_recheck_path` (§15.13).
 
 **Stable `rel_path` across schemes.** `rel_path` (§5.1) is defined relative to
 the corpus root for every scheme: for `local`/`nfs` it is the path under the root
@@ -5337,6 +5343,8 @@ Example tool execution error:
 ### 13.3 Optional extension
 
 * `dir2mcp_ask_audio` (answer → audio via ElevenLabs TTS)
+* `dir2mcp_recheck_path` (reconcile one path under the root now; served only
+  in watch mode, §15.13)
 
 ---
 
@@ -5371,6 +5379,11 @@ Example tool execution error:
 * `STORE_CORRUPT`
 * `INDEX_VERSION_MISMATCH`
 * `INDEX_NOT_READY` (should be rare; prefer partial results)
+* `TOOL_UNAVAILABLE` (the named tool is defined by this spec, but the running
+  server does not serve it in its current mode, for example
+  `dir2mcp_recheck_path` without the file watcher or under `--read-only`
+  (§15.13); such a tool is also absent from `tools/list` (§12.2);
+  **non-retryable** for the lifetime of the process)
 
 ### 14.4 Ingestion/extraction
 
@@ -6315,6 +6328,108 @@ so results are "other documents like this"), and the same `path_prefix` /
 **Output schema** (`related.json`): `source_rel_path`, `k`, `index_used`,
 `hits[]`, `indexing_complete` (all required); `source_chunk_id` echoed for a
 `chunk_id` request.
+
+---
+
+### 15.13 `dir2mcp_recheck_path` (optional extension)
+
+> **Status: Planned.** This section defines an **optional** tool. A client asks
+> a running server in watch mode to reconcile one path under the corpus root
+> now, instead of at the next periodic safety rescan. The tool is additive. It
+> writes nothing to the corpus (a CorpusFS is read-only, §7.10): it asks the
+> server to reconcile a path the server already owns, as `dir2mcp_transcribe`
+> (§15.7) and `dir2mcp_annotate` (§15.8) already write representations to the
+> store, so it stays within §19. It lands in a dir2mcp code PR after this spec
+> merges.
+
+**Description:** enqueue a reconcile of one file or directory under the corpus
+root, and return at once.
+
+**Availability.** A server serves this tool only when it runs the file watcher
+(watch mode on a `local` or `nfs` source, §7.8) and is not read-only
+(`--read-only`, §2.3). Otherwise the tool MUST be absent from `tools/list`
+(§12.2), and a `tools/call` that names it MUST fail with `TOOL_UNAVAILABLE`
+(§14.3). Availability is fixed for the lifetime of the process.
+
+**Input schema** (`recheck_path.json`):
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rel_path": { "type": "string", "minLength": 1 },
+    "recursive": { "type": "boolean", "default": true }
+  },
+  "required": ["rel_path"]
+}
+```
+
+* `rel_path` (required): a path relative to the corpus root, with the same
+  grammar and normalization as `rel_path` in `dir2mcp_open_file` (§15.4) and in
+  `documents` (§5.1): `/` as the separator, no leading `/`. It names a file or
+  a directory. `.` names the root itself.
+* `recursive` (optional, default `true`): for a directory, reconcile the whole
+  subtree. When `false`, reconcile the regular files that are direct children
+  of the directory only. Ignored for a file.
+
+**Behavior:**
+
+1. **Validation.** The server MUST resolve `rel_path` under the root with the
+   root-isolation and symlink rules of §17. A path that resolves outside the
+   root is `PATH_OUTSIDE_ROOT`. An empty `rel_path` is `MISSING_FIELD`. The
+   exclusion engine (§7.2, §17) does not reject the request: an excluded path
+   is accepted and reconciled as ineligible (step 3).
+2. **Classification.** The server stats the resolved path once and reports
+   `kind`: `file`, `directory`, or `missing` when nothing exists at the path.
+   The call walks no subtree and reads no document.
+3. **Enqueue.** The server MUST enqueue the reconcile and return. It MUST NOT
+   wait for ingestion; the call is a request, not a synchronous index. The
+   reconcile then applies the same rules as a filesystem event for that path
+   (§7.6, §7.8), with the same worker and the same debounce as the watcher:
+   * `file`: the `(size, mtime)` pre-check, then `content_hash`, then re-ingest
+     on a change. An unchanged file is not re-ingested.
+   * `directory`: every regular file under it (the direct children only when
+     `recursive` is `false`) is reconciled as a file, and a document indexed
+     under the directory whose file is gone is tombstoned (§5.1, §6.6).
+   * `missing`: a document at that path, and every document under it, is
+     tombstoned, as for a removed file (§7.8, deletions). A missing path is
+     accepted, not an error, because the deletion is the information.
+   * an excluded path (directory ignore list, `security.path_excludes`,
+     `.gitignore` rules or the secret patterns, §7.2): the path is ineligible.
+     A document indexed at it is retired exactly as the watcher retires it on
+     a write to such a path: tombstoned, and kept as a `skipped` document when
+     discovery records a skip reason for it (§15.5).
+4. **Idempotence.** The queue holds at most one pending request per normalized
+   `rel_path`. A request for a path that already has a pending request MUST NOT
+   add a second entry; it returns `queued: false`. When the new request is
+   recursive and the pending one is not, the pending request becomes
+   recursive. A request is pending from the call until its reconcile starts.
+5. **Response.** `rel_path` is the normalized path (for `.`, the value is `.`).
+   `queued` is `true` when this call added a request and `false` when an
+   identical request was already pending. `pending` is the number of requests
+   pending after this call, this one included when `queued` is `true`.
+
+**Output schema** (`recheck_path.json`):
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rel_path": { "type": "string" },
+    "kind": { "type": "string", "enum": ["file", "directory", "missing"] },
+    "queued": { "type": "boolean" },
+    "pending": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["rel_path", "kind", "queued", "pending"]
+}
+```
+
+The output carries these four fields and nothing else.
+
+**Errors:** `MISSING_FIELD`, `INVALID_FIELD` (a `recursive` that is not a
+boolean), `PATH_OUTSIDE_ROOT`, `TOOL_UNAVAILABLE` (§14).
 
 ---
 

@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.dirstral.com/tools/schemas/recheck_path.json",
+  "title": "dir2mcp_recheck_path",
+  "description": "Ask a running server in watch mode to reconcile one path under the corpus root now, instead of at the next periodic safety rescan (SPEC 15.13). Optional extension: served only when the server runs the file watcher and is not read-only; otherwise absent from tools/list and TOOL_UNAVAILABLE on call. The call enqueues the reconcile and returns; it does not wait for ingestion.",
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rel_path": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Path relative to the corpus root, with the grammar and normalization of dir2mcp_open_file's rel_path ('/' as the separator, no leading '/'). A file or a directory; '.' names the root itself. A path that resolves outside the root is PATH_OUTSIDE_ROOT. An excluded path is accepted and reconciled as ineligible. A path that does not exist is accepted: the reconcile tombstones what was indexed there."
+      },
+      "recursive": {
+        "type": "boolean",
+        "default": true,
+        "description": "For a directory: when true (default) reconcile the whole subtree; when false, only the regular files that are its direct children. Ignored for a file."
+      }
+    },
+    "required": [
+      "rel_path"
+    ]
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rel_path": {
+        "type": "string",
+        "description": "The normalized corpus-relative path the request resolved to ('.' for the root)."
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "file",
+          "directory",
+          "missing"
+        ],
+        "description": "What one stat of the resolved path found at call time: a regular file, a directory, or nothing (missing)."
+      },
+      "queued": {
+        "type": "boolean",
+        "description": "true when this call added a reconcile request; false when a request for the same normalized rel_path was already pending (the queue holds at most one per path)."
+      },
+      "pending": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Number of reconcile requests pending after this call, this one included when queued is true."
+      }
+    },
+    "required": [
+      "rel_path",
+      "kind",
+      "queued",
+      "pending"
+    ]
+  }
+}

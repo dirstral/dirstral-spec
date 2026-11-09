@@ -1,7 +1,7 @@
 # bs-006: MCP tools — list, call, and tool set
 
 - **ID:** bs-006
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -52,6 +52,14 @@ Each tool object SHOULD include:
 
 The per-tool `inputSchema`/`outputSchema` shapes are defined in
 [df-007](../data-formats/df-007-tool-schemas.md).
+
+A tool that the server cannot serve in its current mode MUST be absent from
+the `tools/list` response, and a `tools/call` that names it MUST fail with
+`TOOL_UNAVAILABLE` ([df-008](../data-formats/df-008-error-taxonomy.md)).
+`dir2mcp_recheck_path` is such a tool: it is served only when the server runs
+the file watcher and is not read-only (see
+[bs-007](bs-007-tool-specifications.md)). Availability is fixed for the
+lifetime of the process.
 
 #### Tool invocation: `tools/call`
 
@@ -106,6 +114,8 @@ The server exposes three tiers of tools. Per-tool behavior is in
 #### Optional extension
 
 - `dir2mcp_ask_audio` (answer → audio via ElevenLabs TTS)
+- `dir2mcp_recheck_path` (reconcile one path under the root now; served only
+  in watch mode; see [bs-007](bs-007-tool-specifications.md))
 
 ## Examples
 
@@ -140,6 +150,10 @@ Example tool-execution error result (`isError`, not a JSON-RPC error):
 
 ## Changelog
 
+- **0.2.0**: added `dir2mcp_recheck_path` to the optional extension tier and
+  stated the rule for a tool the server cannot serve in its current mode:
+  absent from `tools/list`, `TOOL_UNAVAILABLE` on call (SPEC §12.2, §13.3,
+  §15.13; spec 0.91.0).
 - **0.1.0** — Migrated from SPEC.md §12 (MCP tools: list and call) and §13
   (Tool set). Cross-references rewired to stable doc IDs: the session lifecycle
   reference (§11) → [bs-005](bs-005-mcp-lifecycle.md); the error-taxonomy

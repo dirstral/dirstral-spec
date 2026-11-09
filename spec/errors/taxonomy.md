@@ -1,6 +1,6 @@
 # Error Taxonomy
 
-**Last changed in spec version:** `0.16.0`  
+**Last changed in spec version:** `0.91.0`  
 **Current spec version:** see [`spec/versioning.md`](../versioning.md), the single source (this file does not track it).
 
 Canonical error codes for all dir2mcp MCP tools and session operations.
@@ -40,6 +40,7 @@ These are returned with HTTP 200. The `isError: true` flag is set on the result.
 | `INVALID_RANGE` | No | Numeric argument outside allowed bounds |
 | `STORE_CORRUPT` | No | Store read failed with unexpected error |
 | `INTERNAL_ERROR` | Yes | Unexpected server-side error |
+| `TOOL_UNAVAILABLE` | No | The named tool is defined by the spec, but the running server does not serve it in its current mode (e.g. `dir2mcp_recheck_path` without the file watcher or under `--read-only`, SPEC §15.13); such a tool is also absent from `tools/list` |
 
 ## Ingestion / extraction errors
 

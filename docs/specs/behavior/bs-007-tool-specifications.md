@@ -1,11 +1,11 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.17.0
+- **Version:** 0.18.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
-- **Source:** SPEC.md §15.2–§15.11 (behavior; schemas → df-007)
+- **Source:** SPEC.md §15.2–§15.11, §15.13 (behavior; schemas → df-007)
 
 ## Scope
 
@@ -450,8 +450,72 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 **Errors:** `DOC_TYPE_UNSUPPORTED`, `FILE_NOT_FOUND`, `INVALID_RANGE`,
 `CLIP_TOO_LARGE`, `MEDIA_CLIP_FAILED` (df-008).
 
+### dir2mcp_recheck_path
+
+(Optional extension; SPEC §15.13.) Schema: `recheck_path.json` (df-007).
+
+**Purpose.** Ask a running server in watch mode to reconcile one path under
+the corpus root now, instead of at the next periodic safety rescan. The tool
+writes nothing to the corpus; it asks the server to reconcile a path it already
+owns, as `dir2mcp_transcribe` and `dir2mcp_annotate` already write
+representations to the store.
+
+**Availability.** Served only when the server runs the file watcher (watch mode
+on a `local` or `nfs` source, [bs-002](bs-002-ingestion-pipeline.md)) and is
+not read-only. Otherwise the tool MUST be absent from `tools/list` and a call
+MUST fail with `TOOL_UNAVAILABLE` (see
+[bs-006](bs-006-mcp-tools-list-call.md)). Availability is fixed for the
+lifetime of the process.
+
+**Parameters.**
+
+- `rel_path` (**required**, non-empty): a path relative to the corpus root,
+  with the grammar and normalization of `rel_path` in `dir2mcp_open_file`
+  (`/` as the separator, no leading `/`). A file or a directory. `.` names the
+  root itself.
+- `recursive` (boolean, default **`true`**): for a directory, reconcile the
+  whole subtree; when `false`, only the regular files that are its direct
+  children. Ignored for a file.
+
+**Behavior.**
+
+1. The server MUST resolve `rel_path` under the root with the root-isolation
+   and symlink rules of [bs-009](bs-009-security-safety.md); a path that
+   resolves outside the root is `PATH_OUTSIDE_ROOT`. The exclusion engine does
+   not reject the request: an excluded path is accepted and reconciled as
+   ineligible (step 3).
+2. The server stats the resolved path once and reports `kind` as `file`,
+   `directory`, or `missing`. The call walks no subtree and reads no document.
+3. The server MUST enqueue the reconcile and return; it MUST NOT wait for
+   ingestion. The reconcile applies the rules of a filesystem event for that
+   path, with the watcher's worker and debounce: change detection then
+   re-ingest for a changed file; every regular file under a directory (direct
+   children only when `recursive` is `false`), with a tombstone for an indexed
+   document whose file is gone; a tombstone for a `missing` path and every
+   document under it; retirement for an excluded path exactly as the watcher
+   retires it on a write (tombstoned, kept as a `skipped` document when
+   discovery records a skip reason).
+4. The queue holds at most one pending request per normalized `rel_path`. A
+   repeat for a pending path MUST NOT add an entry and returns `queued: false`;
+   a recursive repeat makes a pending non-recursive request recursive. A
+   request is pending from the call until its reconcile starts.
+5. Output: `rel_path` (normalized), `kind`, `queued` (`true` when this call
+   added a request), `pending` (requests pending after this call, this one
+   included when `queued`), all required, and nothing else.
+
+**Errors:** `MISSING_FIELD`, `INVALID_FIELD`, `PATH_OUTSIDE_ROOT`,
+`TOOL_UNAVAILABLE` (df-008).
+
 ## Changelog
 
+- **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
+  spec 0.91.0): a client asks a server in watch mode to reconcile one path
+  under the root now; the call validates, classifies, enqueues and returns,
+  and the reconcile follows the rules of a filesystem event for that path.
+  Served only with the file watcher on and not read-only; otherwise absent
+  from `tools/list` and `TOOL_UNAVAILABLE` on call. Motivation: an NFS corpus
+  written by another host gets no inotify event, and the safety rescan stats
+  every file.
 - **0.17.0**: declared the optional `evidence` object on `dir2mcp_stats` (SPEC §9.4.3 and §15.6, spec 0.80.0; dir2mcp #1081): the abstention thresholds in effect and the null baseline behind them, so a caller can reproduce a verdict from published numbers.
 - **0.15.0**: declared two `dir2mcp_list_files` fields this document had
   omitted. `include_hidden` is a documented input in `list_files.json` and the

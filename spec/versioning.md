@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.90.0`
+**Current spec version:** `0.91.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,19 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.91.0: dir2mcp_recheck_path, an optional tool to reconcile one path now
+
+One new optional tool and one new error code (`MINOR` per the pre-1.0 policy). A server that does not serve the tool is unchanged: the tool is absent from its `tools/list`, and no existing tool, field or code changes.
+
+- §15.13 **`dir2mcp_recheck_path`** (optional extension, §13.3): a client asks a server in watch mode to reconcile one path under the corpus root now, instead of at the next periodic safety rescan. Input: `rel_path` (required; the grammar and normalization of `dir2mcp_open_file`, §15.4) and `recursive` (default `true`; for a directory, the whole subtree). The server validates the path with the root-isolation rules of §17 (`PATH_OUTSIDE_ROOT`), stats it once to report `kind` (`file`, `directory` or `missing`), enqueues the reconcile and returns without a wait for ingestion. The reconcile applies the rules of a filesystem event for that path (§7.6, §7.8): change detection on a file, the subtree on a directory, a tombstone for a missing path, and retirement for an excluded path. The queue holds at most one request per normalized path; a repeat returns `queued: false`. Output: `rel_path`, `kind`, `queued`, `pending`, and nothing else.
+- §15.13 **Availability**: the tool is served only when the server runs the file watcher (watch mode on a `local` or `nfs` source, §7.8) and is not read-only. Otherwise it is absent from `tools/list` and a call fails with `TOOL_UNAVAILABLE`. Availability is fixed for the lifetime of the process.
+- §14.3 **`TOOL_UNAVAILABLE`**: a tool this spec defines that the running server does not serve in its current mode. Non-retryable for the lifetime of the process. Also added to `spec/errors/taxonomy.md`.
+- §7.8: an `nfs` mount reports no event for a write from another host; a new paragraph says so and points to the tool.
+- §19 is unchanged: the tool writes nothing to the corpus. It asks the server to reconcile a path it already owns, as `dir2mcp_transcribe` and `dir2mcp_annotate` already write representations to the store.
+- New `spec/tools/schemas/recheck_path.json`. `spec/tools/schemas.md` indexes it as `planned (optional extension)` until the implementation ships, as 0.68.0 did for the two tools before it.
+- Mirrors: bs-006 0.2.0, bs-007 0.18.0, df-007 0.10.0, df-008 0.4.0.
+- Motivation: dir2mcp (TV Rain archive: NFS corpus written by the transcoder host). The watcher receives no inotify event for a write made by another host, so a new or changed file waits for the periodic safety rescan, which stats every file over NFS (289k files on that archive). A system that knows a path changed (a transcoder webhook) can now ask for that one path.
 
 ## 0.90.0: discovery skips the SMIL backups of write-back
 
