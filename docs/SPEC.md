@@ -3487,9 +3487,12 @@ languages in one document**.
   * `spans` (default): one `<p>` per cue inside a single `<div>`; each language
     is a language-tagged `<span xml:lang>` child of that `<p>`.
   * `divs`: one `<div xml:lang>` per language, primary first; each holds that
-    language's `<p>` cues as plain text, and a cue keeps the same `begin`/`end`
-    in every `<div>` it appears in. A cue with no text in a language is omitted
-    from that language's `<div>`. Players that build one caption track per
+    language's own cues as plain-text `<p>` elements with that transcript's own
+    `begin`/`end`. The same-region and cross-language alignment rules of this
+    section apply to `spans` only: a player shows each `<div>` as its own
+    track, and forcing one language onto the other's cue windows moves a
+    sentence into a neighbouring cue whenever the two transcripts' timings
+    differ by a second or two. Players that build one caption track per
     language (e.g. Wowza, which maps each `<div xml:lang>` to the matching SMIL
     `system-language`) need this layout; with `spans` they put every language
     in one track.
