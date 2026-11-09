@@ -478,14 +478,26 @@ languages in one document**.
     in one track.
 
   `media.subtitles.ttml.language_codes` is `bcp47` (default: the §8.6.2 tag,
-  e.g. `ru`) or `iso639_2` (the three-letter code, e.g. `rus`; a tag with no
-  ISO 639-2 code is written unchanged). It applies to every `xml:lang` the TTML
-  carries, including the document-level one. Any other value of either key is
+  e.g. `ru`) or `iso639_2`. `iso639_2` writes the **ISO 639-2/T**
+  (terminological) code of the tag's primary language subtag: `ru` → `rus`,
+  `en-US` → `eng`, `fr` → `fra` (never the bibliographic `fre`), `de` → `deu`.
+  A tag whose primary subtag has no ISO 639-2 code is written unchanged. The
+  SMIL caption patch (`media.subtitles.emit.smil_language_codes: iso639_2`,
+  SPEC.md §8.6.14) uses this same mapping, so equal settings give equal codes. It
+  applies to every `xml:lang` the TTML carries, including the document-level
+  one. `iso639_2` is a **compatibility choice** for players that match caption
+  languages by three-letter code (Wowza requires them): a code such as `rus` is
+  not the canonical BCP 47 tag (`ru`) that `xml:lang` expects, so a strict TTML
+  consumer MAY reject it or fail to match it. `bcp47` stays the
+  standards-conforming output. Any other value of either key is
   `CONFIG_INVALID`. Both keys apply to TTML export and write-back (SPEC.md §8.6.14)
   alike; neither changes ingest, a chunk or a citation. With write-back and the
   SMIL caption patch, `language_codes` SHOULD equal
   `media.subtitles.emit.smil_language_codes`, so a `<div xml:lang>` matches the
-  SMIL entry's `system-language`.
+  SMIL entry's `system-language`. A TTML that write-back wrote earlier keeps its
+  old layout and codes under `emit.policy: if_missing`; after changing either
+  key, `refresh` rewrites it (an unedited file dir2mcp wrote) so its `<div>`
+  languages match the SMIL entry again.
 * **Cross-language cue alignment.** Source and translated transcripts (§8.6.2) are
   distinct representations whose segment boundaries MAY differ slightly. The
   exporter MUST align the secondary language to the primary segment's time region

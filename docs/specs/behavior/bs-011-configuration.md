@@ -278,8 +278,8 @@ media:
       enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
       align_tolerance_ms: 2500 # bilingual cue cross-language alignment tolerance (td-003)
       segmentation: chunk     # chunk | broadcast: TTML cues built like broadcast VTT/SRT (SPEC.md 8.6.14)
-      layout: spans           # spans | divs: one <div xml:lang> per language (SPEC.md 8.6.10)
-      language_codes: bcp47   # bcp47 ("ru") | iso639_2 ("rus") for every xml:lang (SPEC.md 8.6.10)
+      layout: spans           # spans | divs: one <div xml:lang> per language (td-003 §8.6.10)
+      language_codes: bcp47   # bcp47 ("ru") | iso639_2 ("rus") for every xml:lang (td-003 §8.6.10)
     emit:                     # subtitle write-back (td-003 §8.6.14): write subtitles beside media as it is indexed
       enabled: false          # opt-in, off by default; output-neutral (changes no chunk or citation)
       formats: [vtt]          # subset of vtt|srt|ttml; ttml requires ttml.enabled: true

@@ -3480,8 +3480,9 @@ languages in one document**.
   `start_ms`/`end_ms` and chunk. Monolingual TTML (one configured language) is
   also valid. Exception: under `media.subtitles.ttml.segmentation: broadcast`
   (§8.6.14) the time region is a primary-language broadcast cue (§8.6.3), which
-  MAY span or split stored segments; the secondary text is still aligned to that
-  same region by the cross-language rule below.
+  MAY span or split stored segments; under `layout: spans` the secondary text is
+  still aligned to that same region by the cross-language rule below, and under
+  `layout: divs` each language's broadcast cues keep their own timings.
 * **TTML layout.** `media.subtitles.ttml.layout` selects how the languages of
   one TTML document are arranged:
   * `spans` (default): one `<p>` per cue inside a single `<div>`; each language
@@ -3498,14 +3499,26 @@ languages in one document**.
     in one track.
 
   `media.subtitles.ttml.language_codes` is `bcp47` (default: the §8.6.2 tag,
-  e.g. `ru`) or `iso639_2` (the three-letter code, e.g. `rus`; a tag with no
-  ISO 639-2 code is written unchanged). It applies to every `xml:lang` the TTML
-  carries, including the document-level one. Any other value of either key is
+  e.g. `ru`) or `iso639_2`. `iso639_2` writes the **ISO 639-2/T**
+  (terminological) code of the tag's primary language subtag: `ru` → `rus`,
+  `en-US` → `eng`, `fr` → `fra` (never the bibliographic `fre`), `de` → `deu`.
+  A tag whose primary subtag has no ISO 639-2 code is written unchanged. The
+  SMIL caption patch (`media.subtitles.emit.smil_language_codes: iso639_2`,
+  §8.6.14) uses this same mapping, so equal settings give equal codes. It
+  applies to every `xml:lang` the TTML carries, including the document-level
+  one. `iso639_2` is a **compatibility choice** for players that match caption
+  languages by three-letter code (Wowza requires them): a code such as `rus` is
+  not the canonical BCP 47 tag (`ru`) that `xml:lang` expects, so a strict TTML
+  consumer MAY reject it or fail to match it. `bcp47` stays the
+  standards-conforming output. Any other value of either key is
   `CONFIG_INVALID`. Both keys apply to TTML export and write-back (§8.6.14)
   alike; neither changes ingest, a chunk or a citation. With write-back and the
   SMIL caption patch, `language_codes` SHOULD equal
   `media.subtitles.emit.smil_language_codes`, so a `<div xml:lang>` matches the
-  SMIL entry's `system-language`.
+  SMIL entry's `system-language`. A TTML that write-back wrote earlier keeps its
+  old layout and codes under `emit.policy: if_missing`; after changing either
+  key, `refresh` rewrites it (an unedited file dir2mcp wrote) so its `<div>`
+  languages match the SMIL entry again.
 * **Cross-language cue alignment.** Source and translated transcripts (§8.6.2) are
   distinct representations whose segment boundaries MAY differ slightly. The
   exporter MUST align the secondary language to the primary segment's time region
@@ -3865,7 +3878,7 @@ beside the media.
       carries the configured `media.subtitles.emit.smil_params` as
       `<param name value valuetype="data"/>` children.
       `media.subtitles.emit.smil_language_codes` is `bcp47` (default) or
-      `iso639_2` (three-letter codes, e.g. `rus,eng`).
+      `iso639_2` (the ISO 639-2/T codes of §8.6.10, e.g. `rus,eng`).
     * A source is managed only as a bare file name beside the SMIL (an optional
       `./` aside): `other/<stem>.ttml` is not managed.
     * When no wanted file exists (none written yet, or the write failed), an
@@ -3896,8 +3909,10 @@ beside the media.
     file's own stem when no usable SMIL exists. Some streaming servers resolve a
     caption file against a rendition name. `media.subtitles.ttml.segmentation` is
     `chunk` (default: one cue per stored transcript segment, as in §8.6.10) or
-    `broadcast` (TTML cues built like §8.6.3 broadcast VTT/SRT cues, then
-    aligned). It applies to TTML export and write-back alike.
+    `broadcast` (TTML cues built like §8.6.3 broadcast VTT/SRT cues from each
+    language's own timings, then aligned under `layout: spans` only; under
+    `layout: divs` each language keeps its own cues, §8.6.10). It applies to
+    TTML export and write-back alike.
 * **Where.** With `media.subtitles.emit.dir: ""` (the default) files are written
   **beside the media** in the corpus, where §8.6.4 would bind them (and the
   ownership rule below is what keeps them from binding while they are unchanged).
