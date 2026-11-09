@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.12.0
+- **Version:** 0.13.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -462,6 +462,27 @@ languages in one document**.
   transcript segment span** (§8.6.1) so a TTML cue is traceable to its
   `start_ms`/`end_ms` and chunk. Monolingual TTML (one configured language) is
   also valid.
+* **TTML layout.** `media.subtitles.ttml.layout` selects how the languages of
+  one TTML document are arranged:
+  * `spans` (default): one `<p>` per cue inside a single `<div>`; each language
+    is a language-tagged `<span xml:lang>` child of that `<p>`.
+  * `divs`: one `<div xml:lang>` per language, primary first; each holds that
+    language's `<p>` cues as plain text, and a cue keeps the same `begin`/`end`
+    in every `<div>` it appears in. A cue with no text in a language is omitted
+    from that language's `<div>`. Players that build one caption track per
+    language (e.g. Wowza, which maps each `<div xml:lang>` to the matching SMIL
+    `system-language`) need this layout; with `spans` they put every language
+    in one track.
+
+  `media.subtitles.ttml.language_codes` is `bcp47` (default: the §8.6.2 tag,
+  e.g. `ru`) or `iso639_2` (the three-letter code, e.g. `rus`; a tag with no
+  ISO 639-2 code is written unchanged). It applies to every `xml:lang` the TTML
+  carries, including the document-level one. Any other value of either key is
+  `CONFIG_INVALID`. Both keys apply to TTML export and write-back (SPEC.md §8.6.14)
+  alike; neither changes ingest, a chunk or a citation. With write-back and the
+  SMIL caption patch, `language_codes` SHOULD equal
+  `media.subtitles.emit.smil_language_codes`, so a `<div xml:lang>` matches the
+  SMIL entry's `system-language`.
 * **Cross-language cue alignment.** Source and translated transcripts (§8.6.2) are
   distinct representations whose segment boundaries MAY differ slightly. The
   exporter MUST align the secondary language to the primary segment's time region
@@ -687,6 +708,10 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.13.0**: spec 0.91.0: §8.6.10 adds the **TTML layout**:
+  `media.subtitles.ttml.layout` (`spans` default, or `divs`: one
+  `<div xml:lang>` per language) and `media.subtitles.ttml.language_codes`
+  (`bcp47` default, or `iso639_2`).
 - **0.12.0**: spec 0.90.0: the §8.6.14 pointer names the SMIL caption patch
   and states that discovery never indexes its backups. Cross-reference only.
 - **0.11.0**: spec 0.89.0: the §8.6.13 pointer names the probe check of the

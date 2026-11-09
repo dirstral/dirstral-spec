@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.90.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.91.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3482,6 +3482,27 @@ languages in one document**.
   (§8.6.14) the time region is a primary-language broadcast cue (§8.6.3), which
   MAY span or split stored segments; the secondary text is still aligned to that
   same region by the cross-language rule below.
+* **TTML layout.** `media.subtitles.ttml.layout` selects how the languages of
+  one TTML document are arranged:
+  * `spans` (default): one `<p>` per cue inside a single `<div>`; each language
+    is a language-tagged `<span xml:lang>` child of that `<p>`.
+  * `divs`: one `<div xml:lang>` per language, primary first; each holds that
+    language's `<p>` cues as plain text, and a cue keeps the same `begin`/`end`
+    in every `<div>` it appears in. A cue with no text in a language is omitted
+    from that language's `<div>`. Players that build one caption track per
+    language (e.g. Wowza, which maps each `<div xml:lang>` to the matching SMIL
+    `system-language`) need this layout; with `spans` they put every language
+    in one track.
+
+  `media.subtitles.ttml.language_codes` is `bcp47` (default: the §8.6.2 tag,
+  e.g. `ru`) or `iso639_2` (the three-letter code, e.g. `rus`; a tag with no
+  ISO 639-2 code is written unchanged). It applies to every `xml:lang` the TTML
+  carries, including the document-level one. Any other value of either key is
+  `CONFIG_INVALID`. Both keys apply to TTML export and write-back (§8.6.14)
+  alike; neither changes ingest, a chunk or a citation. With write-back and the
+  SMIL caption patch, `language_codes` SHOULD equal
+  `media.subtitles.emit.smil_language_codes`, so a `<div xml:lang>` matches the
+  SMIL entry's `system-language`.
 * **Cross-language cue alignment.** Source and translated transcripts (§8.6.2) are
   distinct representations whose segment boundaries MAY differ slightly. The
   exporter MUST align the secondary language to the primary segment's time region
@@ -6633,6 +6654,8 @@ media:
       enabled: false          # TTML + SMIL optional, off by default; fail-open if codec metadata absent
       align_tolerance_ms: 2500 # bilingual cue cross-language alignment tolerance (§8.6.10)
       segmentation: chunk     # chunk | broadcast: TTML cues built like broadcast VTT/SRT (§8.6.14)
+      layout: spans           # spans | divs: one <div xml:lang> per language (§8.6.10)
+      language_codes: bcp47   # bcp47 ("ru") | iso639_2 ("rus") for every xml:lang (§8.6.10)
     emit:                     # subtitle write-back (§8.6.14): write subtitles beside media as it is indexed
       enabled: false          # opt-in, off by default; output-neutral (changes no chunk or citation)
       formats: [vtt]          # subset of vtt|srt|ttml; ttml requires ttml.enabled: true
