@@ -512,7 +512,7 @@ lifetime of the process.
 ## Changelog
 
 - **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
-  spec 0.91.0): a client asks a server in watch mode to reconcile one path
+  spec 0.92.0): a client asks a server in watch mode to reconcile one path
   under the root now; the call validates, classifies, enqueues and returns,
   and the reconcile follows the rules of a filesystem event for that path.
   Served only with the file watcher on and not read-only; otherwise absent

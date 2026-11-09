@@ -79,7 +79,7 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 ## Changelog
 
 - **0.10.0**: added `recheck_path.json` (`dir2mcp_recheck_path`, SPEC §15.13,
-  spec 0.91.0): input `rel_path` (required) and `recursive` (default `true`);
+  spec 0.92.0): input `rel_path` (required) and `recursive` (default `true`);
   output `rel_path`, `kind`, `queued`, `pending`, all required,
   `additionalProperties: false`. It `$ref`s no shared shape.
 - **0.9.0**: `stats.json` gains the optional additive top-level `evidence` object (`cosine_threshold`, `cosine_threshold_source`, `rerank_threshold`, `null_baseline{probes, probe_set, p50, p90, max, chunks, embed_model, computed_at}`): the abstention thresholds in effect and the null baseline they were derived from. Mirrors spec 0.80.0. dir2mcp #1081.

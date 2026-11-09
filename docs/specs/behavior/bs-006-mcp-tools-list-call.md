@@ -155,7 +155,7 @@ Example tool-execution error result (`isError`, not a JSON-RPC error):
   absent from `tools/list`, `TOOL_UNAVAILABLE` on call. Tool behaviour in
   [bs-007](bs-007-tool-specifications.md), the code in
   [df-008](../data-formats/df-008-error-taxonomy.md) (SPEC §12.2, §13.3;
-  spec 0.91.0).
+  spec 0.92.0).
 - **0.1.0** — Migrated from SPEC.md §12 (MCP tools: list and call) and §13
   (Tool set). Cross-references rewired to stable doc IDs: the session lifecycle
   reference (§11) → [bs-005](bs-005-mcp-lifecycle.md); the error-taxonomy
