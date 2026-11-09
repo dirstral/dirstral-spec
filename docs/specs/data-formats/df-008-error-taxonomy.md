@@ -131,7 +131,8 @@ every error.
 
 - **0.4.0**: added `TOOL_UNAVAILABLE` (index/state) for a tool the running
   server does not serve in its current mode; first used by
-  `dir2mcp_recheck_path` (SPEC §14.3, §15.13; spec 0.91.0).
+  `dir2mcp_recheck_path` ([bs-007](../behavior/bs-007-tool-specifications.md);
+  SPEC §14.3; spec 0.91.0).
 - **0.3.0** — Added `SMIL_INVALID` and `SMIL_PATCH_FAILED` for the SMIL caption patch of SPEC §8.6.14 (spec 0.86.0).
 - **0.2.0** — Added `SUBTITLE_WRITE_FAILED` (ingestion/extraction) for td-003
   §8.6.14 subtitle write-back (spec 0.78.0).

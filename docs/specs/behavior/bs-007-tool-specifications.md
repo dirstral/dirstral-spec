@@ -488,11 +488,14 @@ lifetime of the process.
    `directory`, or `missing`. The call walks no subtree and reads no document.
 3. The server MUST enqueue the reconcile and return; it MUST NOT wait for
    ingestion. The reconcile applies the rules of a filesystem event for that
-   path, with the watcher's worker and debounce: change detection then
+   path, with the watcher's worker and debounce. The worker classifies the
+   path again when the reconcile starts and applies the rule for what it
+   finds then; the call-time `kind` does not bind it: change detection then
    re-ingest for a changed file; every regular file under a directory (direct
    children only when `recursive` is `false`), with a tombstone for an indexed
-   document whose file is gone; a tombstone for a `missing` path and every
-   document under it; retirement for an excluded path exactly as the watcher
+   document whose file is gone; a tombstone for a path still `missing` when
+   the reconcile starts, and for every document under it; retirement for an
+   excluded path exactly as the watcher
    retires it on a write (tombstoned, kept as a `skipped` document when
    discovery records a skip reason).
 4. The queue holds at most one pending request per normalized `rel_path`. A

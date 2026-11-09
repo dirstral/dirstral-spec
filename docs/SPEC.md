@@ -6386,15 +6386,20 @@ root, and return at once.
 3. **Enqueue.** The server MUST enqueue the reconcile and return. It MUST NOT
    wait for ingestion; the call is a request, not a synchronous index. The
    reconcile then applies the same rules as a filesystem event for that path
-   (§7.6, §7.8), with the same worker and the same debounce as the watcher:
+   (§7.6, §7.8), with the same worker and the same debounce as the watcher.
+   The worker classifies the path again when the reconcile starts and applies
+   the rule for what it finds then; the call-time `kind` does not bind it,
+   because the path can change between the call and the reconcile:
    * `file`: the `(size, mtime)` pre-check, then `content_hash`, then re-ingest
      on a change. An unchanged file is not re-ingested.
    * `directory`: every regular file under it (the direct children only when
      `recursive` is `false`) is reconciled as a file, and a document indexed
      under the directory whose file is gone is tombstoned (§5.1, §6.6).
-   * `missing`: a document at that path, and every document under it, is
-     tombstoned, as for a removed file (§7.8, deletions). A missing path is
-     accepted, not an error, because the deletion is the information.
+   * `missing` (still absent when the reconcile starts): a document at that
+     path, and every document under it, is tombstoned, as for a removed file
+     (§7.8, deletions). A missing path is accepted, not an error, because
+     the deletion is the information. A file that appeared in the meantime
+     is reconciled as a file, not tombstoned.
    * an excluded path (directory ignore list, `security.path_excludes`,
      `.gitignore` rules or the secret patterns, §7.2): the path is ineligible.
      A document indexed at it is retired exactly as the watcher retires it on
@@ -6406,8 +6411,9 @@ root, and return at once.
    recursive and the pending one is not, the pending request becomes
    recursive. A request is pending from the call until its reconcile starts.
 5. **Response.** `rel_path` is the normalized path (for `.`, the value is `.`).
-   `queued` is `true` when this call added a request and `false` when an
-   identical request was already pending. `pending` is the number of requests
+   `queued` is `true` when this call added a request and `false` when a
+   request for the same normalized `rel_path` was already pending (also when
+   this call made that pending request recursive). `pending` is the number of requests
    pending after this call, this one included when `queued` is `true`.
 
 **Output schema** (`recheck_path.json`):
