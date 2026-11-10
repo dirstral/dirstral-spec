@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.12.0
+- **Version:** 0.13.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -462,6 +462,50 @@ languages in one document**.
   transcript segment span** (§8.6.1) so a TTML cue is traceable to its
   `start_ms`/`end_ms` and chunk. Monolingual TTML (one configured language) is
   also valid.
+* **TTML layout.** `media.subtitles.ttml.layout` selects how the languages of
+  one TTML document are arranged:
+  * `spans` (default): one `<p>` per cue inside a single `<div>`; each language
+    is a language-tagged `<span xml:lang>` child of that `<p>`.
+  * `divs`: one `<div xml:lang>` per language, primary first; each holds that
+    language's own cues as plain-text `<p>` elements with that transcript's own
+    `begin`/`end`. The same-region and cross-language alignment rules of this
+    section apply to `spans` only: a player shows each `<div>` as its own
+    track, and forcing one language onto the other's cue windows moves a
+    sentence into a neighbouring cue whenever the two transcripts' timings
+    differ by a second or two. Players that build one caption track per
+    language (e.g. Wowza, which maps each `<div xml:lang>` to the matching SMIL
+    `system-language`) need this layout; with `spans` they put every language
+    in one track.
+
+  `media.subtitles.ttml.language_codes` is `bcp47` (default: the §8.6.2 tag,
+  e.g. `ru`) or `iso639_2`. `iso639_2` writes the **ISO 639-2/T**
+  (terminological) code of the tag's primary language subtag: `ru` → `rus`,
+  `en-US` → `eng`, `fr` → `fra` (never the bibliographic `fre`), `de` → `deu`.
+  A tag whose primary subtag has no ISO 639-2 code is written unchanged. The
+  SMIL caption patch (`media.subtitles.emit.smil_language_codes: iso639_2`,
+  §8.6.14) uses this same mapping, so equal settings give equal codes. It
+  applies to every `xml:lang` the TTML carries, including the document-level
+  one. `iso639_2` is a **compatibility choice** for players that match caption
+  languages by three-letter code (Wowza requires them): a code such as `rus` is
+  not the canonical BCP 47 tag (`ru`) that `xml:lang` expects, so a strict TTML
+  consumer MAY reject it or fail to match it. `bcp47` stays the
+  standards-conforming output.
+  `iso639_2` can make two languages of one document indistinguishable: tags
+  that share a primary subtag (`pt-BR` and `pt-PT` both become `por`) get the
+  same code. The TTML then still carries one `<div>` per language, primary
+  first, each with that code, and the SMIL entry lists the code twice; a player
+  that matches tracks by code cannot tell them apart. Use `bcp47` for a corpus
+  whose transcript languages differ only below the primary subtag, where the
+  player accepts BCP 47 tags.
+  Any other value of either key is
+  `CONFIG_INVALID`. Both keys apply to TTML export and write-back (§8.6.14)
+  alike; neither changes ingest, a chunk or a citation. With write-back and the
+  SMIL caption patch, `language_codes` SHOULD equal
+  `media.subtitles.emit.smil_language_codes`, so a `<div xml:lang>` matches the
+  SMIL entry's `system-language`. A TTML that write-back wrote earlier keeps its
+  old layout and codes under `emit.policy: if_missing`; after changing either
+  key, `refresh` rewrites it (an unedited file dir2mcp wrote) so its `<div>`
+  languages match the SMIL entry again.
 * **Cross-language cue alignment.** Source and translated transcripts (§8.6.2) are
   distinct representations whose segment boundaries MAY differ slightly. The
   exporter MUST align the secondary language to the primary segment's time region
@@ -475,7 +519,18 @@ languages in one document**.
   video **width/height** when applicable — and references the companion subtitle
   document(s). Track metadata is obtained via `ffprobe` (reusing `internal/avutil`,
   df-000 §1) and MAY be cached. SMIL is emitted alongside TTML under the same
-  enable flag.
+  enable flag. The caption entry's `system-language` attribute (the attribute
+  Wowza matches caption tracks on; `systemLanguage` on a `<video>` entry names
+  the audio language and is not used for captions) MUST list every language the
+  TTML carries, comma-separated, primary first: with `divs` that is the order of
+  the `<div>` elements, with `spans` the order of the `<span xml:lang>` children
+  in each `<p>`. Each code is written with the same
+  `media.subtitles.ttml.language_codes` mapping as the TTML's `xml:lang`; under
+  `iso639_2` a two-language file gives `rus,eng`. A list that omits a language
+  the TTML carries is a defect. With `divs` a player that builds one caption
+  track per language (e.g. Wowza) offers one track per listed code; with
+  `spans` it builds a single track that carries every language, whatever the
+  list says.
 * **Fail-open on missing metadata.** Consistent with §8.6.3, when required codec/
   track metadata is absent or `ffprobe` is unavailable, the export MUST **fail
   open**: omit SMIL (and any metadata-dependent TTML attributes) and still emit the
@@ -687,6 +742,10 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.13.0**: spec 0.91.0: §8.6.10 adds the **TTML layout**:
+  `media.subtitles.ttml.layout` (`spans` default, or `divs`: one
+  `<div xml:lang>` per language) and `media.subtitles.ttml.language_codes`
+  (`bcp47` default, or `iso639_2`).
 - **0.12.0**: spec 0.90.0: the §8.6.14 pointer names the SMIL caption patch
   and states that discovery never indexes its backups. Cross-reference only.
 - **0.11.0**: spec 0.89.0: the §8.6.13 pointer names the probe check of the

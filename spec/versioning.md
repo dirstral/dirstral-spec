@@ -75,6 +75,16 @@ One new optional tool and one new error code (`MINOR` per the pre-1.0 policy). A
 - Mirrors: bs-006 0.2.0, bs-007 0.18.0, df-007 0.10.0, df-008 0.4.0.
 - Motivation: dir2mcp (TV Rain archive: NFS corpus written by the transcoder host). The watcher receives no inotify event for a write made by another host, so a new or changed file waits for the periodic safety rescan, which stats every file over NFS (289k files on that archive). A system that knows a path changed (a transcoder webhook) can now ask for that one path.
 
+## 0.91.0: a TTML layout with one div per language
+
+Two optional keys (`MINOR` per the pre-1.0 policy). Defaults keep the current output byte for byte.
+
+- §8.6.10 **TTML layout**: `media.subtitles.ttml.layout` is `spans` (default: one `<p>` per cue, each language a `<span xml:lang>`) or `divs` (one `<div xml:lang>` per language, primary first, each holding that language's own cues with their own timings; cross-language alignment applies to `spans` only). `media.subtitles.ttml.language_codes` is `bcp47` (default) or `iso639_2` and applies to every `xml:lang`. Any other value is `CONFIG_INVALID`. Both apply to TTML export and write-back; neither changes ingest, a chunk or a citation.
+- §16.2: the template lists both keys.
+- Mirrors: td-003 0.13.0, bs-011 0.17.0.
+- Motivation: the SMIL caption patch canary (dir2mcp #1144) on the TV Rain archive. Wowza builds one caption track per `<div xml:lang>` and matches it to the SMIL `system-language` (`rus`, `eng`). With interleaved spans it put both languages in the Russian track and left the English track empty. The livevtt TTML it replaces used one `<div>` per language with ISO 639-2 codes.
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
+
 ## 0.90.0: discovery skips the SMIL backups of write-back
 
 One discovery rule (`MINOR` per the pre-1.0 policy: it removes files from the index; no key, tool or field is added).
