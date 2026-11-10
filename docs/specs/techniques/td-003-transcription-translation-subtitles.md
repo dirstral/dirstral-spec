@@ -522,11 +522,15 @@ languages in one document**.
   enable flag. The caption entry's `system-language` attribute (the attribute
   Wowza matches caption tracks on; `systemLanguage` on a `<video>` entry names
   the audio language and is not used for captions) MUST list every language the
-  TTML carries, comma-separated, in the order of its `<div>` elements, each code
-  written with the same `media.subtitles.ttml.language_codes` mapping as the
-  TTML's `xml:lang`. Under `iso639_2` a two-language file gives `rus,eng`, so a
-  player matches both tracks. A list that omits a language the TTML carries is
-  a defect: the player never offers that track.
+  TTML carries, comma-separated, primary first: with `divs` that is the order of
+  the `<div>` elements, with `spans` the order of the `<span xml:lang>` children
+  in each `<p>`. Each code is written with the same
+  `media.subtitles.ttml.language_codes` mapping as the TTML's `xml:lang`; under
+  `iso639_2` a two-language file gives `rus,eng`. A list that omits a language
+  the TTML carries is a defect. With `divs` a player that builds one caption
+  track per language (e.g. Wowza) offers one track per listed code; with
+  `spans` it builds a single track that carries every language, whatever the
+  list says.
 * **Fail-open on missing metadata.** Consistent with §8.6.3, when required codec/
   track metadata is absent or `ffprobe` is unavailable, the export MUST **fail
   open**: omit SMIL (and any metadata-dependent TTML attributes) and still emit the
