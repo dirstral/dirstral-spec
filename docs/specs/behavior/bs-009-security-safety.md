@@ -1,7 +1,7 @@
 # bs-009: Security & safety requirements
 
 - **ID:** bs-009
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -74,10 +74,17 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
 - The exclusion engine is consulted on **every** file access, including
   `open_file` ([bs-004](bs-004-mcp-transport.md)); tool handlers MUST reject or return an
   empty result for any path or content matching the configured patterns or path
-  excludes.
+  excludes. One narrow exception: `dir2mcp_recheck_path`
+  ([bs-007](bs-007-tool-specifications.md)) accepts an excluded path so the
+  reconcile can retire what was indexed there. It does not stat or read the
+  path, and its result reports only `kind: excluded`, so it carries no content
+  and no existence signal for that path.
 
 ## Changelog
 
+- **0.2.0** (spec 0.92.0): the sensitive-file rule names its one exception,
+  `dir2mcp_recheck_path`: it accepts an excluded path so the reconcile can
+  retire it, never stats or reads that path, and reports only `kind: excluded`.
 - **0.1.0** — Migrated from SPEC.md §17, preserving every normative MUST/SHOULD/MAY
   verbatim in meaning. Cross-references rewired to stable doc IDs:
   `PATH_OUTSIDE_ROOT` / error codes (§14) → [df-008](../data-formats/df-008-error-taxonomy.md);

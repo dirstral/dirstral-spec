@@ -456,9 +456,13 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 
 **Purpose.** Ask a running server in watch mode to reconcile one path under
 the corpus root now, instead of at the next periodic safety rescan. The tool
-writes nothing to the corpus; it asks the server to reconcile a path it already
-owns, as `dir2mcp_transcribe` and `dir2mcp_annotate` already write
-representations to the store.
+adds no write path of its own: the reconcile it enqueues is the watcher's, so
+the corpus sees exactly the writes that reconcile would make. By default that
+is none; with the opt-in subtitle write-back (SPEC §8.6.14) a re-ingested media
+document gets its subtitles and SMIL patch, and a recheck does not suppress
+them. It asks the server to reconcile a path it already owns, as
+`dir2mcp_transcribe` and `dir2mcp_annotate` already write representations to
+the store.
 
 **Availability.** Served only when the server runs the file watcher (watch mode
 on a `local` or `nfs` source, [bs-002](bs-002-ingestion-pipeline.md)) and is
@@ -481,30 +485,38 @@ lifetime of the process.
 
 1. The server MUST resolve `rel_path` under the root with the root-isolation
    and symlink rules of [bs-009](bs-009-security-safety.md); a path that
-   resolves outside the root is `PATH_OUTSIDE_ROOT`. The exclusion engine does
-   not reject the request: an excluded path is accepted and reconciled as
-   ineligible (step 3).
-2. The server stats the resolved path once and reports `kind` as `file`,
-   `directory`, or `missing`. The call walks no subtree and reads no document.
+   resolves outside the root is `PATH_OUTSIDE_ROOT`. The server then consults
+   the exclusion engine's path rules before any filesystem access. An excluded
+   path is not rejected (the reconcile retires what was indexed there, step
+   3), but the call does not stat it and reports `kind: excluded`, revealing
+   nothing about whether anything exists there. This is the narrow exception
+   [bs-009](bs-009-security-safety.md) names for this tool.
+2. For a path that is not excluded, the server stats the resolved path once
+   and reports `kind` as `file`, `directory`, or `missing`. The call walks no
+   subtree and reads no document.
 3. The server MUST enqueue the reconcile and return; it MUST NOT wait for
    ingestion. The reconcile applies the rules of a filesystem event for that
    path, with the watcher's worker and debounce. The worker classifies the
    path again when the reconcile starts and applies the rule for what it
    finds then; the call-time `kind` does not bind it: change detection then
-   re-ingest for a changed file; every regular file under a directory (direct
+   re-ingest for a changed file, with a tombstone for every document indexed
+   under a path that was a directory and is now a file; every regular file
+   under a directory (direct
    children only when `recursive` is `false`), with a tombstone for an indexed
    document whose file is gone; a tombstone for a path still `missing` when
    the reconcile starts, and for every document under it; retirement for an
-   excluded path exactly as the watcher
-   retires it on a write (tombstoned, kept as a `skipped` document when
-   discovery records a skip reason).
+   excluded path, and for every document under an excluded directory, exactly
+   as the watcher retires it on a write (tombstoned, kept as a `skipped`
+   document when discovery records a skip reason).
 4. The queue holds at most one pending request per normalized `rel_path`. A
    repeat for a pending path MUST NOT add an entry and returns `queued: false`;
    a recursive repeat makes a pending non-recursive request recursive. A
    request is pending from the call until its reconcile starts.
 5. Output: `rel_path` (normalized), `kind`, `queued` (`true` when this call
    added a request), `pending` (requests pending after this call, this one
-   included when `queued`), all required, and nothing else.
+   included when `queued`), all required, and nothing else. `kind` is `file`,
+   `directory`, `missing` or `excluded`. This is the successful result; a
+   failed call returns the standard tool error result, as for every tool.
 
 **Errors:** `MISSING_FIELD`, `INVALID_FIELD`, `PATH_OUTSIDE_ROOT`,
 `TOOL_UNAVAILABLE` (df-008).

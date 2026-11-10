@@ -10,7 +10,7 @@
       "rel_path": {
         "type": "string",
         "minLength": 1,
-        "description": "Path relative to the corpus root, with the grammar and normalization of dir2mcp_open_file's rel_path ('/' as the separator, no leading '/'). A file or a directory; '.' names the root itself. A path that resolves outside the root is PATH_OUTSIDE_ROOT. An excluded path is accepted and reconciled as ineligible. A path that does not exist is accepted: the reconcile tombstones what was indexed there."
+        "description": "Path relative to the corpus root, with the grammar and normalization of dir2mcp_open_file's rel_path ('/' as the separator, no leading '/'). A file or a directory; '.' names the root itself. A path that resolves outside the root is PATH_OUTSIDE_ROOT. An excluded path is accepted, never stat'ed, and reported as kind 'excluded'; the reconcile retires what was indexed at it and under it. A path that does not exist is accepted: the reconcile tombstones what was indexed there."
       },
       "recursive": {
         "type": "boolean",
@@ -35,9 +35,10 @@
         "enum": [
           "file",
           "directory",
-          "missing"
+          "missing",
+          "excluded"
         ],
-        "description": "What one stat of the resolved path found at call time: a regular file, a directory, or nothing (missing)."
+        "description": "What the call found at call time: a regular file, a directory, nothing (missing), or excluded. An excluded path is matched by the exclusion engine's path rules and is never stat'ed, so 'excluded' says nothing about whether anything exists there."
       },
       "queued": {
         "type": "boolean",

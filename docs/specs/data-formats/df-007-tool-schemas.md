@@ -35,7 +35,7 @@ the conformance contract. Shared shapes — [df-005 `Span`](df-005-span.md) and
 | `dir2mcp_ask_audio` (§15.10) | `ask_audio.json` | optional extension. |
 | `dir2mcp_open_media_clip` (§15.11) | `open_media_clip.json` | `CLIP_TOO_LARGE`/`MEDIA_CLIP_FAILED` (df-008). |
 | `dir2mcp_related` (§15.12) | `related.json` | Query-by-example; `hits[]` `$ref`s `Hit`. One of `chunk_id`/`rel_path` (`INVALID_FIELD` otherwise). Optional extension. |
-| `dir2mcp_recheck_path` (§15.13) | `recheck_path.json` | Input `rel_path` + `recursive`; output `rel_path`, `kind` (`file`, `directory` or `missing`), `queued`, `pending`, nothing else. No shared shape. Optional extension; served only with the file watcher on and not read-only (`TOOL_UNAVAILABLE` otherwise, df-008). |
+| `dir2mcp_recheck_path` (§15.13) | `recheck_path.json` | Input `rel_path` + `recursive`; output `rel_path`, `kind` (`file`, `directory`, `missing` or `excluded`), `queued`, `pending`, nothing else. No shared shape. Optional extension; served only with the file watcher on and not read-only (`TOOL_UNAVAILABLE` otherwise, df-008). |
 
 ### Single source of truth
 

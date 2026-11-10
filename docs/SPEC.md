@@ -6395,11 +6395,15 @@ so results are "other documents like this"), and the same `path_prefix` /
 > **Status: Planned.** This section defines an **optional** tool. A client asks
 > a running server in watch mode to reconcile one path under the corpus root
 > now, instead of at the next periodic safety rescan. The tool is additive. It
-> writes nothing to the corpus (a CorpusFS is read-only, §7.10): it asks the
-> server to reconcile a path the server already owns, as `dir2mcp_transcribe`
-> (§15.7) and `dir2mcp_annotate` (§15.8) already write representations to the
-> store, so it stays within §19. It lands in a dir2mcp code PR after this spec
-> merges.
+> adds no write path of its own: the reconcile it enqueues is the watcher's
+> (§7.8), so the corpus sees exactly the writes that reconcile would make for
+> that path. By default that is none (a CorpusFS is read-only, §7.10). With the
+> opt-in subtitle write-back (§8.6.14, `media.subtitles.emit.enabled: true`) a
+> re-ingested media document gets its subtitles and SMIL patch as on any other
+> reconcile; a recheck does not suppress them. The tool asks the server to
+> reconcile a path the server already owns, as `dir2mcp_transcribe` (§15.7) and
+> `dir2mcp_annotate` (§15.8) already write representations to the store, so it
+> stays within §19. It lands in a dir2mcp code PR after this spec merges.
 
 **Description:** enqueue a reconcile of one file or directory under the corpus
 root, and return at once.
@@ -6437,11 +6441,16 @@ root, and return at once.
 1. **Validation.** The server MUST resolve `rel_path` under the root with the
    root-isolation and symlink rules of §17. A path that resolves outside the
    root is `PATH_OUTSIDE_ROOT`. An empty `rel_path` is `MISSING_FIELD`. The
-   exclusion engine (§7.2, §17) does not reject the request: an excluded path
-   is accepted and reconciled as ineligible (step 3).
-2. **Classification.** The server stats the resolved path once and reports
-   `kind`: `file`, `directory`, or `missing` when nothing exists at the path.
-   The call walks no subtree and reads no document.
+   server then consults the exclusion engine's path rules (§7.2, §17) on the
+   normalized path, before any filesystem access. An excluded path is not
+   rejected, because retiring what was indexed there is the reconcile's job
+   (step 3). The call does not stat it and reports `kind: excluded`, so the
+   result reveals nothing about whether anything exists at the path. This is
+   the narrow exception §17 names for this tool.
+2. **Classification.** For a path that is not excluded, the server stats the
+   resolved path once and reports `kind`: `file`, `directory`, or `missing`
+   when nothing exists at the path. The call walks no subtree and reads no
+   document.
 3. **Enqueue.** The server MUST enqueue the reconcile and return. It MUST NOT
    wait for ingestion; the call is a request, not a synchronous index. The
    reconcile then applies the same rules as a filesystem event for that path
@@ -6450,7 +6459,9 @@ root, and return at once.
    the rule for what it finds then; the call-time `kind` does not bind it,
    because the path can change between the call and the reconcile:
    * `file`: the `(size, mtime)` pre-check, then `content_hash`, then re-ingest
-     on a change. An unchanged file is not re-ingested.
+     on a change. An unchanged file is not re-ingested. Every document indexed
+     under the path is tombstoned: the path was a directory and is now a regular
+     file, so nothing can exist under it.
    * `directory`: every regular file under it (the direct children only when
      `recursive` is `false`) is reconciled as a file, and a document indexed
      under the directory whose file is gone is tombstoned (§5.1, §6.6).
@@ -6461,9 +6472,10 @@ root, and return at once.
      is reconciled as a file, not tombstoned.
    * an excluded path (directory ignore list, `security.path_excludes`,
      `.gitignore` rules or the secret patterns, §7.2): the path is ineligible.
-     A document indexed at it is retired exactly as the watcher retires it on
-     a write to such a path: tombstoned, and kept as a `skipped` document when
-     discovery records a skip reason for it (§15.5).
+     A document indexed at it, and every document indexed under it when it is
+     a directory, is retired exactly as the watcher retires it on a write to
+     such a path: tombstoned, and kept as a `skipped` document when discovery
+     records a skip reason for it (§15.5).
 4. **Idempotence.** The queue holds at most one pending request per normalized
    `rel_path`. A request for a path that already has a pending request MUST NOT
    add a second entry; it returns `queued: false`. When the new request is
@@ -6483,7 +6495,7 @@ root, and return at once.
   "additionalProperties": false,
   "properties": {
     "rel_path": { "type": "string" },
-    "kind": { "type": "string", "enum": ["file", "directory", "missing"] },
+    "kind": { "type": "string", "enum": ["file", "directory", "missing", "excluded"] },
     "queued": { "type": "boolean" },
     "pending": { "type": "integer", "minimum": 0 }
   },
@@ -6491,7 +6503,10 @@ root, and return at once.
 }
 ```
 
-The output carries these four fields and nothing else.
+A successful result carries these four fields and nothing else. A failed call
+returns the tool error result of §12.4 (`isError: true`,
+`structuredContent.error`), as every tool does; this output schema, like every
+tool's, describes the successful result only.
 
 **Errors:** `MISSING_FIELD`, `INVALID_FIELD` (a `recursive` that is not a
 boolean), `PATH_OUTSIDE_ROOT`, `TOOL_UNAVAILABLE` (§14).
@@ -7037,6 +7052,10 @@ security:
   * the exclusion engine is consulted on every file access, including
     `open_file`; tool handlers must reject or return an empty result for
     any path or content matching the configured patterns or path excludes.
+    One narrow exception: `dir2mcp_recheck_path` (§15.13) accepts an excluded
+    path so the reconcile can retire what was indexed there. It does not stat
+    or read the path, and its result reports only `kind: excluded`, so it
+    carries no content and no existence signal for that path.
 
 ---
 
