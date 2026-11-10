@@ -483,17 +483,25 @@ lifetime of the process.
 
 **Behavior.**
 
-1. The server MUST resolve `rel_path` under the root with the root-isolation
-   and symlink rules of [bs-009](bs-009-security-safety.md); a path that
-   resolves outside the root is `PATH_OUTSIDE_ROOT`. The server then consults
-   the exclusion engine's path rules before any filesystem access. An excluded
-   path is not rejected (the reconcile retires what was indexed there, step
-   3), but the call does not stat it and reports `kind: excluded`, revealing
-   nothing about whether anything exists there. This is the narrow exception
-   [bs-009](bs-009-security-safety.md) names for this tool.
+1. The server first normalizes `rel_path` lexically, without filesystem
+   access; a path that climbs above the root (`..`) is `PATH_OUTSIDE_ROOT`. It
+   then consults the exclusion engine's path rules, still before any
+   filesystem access and so before symlink resolution. An excluded path is not
+   rejected (the reconcile retires what was indexed there, step 3), but the
+   call does not stat or resolve it and reports `kind: excluded`, revealing
+   nothing about whether anything exists there; an excluded symlink that
+   points outside the root is reported the same way, never as
+   `PATH_OUTSIDE_ROOT`. This is the narrow exception
+   [bs-009](bs-009-security-safety.md) names for this tool. A path that is not
+   excluded is then resolved with the root-isolation and symlink rules of
+   [bs-009](bs-009-security-safety.md); one that resolves outside the root is
+   `PATH_OUTSIDE_ROOT`.
 2. For a path that is not excluded, the server stats the resolved path once
    and reports `kind` as `file`, `directory`, or `missing`. The call walks no
-   subtree and reads no document.
+   subtree and reads no document. A file withheld only for its content (a secret
+   pattern match) is not path-excluded and reports `file`: `dir2mcp_list_files`
+   already lists it as `skipped` with `secret_excluded`, and the call reads
+   none of its content.
 3. The server MUST enqueue the reconcile and return; it MUST NOT wait for
    ingestion. The reconcile applies the rules of a filesystem event for that
    path, with the watcher's worker and debounce. The worker classifies the

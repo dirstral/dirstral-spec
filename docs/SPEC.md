@@ -6438,19 +6438,28 @@ root, and return at once.
 
 **Behavior:**
 
-1. **Validation.** The server MUST resolve `rel_path` under the root with the
-   root-isolation and symlink rules of §17. A path that resolves outside the
-   root is `PATH_OUTSIDE_ROOT`. An empty `rel_path` is `MISSING_FIELD`. The
-   server then consults the exclusion engine's path rules (§7.2, §17) on the
-   normalized path, before any filesystem access. An excluded path is not
-   rejected, because retiring what was indexed there is the reconcile's job
-   (step 3). The call does not stat it and reports `kind: excluded`, so the
-   result reveals nothing about whether anything exists at the path. This is
-   the narrow exception §17 names for this tool.
+1. **Validation.** An empty `rel_path` is `MISSING_FIELD`. The server first
+   normalizes `rel_path` lexically, with the §15.4 grammar and without any
+   filesystem access; a path that climbs above the root lexically (`..`) is
+   `PATH_OUTSIDE_ROOT`. It then consults the exclusion engine's path rules
+   (§7.2, §17) on the normalized path, still before any filesystem access, so
+   before symlink resolution too. An excluded path is not rejected, because
+   retiring what was indexed there is the reconcile's job (step 3). The call
+   does not stat or resolve it and reports `kind: excluded`, so the result
+   reveals nothing about whether anything exists at the path; an excluded
+   symlink that points outside the root is reported the same way, never as
+   `PATH_OUTSIDE_ROOT`. This is the narrow exception §17 names for this tool.
+   A path that is not excluded is then resolved under the root with the
+   root-isolation and symlink rules of §17; one that resolves outside the
+   root is `PATH_OUTSIDE_ROOT`.
 2. **Classification.** For a path that is not excluded, the server stats the
    resolved path once and reports `kind`: `file`, `directory`, or `missing`
    when nothing exists at the path. The call walks no subtree and reads no
-   document.
+   document. A file withheld only because its content matches a secret
+   pattern is not path-excluded, so it reports `file`. That discloses nothing
+   new: `dir2mcp_list_files` already lists such a document as `skipped` with
+   the reason `secret_excluded` (§15.5), and the call reads none of its
+   content. The reconcile applies the content check again (step 3).
 3. **Enqueue.** The server MUST enqueue the reconcile and return. It MUST NOT
    wait for ingestion; the call is a request, not a synchronous index. The
    reconcile then applies the same rules as a filesystem event for that path
@@ -7052,10 +7061,13 @@ security:
   * the exclusion engine is consulted on every file access, including
     `open_file`; tool handlers must reject or return an empty result for
     any path or content matching the configured patterns or path excludes.
-    One narrow exception: `dir2mcp_recheck_path` (§15.13) accepts an excluded
-    path so the reconcile can retire what was indexed there. It does not stat
+    One narrow exception: `dir2mcp_recheck_path` (§15.13) accepts a path that
+    the path rules exclude, so the reconcile can retire what was indexed there.
+    It checks those rules before any filesystem access, does not stat, resolve
     or read the path, and its result reports only `kind: excluded`, so it
-    carries no content and no existence signal for that path.
+    carries no content and no existence signal for that path. A file withheld
+    for its content is reported as `file`, as `dir2mcp_list_files` already
+    lists it, and none of its content is read.
 
 ---
 

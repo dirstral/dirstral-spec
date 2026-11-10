@@ -75,16 +75,22 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
   `open_file` ([bs-004](bs-004-mcp-transport.md)); tool handlers MUST reject or return an
   empty result for any path or content matching the configured patterns or path
   excludes. One narrow exception: `dir2mcp_recheck_path`
-  ([bs-007](bs-007-tool-specifications.md)) accepts an excluded path so the
-  reconcile can retire what was indexed there. It does not stat or read the
-  path, and its result reports only `kind: excluded`, so it carries no content
-  and no existence signal for that path.
+  ([bs-007](bs-007-tool-specifications.md)) accepts a path that the path rules
+  exclude, so the reconcile can retire what was indexed there. It checks those
+  rules before any filesystem access, does not stat, resolve or read the path,
+  and its result reports only `kind: excluded`, so it carries no content and no
+  existence signal for that path. A file withheld for its content is reported
+  as `file`, as `dir2mcp_list_files` already lists it, and none of its content
+  is read.
 
 ## Changelog
 
 - **0.2.0** (spec 0.92.0): the sensitive-file rule names its one exception,
-  `dir2mcp_recheck_path`: it accepts an excluded path so the reconcile can
-  retire it, never stats or reads that path, and reports only `kind: excluded`.
+  `dir2mcp_recheck_path`: it accepts a path-excluded path so the reconcile can
+  retire it, checks the path rules before any filesystem access, never stats,
+  resolves or reads that path, and reports only `kind: excluded`. A file
+  withheld for its content reports `file`, as `dir2mcp_list_files` already
+  lists it.
 - **0.1.0** — Migrated from SPEC.md §17, preserving every normative MUST/SHOULD/MAY
   verbatim in meaning. Cross-references rewired to stable doc IDs:
   `PATH_OUTSIDE_ROOT` / error codes (§14) → [df-008](../data-formats/df-008-error-taxonomy.md);
