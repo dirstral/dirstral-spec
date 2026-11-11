@@ -23,7 +23,11 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
 ### Root isolation
 
 - Reject any `rel_path` resolving outside root with `PATH_OUTSIDE_ROOT`
-  ([df-008](../data-formats/df-008-error-taxonomy.md)).
+  ([df-008](../data-formats/df-008-error-taxonomy.md)). The one exception is
+  the excluded-path rule under "Sensitive-file defaults": `dir2mcp_recheck_path`
+  reports an excluded path, an excluded symlink (or an excluded hop of a
+  symlink chain) that leads outside the root included, as `kind: excluded`
+  without resolving it.
 
 ### Symlink policy
 

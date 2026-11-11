@@ -6437,7 +6437,9 @@ root, and return at once.
 * `rel_path` (required): a path relative to the corpus root, with the same
   grammar and normalization as `rel_path` in `dir2mcp_open_file` (§15.4) and in
   `documents` (§5.1): `/` as the separator, no leading `/`. It names a file or
-  a directory. `.` names the root itself.
+  a directory. `.` names the root itself. Wherever a rule below says "every
+  document indexed under the path", for `.` that is every indexed document,
+  not the documents whose path starts with a literal `./`.
 * `recursive` (optional, default `true`): for a directory, reconcile the whole
   subtree. When `false`, reconcile the regular files that are direct children
   of the directory only. Ignored for a file.
@@ -6458,10 +6460,12 @@ root, and return at once.
    A path that is not excluded is then resolved under the root with the
    root-isolation and symlink rules of §17; one that resolves outside the
    root is `PATH_OUTSIDE_ROOT`. Symlinks follow the discovery rule (§7.1):
-   * with `ingest.follow_symlinks: true`, the resolved target is checked
-     against the same path rules before any stat. An excluded target reports
-     `kind: excluded` and is neither stat'ed nor read, exactly as an excluded
-     path;
+   * with `ingest.follow_symlinks: true`, the server resolves the chain one
+     hop at a time and checks each in-root target against the same path rules
+     before it dereferences that target. The first excluded hop makes the path
+     ineligible: the call reports `kind: excluded`, touches nothing past that
+     hop and reads nothing, exactly as for an excluded path (so `alias -> .env
+     -> outside` reports `excluded`, never `PATH_OUTSIDE_ROOT`);
    * with `ingest.follow_symlinks: false` (the default), a path that is itself
      a symlink is ineligible, as discovery skips it (`symlink_ignored`). The
      call reports `kind: excluded` without following it, and the reconcile
@@ -7066,6 +7070,10 @@ security:
 ## 17) Security and safety requirements (minimum)
 
 * Root isolation: reject any `rel_path` resolving outside root (`PATH_OUTSIDE_ROOT`).
+  The one exception is the excluded-path rule below: `dir2mcp_recheck_path`
+  reports an excluded path, an excluded symlink (or an excluded hop of a
+  symlink chain) that leads outside the root included, as `kind: excluded`
+  without resolving it.
 * Symlink policy: default no-follow, or follow only if resolved under root.
 * Archive safety: prevent zip-slip/path traversal within archives.
 * Auth:

@@ -477,6 +477,8 @@ lifetime of the process.
   with the grammar and normalization of `rel_path` in `dir2mcp_open_file`
   (`/` as the separator, no leading `/`). A file or a directory. `.` names the
   root itself.
+  For `.`, "every document indexed under the path" means every indexed
+  document, not a literal `./` prefix.
 - `recursive` (boolean, default **`true`**): for a directory, reconcile the
   whole subtree; when `false`, only the regular files that are its direct
   children. Ignored for a file.
@@ -495,9 +497,11 @@ lifetime of the process.
    [bs-009](bs-009-security-safety.md) names for this tool. A path that is not
    excluded is then resolved with the root-isolation and symlink rules of
    [bs-009](bs-009-security-safety.md); one that resolves outside the root is
-   `PATH_OUTSIDE_ROOT`. When the server follows symlinks, the resolved target
-   is checked against the same path rules before any stat, and an excluded
-   target reports `kind: excluded`. When it does not (the default), a path
+   `PATH_OUTSIDE_ROOT`. When the server follows symlinks, it resolves the
+   chain one hop at a time and checks each in-root target against the same
+   path rules before it dereferences it; the first excluded hop reports
+   `kind: excluded`, with nothing past it touched or read (`alias -> .env ->
+   outside` is `excluded`, never `PATH_OUTSIDE_ROOT`). When it does not (the default), a path
    that is itself a symlink is ineligible, as discovery skips it
    (`symlink_ignored`): the call reports `kind: excluded` without following
    it, and the reconcile retires anything indexed at the path. A special
