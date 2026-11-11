@@ -66,11 +66,11 @@ Each tool error returns an object with:
   `dir2mcp_recheck_path` without the file watcher or under `--read-only`;
   see [bs-007](../behavior/bs-007-tool-specifications.md)). Such a tool is
   also absent from `tools/list` ([bs-006](../behavior/bs-006-mcp-tools-list-call.md)).
+  **Non-retryable** for the lifetime of the process.
 - `QUEUE_FULL`: a bounded request queue is full. First used by
   `dir2mcp_recheck_path` for a call that would add a new pending request
   ([bs-007](../behavior/bs-007-tool-specifications.md)). **Retryable** once the
   worker drains the queue.
-  **Non-retryable** for the lifetime of the process.
 
 ### 14.4 Ingestion / extraction
 

@@ -6470,9 +6470,12 @@ root, and return at once.
      hop and reads nothing, exactly as for an excluded path (so `alias -> .env
      -> outside` reports `excluded`, never `PATH_OUTSIDE_ROOT`);
    * with `ingest.follow_symlinks: false` (the default), a path that is itself
-     a symlink is ineligible, as discovery skips it (`symlink_ignored`). The
-     call reports `kind: excluded` without following it, and the reconcile
-     retires anything indexed at the path (step 3).
+     a symlink, or that has a symlink in any component (`alias/report.txt`
+     with `alias` a symlink), is ineligible, as discovery neither indexes a
+     symlink nor walks into one (`symlink_ignored`). The server checks the
+     components from the root down with `lstat` and stops at the first
+     symlink. The call reports `kind: excluded` without following it, and the
+     reconcile retires anything indexed at the path and under it (step 3).
    * a path that is neither a regular file, a directory nor a symlink (a
      FIFO, a socket or a device) is ineligible, because discovery reads only
      regular files. The call reports `kind: excluded`, and the reconcile
