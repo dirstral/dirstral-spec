@@ -36,8 +36,11 @@ deletion/tombstone semantics are in bs-008.
   pass takes days. The result MUST NOT depend on the value: the same files, in
   the same order (sorted by relative path), the same skip reports (their
   order MAY differ), the same ignore, `.gitignore` and symlink rules, the same
-  directory-loop protection, and the same scan-cache contents. A value outside
-  `1`–`64` is `CONFIG_INVALID`. The key applies to a filesystem walk
+  directory-loop protection, and the same scan-cache contents. `0` means the
+  default `1`; a negative value or one above `64` is `CONFIG_INVALID`. With
+  symlink following on, an implementation MAY walk sequentially whatever the
+  value: which path reaches a directory first decides the relative paths of
+  its files, and that must not depend on timing. The key applies to a filesystem walk
   (`source.kind: local` or `nfs`); a remote source (§7.8) lists by its own
   pagination and ignores it.
 - Default ignore list includes: `.git/`, `node_modules/`, `dist/`, `build/`,
