@@ -35,7 +35,7 @@ These are returned with HTTP 200. The `isError: true` flag is set on the result.
 | `OCR_NOT_READY` | Yes | `dir2mcp_open_file` on a binary doc type (PDF, audio) before its OCR/transcript representation is cached; retry once ingestion completes |
 | `MEDIA_NO_TEXT` | No | `dir2mcp_open_file` on a `replace`-mode multimodal media chunk (SPEC §8.1.7) that has no text representation; permanent (non-retryable) — the hit can still be cited |
 | `PATH_OUTSIDE_ROOT` | No | `rel_path` resolves outside the corpus root (root isolation, SPEC §17), for every tool that takes a path. One exception: `dir2mcp_recheck_path` checks the exclusion path rules first and reports an excluded path (an excluded symlink that points outside the root included) as `kind: excluded`, without resolving it (bs-007) |
-| `PERMISSION_DENIED` | No | Path is excluded by policy. A path outside the root is `PATH_OUTSIDE_ROOT`, not this code |
+| `FORBIDDEN` | No | Path or content blocked by policy (SPEC §14, df-008). A path outside the root is `PATH_OUTSIDE_ROOT`, not this code |
 | `MISSING_FIELD` | No | Required tool argument absent |
 | `INVALID_FIELD` | No | Tool argument present but invalid type or value |
 | `INVALID_RANGE` | No | Numeric argument outside allowed bounds |
