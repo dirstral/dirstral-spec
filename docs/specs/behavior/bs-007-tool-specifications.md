@@ -511,9 +511,12 @@ lifetime of the process.
    entry (a FIFO, a socket or a device) is ineligible too, since discovery
    reads only regular files: `kind: excluded`, and the reconcile retires
    anything indexed at it and under it. Only a path the exclusion path rules
-   match is answered with no filesystem access; for a non-followed symlink or
-   a special entry one `lstat` finds it, so `excluded` there shows that
-   something exists, which discloses nothing protected.
+   match is answered with no filesystem access. Otherwise `excluded` shows
+   only what the `lstat` checks found: a special entry, or a symlink at the
+   path or at one of its components; a symlink component (`alias` in
+   `alias/report.txt`) says nothing about whether the requested path exists.
+   Nothing protected is disclosed. With symlinks followed, a cycle or more
+   than 40 hops makes the path ineligible (`excluded`) as well.
 2. For a path that is not excluded, the server stats the resolved path once
    and reports `kind` as `file`, `directory`, or `missing`. The call walks no
    subtree and reads no document. A file withheld only for its content (a secret

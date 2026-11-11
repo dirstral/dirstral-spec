@@ -6468,7 +6468,10 @@ root, and return at once.
      before it dereferences that target. The first excluded hop makes the path
      ineligible: the call reports `kind: excluded`, touches nothing past that
      hop and reads nothing, exactly as for an excluded path (so `alias -> .env
-     -> outside` reports `excluded`, never `PATH_OUTSIDE_ROOT`);
+     -> outside` reports `excluded`, never `PATH_OUTSIDE_ROOT`). The chain is
+     bounded: a cycle (`alias -> alias`) or more than 40 hops makes the path
+     ineligible, reported as `kind: excluded` like a symlink the server does
+     not follow, and the reconcile retires anything indexed at it;
    * with `ingest.follow_symlinks: false` (the default), a path that is itself
      a symlink, or that has a symlink in any component (`alias/report.txt`
      with `alias` a symlink), is ineligible, as discovery neither indexes a
@@ -6482,10 +6485,12 @@ root, and return at once.
      retires anything indexed at the path and under it (step 3).
 
    Only for a path the exclusion path rules match is `excluded` free of any
-   existence signal, because that path is never touched. A non-followed
-   symlink or a special entry is found by one `lstat`, so `excluded` there
-   tells the caller that something exists at the path. That discloses nothing
-   protected: neither is path-excluded, and neither is read.
+   existence signal, because that path is never touched. Otherwise `excluded`
+   shows only what the `lstat` checks found: a special entry at the path, or a
+   symlink at the path or at one of its components. A symlink component
+   (`alias` in `alias/report.txt`) says nothing about whether the requested
+   path itself exists. That discloses nothing protected: none of these is
+   path-excluded, and none is read.
 2. **Classification.** For a path that is not excluded, the server stats the
    resolved path once and reports `kind`: `file`, `directory`, or `missing`
    when nothing exists at the path. The call walks no subtree and reads no
@@ -7120,7 +7125,10 @@ security:
     or read the path, and its result reports only `kind: excluded`, so it
     carries no content and no existence signal for that path. A file withheld
     for its content is reported as `file`, as `dir2mcp_list_files` already
-    lists it, and none of its content is read.
+    lists it, and the call reads none of its content. The reconcile worker it
+    enqueues does read the file, to apply the content check (the secret
+    patterns) again, as for any changed file, including one that was
+    withheld before.
 
 ---
 

@@ -84,8 +84,10 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
   rules before any filesystem access, does not stat, resolve or read the path,
   and its result reports only `kind: excluded`, so it carries no content and no
   existence signal for that path. A file withheld for its content is reported
-  as `file`, as `dir2mcp_list_files` already lists it, and none of its content
-  is read.
+  as `file`, as `dir2mcp_list_files` already lists it, and the call reads none
+  of its content. The reconcile worker the call enqueues does read the file,
+  to apply the content check again, as for any changed file, including one
+  that was withheld before.
 
 ## Changelog
 
