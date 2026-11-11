@@ -6527,7 +6527,10 @@ root, and return at once.
    `queued` is `true` when this call added a request and `false` when a
    request for the same normalized `rel_path` was already pending (also when
    this call made that pending request recursive). `pending` is the number of requests
-   pending after this call, this one included when `queued` is `true`.
+   pending at the moment this call enqueued its request or found the pending
+   one (one atomic step with the deduplication), this one included when
+   `queued` is `true`. A worker that starts the request right after does not
+   change the value this call returns.
 
 **Output schema** (`recheck_path.json`):
 

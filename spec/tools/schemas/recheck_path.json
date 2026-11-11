@@ -47,7 +47,7 @@
       "pending": {
         "type": "integer",
         "minimum": 0,
-        "description": "Number of reconcile requests pending after this call, this one included when queued is true."
+        "description": "Number of reconcile requests pending at the moment this call enqueued its request or found the pending one (one atomic step with the deduplication), this one included when queued is true. A worker that starts the request right after does not change the value."
       }
     },
     "required": [

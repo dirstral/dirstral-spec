@@ -540,8 +540,9 @@ lifetime of the process.
    a recursive repeat makes a pending non-recursive request recursive. A
    request is pending from the call until its reconcile starts.
 5. Output: `rel_path` (normalized), `kind`, `queued` (`true` when this call
-   added a request), `pending` (requests pending after this call, this one
-   included when `queued`), all required, and nothing else. `kind` is `file`,
+   added a request), `pending` (requests pending at the atomic enqueue or
+   deduplication step, this one included when `queued`; a worker starting the
+   request right after does not change it), all required, and nothing else. `kind` is `file`,
    `directory`, `missing` or `excluded` (ineligible: matched by the exclusion
    path rules, a symlink to such a target, a symlink the server does not
    follow, or a special entry such as a FIFO, a socket or a device). This is the successful result; a
