@@ -516,7 +516,8 @@ lifetime of the process.
    under a path that was a directory and is now a file; every regular file
    under a directory (direct
    children only when `recursive` is `false`), with a tombstone for an indexed
-   document whose file is gone; a tombstone for a path still `missing` when
+   document whose file is gone and for a document indexed at the path itself
+   (a file that became a directory); a tombstone for a path still `missing` when
    the reconcile starts, and for every document under it; retirement for an
    excluded path (a symlink to an excluded target and a symlink the server
    does not follow included), and for every document indexed under it by path

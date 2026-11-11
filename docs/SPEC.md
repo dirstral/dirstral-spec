@@ -6481,7 +6481,9 @@ root, and return at once.
      file, so nothing can exist under it.
    * `directory`: every regular file under it (the direct children only when
      `recursive` is `false`) is reconciled as a file, and a document indexed
-     under the directory whose file is gone is tombstoned (§5.1, §6.6).
+     under the directory whose file is gone is tombstoned (§5.1, §6.6). A
+     document indexed at the path itself is tombstoned too: the path was a
+     regular file and is now a directory.
    * `missing` (still absent when the reconcile starts): a document at that
      path, and every document under it, is tombstoned, as for a removed file
      (§7.8, deletions). A missing path is accepted, not an error, because
