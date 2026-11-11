@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.91.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.92.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1740,6 +1740,12 @@ scheme:
 discovery, symlink, and ignore rules as §7.1 (they are ordinary directory trees).
 `s3` enumerates objects under `bucket`/`prefix` (a flat object listing, not a
 filesystem walk).
+
+**Writes from another host.** An `nfs` mount reports no filesystem event for a
+write made by another host. The file watcher sees such a write only at its
+periodic safety rescan, which stats every file under the root. A client that
+knows a path changed MAY ask the server to reconcile that path now with
+`dir2mcp_recheck_path` (§15.13).
 
 **Stable `rel_path` across schemes.** `rel_path` (§5.1) is defined relative to
 the corpus root for every scheme: for `local`/`nfs` it is the path under the root
@@ -5324,6 +5330,12 @@ Response contains an array of tools; each tool MUST include:
 * `inputSchema` (valid JSON Schema object)
 * (recommended) `outputSchema` (valid JSON Schema object)
 
+A tool this spec defines that the server does not serve in its current mode
+(an optional tool it leaves out, or one whose preconditions do not hold, such
+as `dir2mcp_recheck_path` without the file watcher, §15.13) MUST be absent
+from this list, and a `tools/call` that names it MUST fail with
+`TOOL_UNAVAILABLE` (§14.3).
+
 ### 12.3 Tool invocation: `tools/call`
 
 Request:
@@ -5396,6 +5408,8 @@ Example tool execution error:
 ### 13.3 Optional extension
 
 * `dir2mcp_ask_audio` (answer → audio via ElevenLabs TTS)
+* `dir2mcp_recheck_path` (reconcile one path under the root now; served only
+  in watch mode, §15.13)
 
 ---
 
@@ -5430,6 +5444,14 @@ Example tool execution error:
 * `STORE_CORRUPT`
 * `INDEX_VERSION_MISMATCH`
 * `INDEX_NOT_READY` (should be rare; prefer partial results)
+* `TOOL_UNAVAILABLE` (the named tool is defined by this spec, but the running
+  server does not serve it in its current mode, for example
+  `dir2mcp_recheck_path` without the file watcher or under `--read-only`
+  (§15.13); such a tool is also absent from `tools/list` (§12.2);
+  **non-retryable** for the lifetime of the process)
+* `QUEUE_FULL` (a bounded request queue is full; first used by
+  `dir2mcp_recheck_path` (§15.13) for a call that would add a new pending
+  request; **retryable** once the worker drains the queue)
 
 ### 14.4 Ingestion/extraction
 
@@ -6377,6 +6399,183 @@ so results are "other documents like this"), and the same `path_prefix` /
 
 ---
 
+### 15.13 `dir2mcp_recheck_path` (optional extension)
+
+> **Status: Planned.** This section defines an **optional** tool. A client asks
+> a running server in watch mode to reconcile one path under the corpus root
+> now, instead of at the next periodic safety rescan. The tool is additive. It
+> adds no write path of its own: the reconcile it enqueues is the watcher's
+> (§7.8), so the corpus sees exactly the writes that reconcile would make for
+> that path. By default that is none (a CorpusFS is read-only, §7.10). With the
+> opt-in subtitle write-back (§8.6.14, `media.subtitles.emit.enabled: true`) a
+> re-ingested media document gets its subtitles and SMIL patch as on any other
+> reconcile; a recheck does not suppress them. The tool asks the server to
+> reconcile a path the server already owns, as `dir2mcp_transcribe` (§15.7) and
+> `dir2mcp_annotate` (§15.8) already write representations to the store, so it
+> stays within §19. It lands in a dir2mcp code PR after this spec merges.
+
+**Description:** enqueue a reconcile of one file or directory under the corpus
+root, and return at once.
+
+**Availability.** A server serves this tool only when it runs the file watcher
+(watch mode on a `local` or `nfs` source, §7.8) and is not read-only
+(`--read-only`, §2.3). Otherwise the tool MUST be absent from `tools/list`
+(§12.2), and a `tools/call` that names it MUST fail with `TOOL_UNAVAILABLE`
+(§14.3). Availability is fixed for the lifetime of the process.
+
+**Input schema** (`recheck_path.json`):
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rel_path": { "type": "string", "minLength": 1 },
+    "recursive": { "type": "boolean", "default": true }
+  },
+  "required": ["rel_path"]
+}
+```
+
+* `rel_path` (required): a path relative to the corpus root, with the same
+  grammar and normalization as `rel_path` in `dir2mcp_open_file` (§15.4) and in
+  `documents` (§5.1): `/` as the separator, no leading `/`. It names a file or
+  a directory. `.` names the root itself. Wherever a rule below says "every
+  document indexed under the path", for `.` that is every indexed document,
+  not the documents whose path starts with a literal `./`.
+* `recursive` (optional, default `true`): for a directory, reconcile the whole
+  subtree. When `false`, reconcile the regular files that are direct children
+  of the directory only. Ignored for a file.
+
+**Behavior:**
+
+1. **Validation.** An empty `rel_path` is `MISSING_FIELD`. The server first
+   normalizes `rel_path` lexically, with the §15.4 grammar and without any
+   filesystem access; a path that climbs above the root lexically (`..`) is
+   `PATH_OUTSIDE_ROOT`. It then consults the exclusion engine's path rules
+   (§7.2, §17) on the normalized path, still before any filesystem access, so
+   before symlink resolution too. An excluded path is not rejected, because
+   retiring what was indexed there is the reconcile's job (step 3). The call
+   does not stat or resolve it and reports `kind: excluded`, so the result
+   reveals nothing about whether anything exists at the path; an excluded
+   symlink that points outside the root is reported the same way, never as
+   `PATH_OUTSIDE_ROOT`. This is the narrow exception §17 names for this tool.
+   A path that is not excluded is then resolved under the root with the
+   root-isolation and symlink rules of §17; one that resolves outside the
+   root is `PATH_OUTSIDE_ROOT`. Symlinks follow the discovery rule (§7.1):
+   * with `ingest.follow_symlinks: true`, the server resolves the chain one
+     hop at a time and checks each in-root target against the same path rules
+     before it dereferences that target. The first excluded hop makes the path
+     ineligible: the call reports `kind: excluded`, touches nothing past that
+     hop and reads nothing, exactly as for an excluded path (so `alias -> .env
+     -> outside` reports `excluded`, never `PATH_OUTSIDE_ROOT`). The chain is
+     bounded: a cycle (`alias -> alias`) or more than 40 hops makes the path
+     ineligible, reported as `kind: excluded` like a symlink the server does
+     not follow, and the reconcile retires anything indexed at it;
+   * with `ingest.follow_symlinks: false` (the default), a path that is itself
+     a symlink, or that has a symlink in any component (`alias/report.txt`
+     with `alias` a symlink), is ineligible, as discovery neither indexes a
+     symlink nor walks into one (`symlink_ignored`). The server checks the
+     components from the root down with `lstat` and stops at the first
+     symlink. The call reports `kind: excluded` without following it, and the
+     reconcile retires anything indexed at the path and under it (step 3).
+   * a path that is neither a regular file, a directory nor a symlink (a
+     FIFO, a socket or a device) is ineligible, because discovery reads only
+     regular files. The call reports `kind: excluded`, and the reconcile
+     retires anything indexed at the path and under it (step 3).
+
+   Only for a path the exclusion path rules match is `excluded` free of any
+   existence signal, because that path is never touched. Otherwise `excluded`
+   shows only what the `lstat` checks found: a special entry at the path, or a
+   symlink at the path or at one of its components. A symlink component
+   (`alias` in `alias/report.txt`) says nothing about whether the requested
+   path itself exists. That discloses nothing protected: none of these is
+   path-excluded, and none is read.
+2. **Classification.** For a path that is not excluded, the server stats the
+   resolved path once and reports `kind`: `file`, `directory`, or `missing`
+   when nothing exists at the path. The call walks no subtree and reads no
+   document. A file withheld only because its content matches a secret
+   pattern is not path-excluded, so it reports `file`. That discloses nothing
+   new: `dir2mcp_list_files` already lists such a document as `skipped` with
+   the reason `secret_excluded` (§15.5), and the call reads none of its
+   content. The reconcile applies the content check again (step 3).
+3. **Enqueue.** The server MUST enqueue the reconcile and return. It MUST NOT
+   wait for ingestion; the call is a request, not a synchronous index. The
+   reconcile then applies the same rules as a filesystem event for that path
+   (§7.6, §7.8), with the same worker and the same debounce as the watcher.
+   The worker classifies the path again when the reconcile starts and applies
+   the rule for what it finds then; the call-time `kind` does not bind it,
+   because the path can change between the call and the reconcile:
+   * `file`: the `(size, mtime)` pre-check, then `content_hash`, then re-ingest
+     on a change. An unchanged file is not re-ingested. Every document indexed
+     under the path is tombstoned: the path was a directory and is now a regular
+     file, so nothing can exist under it.
+   * `directory`: every regular file under it (the direct children only when
+     `recursive` is `false`) is reconciled as a file, and a document indexed
+     under the directory whose file is gone is tombstoned (§5.1, §6.6). A
+     document indexed at the path itself is tombstoned too: the path was a
+     regular file and is now a directory.
+   * `missing` (still absent when the reconcile starts): a document at that
+     path, and every document under it, is tombstoned, as for a removed file
+     (§7.8, deletions). A missing path is accepted, not an error, because
+     the deletion is the information. A file that appeared in the meantime
+     is reconciled as a file, not tombstoned.
+   * an excluded path (directory ignore list, `security.path_excludes`,
+     `.gitignore` rules or the secret patterns, §7.2), a symlink whose target
+     those rules exclude, a symlink the server does not follow, or a special
+     entry (FIFO, socket, device): the path is ineligible.
+     A document indexed at it, and every document indexed under it by path
+     prefix (`<rel_path>/...`), whatever the path is now (a directory that
+     became an ineligible symlink included), is retired exactly as the watcher
+     retires it on a write to such a path: tombstoned, and kept as a `skipped` document when discovery
+     records a skip reason for it (§15.5).
+4. **Idempotence.** The queue holds at most one pending request per normalized
+   `rel_path`. A request for a path that already has a pending request MUST NOT
+   add a second entry; it returns `queued: false`. When the new request is
+   recursive and the pending one is not, the pending request becomes
+   recursive. A request is pending from the call until its reconcile starts.
+   **Bound.** Because a missing path is accepted, distinct paths could grow
+   the queue without limit, so the server MUST bound the number of pending
+   requests (the bound is implementation-defined and SHOULD be configurable).
+   When the queue is full, a call that would add a new entry fails with
+   `QUEUE_FULL` (retryable: the worker drains the queue). A call for a path
+   that already has a pending request still deduplicates, and still makes a
+   pending request recursive, whatever the queue's fill.
+5. **Response.** `rel_path` is the normalized path (for `.`, the value is `.`).
+   `queued` is `true` when this call added a request and `false` when a
+   request for the same normalized `rel_path` was already pending (also when
+   this call made that pending request recursive). `pending` is the number of requests
+   pending at the moment this call enqueued its request or found the pending
+   one (one atomic step with the deduplication), this one included when
+   `queued` is `true`. A worker that starts the request right after does not
+   change the value this call returns.
+
+**Output schema** (`recheck_path.json`):
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rel_path": { "type": "string" },
+    "kind": { "type": "string", "enum": ["file", "directory", "missing", "excluded"] },
+    "queued": { "type": "boolean" },
+    "pending": { "type": "integer", "minimum": 1 }
+  },
+  "required": ["rel_path", "kind", "queued", "pending"]
+}
+```
+
+A successful result carries these four fields and nothing else. A failed call
+returns the tool error result of §12.4 (`isError: true`,
+`structuredContent.error`), as every tool does; this output schema, like every
+tool's, describes the successful result only.
+
+**Errors:** `MISSING_FIELD`, `INVALID_FIELD` (a `recursive` that is not a
+boolean), `PATH_OUTSIDE_ROOT`, `TOOL_UNAVAILABLE`, `QUEUE_FULL` (§14).
+
+---
+
 ## 16) Configuration (single file)
 
 ### 16.1 Precedence
@@ -6892,6 +7091,10 @@ security:
 ## 17) Security and safety requirements (minimum)
 
 * Root isolation: reject any `rel_path` resolving outside root (`PATH_OUTSIDE_ROOT`).
+  The one exception is the excluded-path rule below: `dir2mcp_recheck_path`
+  reports an excluded path, an excluded symlink (or an excluded hop of a
+  symlink chain) that leads outside the root included, as `kind: excluded`
+  without resolving it.
 * Symlink policy: default no-follow, or follow only if resolved under root.
 * Archive safety: prevent zip-slip/path traversal within archives.
 * Auth:
@@ -6916,6 +7119,16 @@ security:
   * the exclusion engine is consulted on every file access, including
     `open_file`; tool handlers must reject or return an empty result for
     any path or content matching the configured patterns or path excludes.
+    One narrow exception: `dir2mcp_recheck_path` (§15.13) accepts a path that
+    the path rules exclude, so the reconcile can retire what was indexed there.
+    It checks those rules before any filesystem access, does not stat, resolve
+    or read the path, and its result reports only `kind: excluded`, so it
+    carries no content and no existence signal for that path. A file withheld
+    for its content is reported as `file`, as `dir2mcp_list_files` already
+    lists it, and the call reads none of its content. The reconcile worker it
+    enqueues does read the file, to apply the content check (the secret
+    patterns) again, as for any changed file, including one that was
+    withheld before.
 
 ---
 

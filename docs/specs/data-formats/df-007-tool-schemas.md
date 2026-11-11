@@ -1,11 +1,11 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.9.0
+- **Version:** 0.10.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
-- **Source:** SPEC.md §15.2–§15.12 + `spec/tools/schemas/*.json`
+- **Source:** SPEC.md §15.2–§15.13 + `spec/tools/schemas/*.json`
 
 ## Scope
 
@@ -35,6 +35,7 @@ the conformance contract. Shared shapes — [df-005 `Span`](df-005-span.md) and
 | `dir2mcp_ask_audio` (§15.10) | `ask_audio.json` | optional extension. |
 | `dir2mcp_open_media_clip` (§15.11) | `open_media_clip.json` | `CLIP_TOO_LARGE`/`MEDIA_CLIP_FAILED` (df-008). |
 | `dir2mcp_related` (§15.12) | `related.json` | Query-by-example; `hits[]` `$ref`s `Hit`. One of `chunk_id`/`rel_path` (`INVALID_FIELD` otherwise). Optional extension. |
+| `dir2mcp_recheck_path` (§15.13) | `recheck_path.json` | Input `rel_path` + `recursive`; output `rel_path`, `kind` (`file`, `directory`, `missing` or `excluded`), `queued`, `pending`, nothing else. No shared shape. Optional extension; served only with the file watcher on and not read-only (`TOOL_UNAVAILABLE` otherwise, df-008). |
 
 ### Single source of truth
 
@@ -77,6 +78,10 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
+- **0.10.0**: added `recheck_path.json` (`dir2mcp_recheck_path`, SPEC §15.13,
+  spec 0.92.0): input `rel_path` (required) and `recursive` (default `true`);
+  output `rel_path`, `kind`, `queued`, `pending`, all required,
+  `additionalProperties: false`. It `$ref`s no shared shape.
 - **0.9.0**: `stats.json` gains the optional additive top-level `evidence` object (`cosine_threshold`, `cosine_threshold_source`, `rerank_threshold`, `null_baseline{probes, probe_set, p50, p90, max, chunks, embed_model, computed_at}`): the abstention thresholds in effect and the null baseline they were derived from. Mirrors spec 0.80.0. dir2mcp #1081.
 - **0.8.0** — `stats.json` `skip_reasons[].reason` enum gains `transcript_partial`:
   media whose windowed decode covered less of the recording than

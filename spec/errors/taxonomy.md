@@ -1,6 +1,6 @@
 # Error Taxonomy
 
-**Last changed in spec version:** `0.16.0`  
+**Last changed in spec version:** `0.92.0`  
 **Current spec version:** see [`spec/versioning.md`](../versioning.md), the single source (this file does not track it).
 
 Canonical error codes for all dir2mcp MCP tools and session operations.
@@ -34,12 +34,15 @@ These are returned with HTTP 200. The `isError: true` flag is set on the result.
 | `FILE_NOT_FOUND` | No | Requested file path does not exist in the corpus |
 | `OCR_NOT_READY` | Yes | `dir2mcp_open_file` on a binary doc type (PDF, audio) before its OCR/transcript representation is cached; retry once ingestion completes |
 | `MEDIA_NO_TEXT` | No | `dir2mcp_open_file` on a `replace`-mode multimodal media chunk (SPEC §8.1.7) that has no text representation; permanent (non-retryable) — the hit can still be cited |
-| `PERMISSION_DENIED` | No | Path is outside the root or excluded by policy |
+| `PATH_OUTSIDE_ROOT` | No | `rel_path` resolves outside the corpus root (root isolation, SPEC §17), for every tool that takes a path. One exception: `dir2mcp_recheck_path` checks the exclusion path rules first and reports an excluded path (an excluded symlink that points outside the root included) as `kind: excluded`, without resolving it (bs-007) |
+| `FORBIDDEN` | No | Path or content blocked by policy (SPEC §14, df-008). A path outside the root is `PATH_OUTSIDE_ROOT`, not this code |
 | `MISSING_FIELD` | No | Required tool argument absent |
 | `INVALID_FIELD` | No | Tool argument present but invalid type or value |
 | `INVALID_RANGE` | No | Numeric argument outside allowed bounds |
 | `STORE_CORRUPT` | No | Store read failed with unexpected error |
 | `INTERNAL_ERROR` | Yes | Unexpected server-side error |
+| `TOOL_UNAVAILABLE` | No | The named tool is defined by the spec, but the running server does not serve it in its current mode (e.g. `dir2mcp_recheck_path` without the file watcher or under `--read-only`, bs-007); such a tool is also absent from `tools/list` (bs-006) |
+| `QUEUE_FULL` | Yes | A bounded request queue is full; `dir2mcp_recheck_path` returns it for a call that would add a new pending request (a call for an already-pending path still deduplicates). Retry once the worker drains the queue |
 
 ## Ingestion / extraction errors
 

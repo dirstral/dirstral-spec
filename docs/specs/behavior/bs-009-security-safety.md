@@ -1,7 +1,7 @@
 # bs-009: Security & safety requirements
 
 - **ID:** bs-009
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -23,7 +23,11 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
 ### Root isolation
 
 - Reject any `rel_path` resolving outside root with `PATH_OUTSIDE_ROOT`
-  ([df-008](../data-formats/df-008-error-taxonomy.md)).
+  ([df-008](../data-formats/df-008-error-taxonomy.md)). The one exception is
+  the excluded-path rule under "Sensitive-file defaults": `dir2mcp_recheck_path`
+  reports an excluded path, an excluded symlink (or an excluded hop of a
+  symlink chain) that leads outside the root included, as `kind: excluded`
+  without resolving it.
 
 ### Symlink policy
 
@@ -74,10 +78,25 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
 - The exclusion engine is consulted on **every** file access, including
   `open_file` ([bs-004](bs-004-mcp-transport.md)); tool handlers MUST reject or return an
   empty result for any path or content matching the configured patterns or path
-  excludes.
+  excludes. One narrow exception: `dir2mcp_recheck_path`
+  ([bs-007](bs-007-tool-specifications.md)) accepts a path that the path rules
+  exclude, so the reconcile can retire what was indexed there. It checks those
+  rules before any filesystem access, does not stat, resolve or read the path,
+  and its result reports only `kind: excluded`, so it carries no content and no
+  existence signal for that path. A file withheld for its content is reported
+  as `file`, as `dir2mcp_list_files` already lists it, and the call reads none
+  of its content. The reconcile worker the call enqueues does read the file,
+  to apply the content check again, as for any changed file, including one
+  that was withheld before.
 
 ## Changelog
 
+- **0.2.0** (spec 0.92.0): the sensitive-file rule names its one exception,
+  `dir2mcp_recheck_path`: it accepts a path-excluded path so the reconcile can
+  retire it, checks the path rules before any filesystem access, never stats,
+  resolves or reads that path, and reports only `kind: excluded`. A file
+  withheld for its content reports `file`, as `dir2mcp_list_files` already
+  lists it.
 - **0.1.0** — Migrated from SPEC.md §17, preserving every normative MUST/SHOULD/MAY
   verbatim in meaning. Cross-references rewired to stable doc IDs:
   `PATH_OUTSIDE_ROOT` / error codes (§14) → [df-008](../data-formats/df-008-error-taxonomy.md);

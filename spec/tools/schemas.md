@@ -1,6 +1,6 @@
 # Tool Schemas
 
-**Last changed in spec version:** `0.67.2`  
+**Last changed in spec version:** `0.92.0`  
 **Current spec version:** see [`spec/versioning.md`](../versioning.md), the single source (this file does not track it).
 **MCP protocol target:** `2025-11-25`
 
@@ -22,6 +22,7 @@ JSON Schema contract documents live in `spec/tools/schemas/*.json`.
 | `dir2mcp_open_media_clip` | stable |
 | `dir2mcp_ask_audio` | stable |
 | `dir2mcp_related` | stable (optional extension) |
+| `dir2mcp_recheck_path` | planned (optional extension) |
 
 > **Note:** JSON Schema files for each tool are tracked in `spec/tools/schemas/` and are the authoritative machine-readable contracts. This markdown is an index only.
 
@@ -40,6 +41,7 @@ JSON Schema contract documents live in `spec/tools/schemas/*.json`.
 | `dir2mcp_open_media_clip` | [`schemas/open_media_clip.json`](schemas/open_media_clip.json) |
 | `dir2mcp_ask_audio` | [`schemas/ask_audio.json`](schemas/ask_audio.json) |
 | `dir2mcp_related` | [`schemas/related.json`](schemas/related.json) |
+| `dir2mcp_recheck_path` | [`schemas/recheck_path.json`](schemas/recheck_path.json) |
 
 `schemas/common.json` carries no row above. It is not a tool schema: it holds
 the shared `Span` / `Hit` / `Citation` definitions that the tool schemas `$ref`.
