@@ -495,7 +495,12 @@ lifetime of the process.
    [bs-009](bs-009-security-safety.md) names for this tool. A path that is not
    excluded is then resolved with the root-isolation and symlink rules of
    [bs-009](bs-009-security-safety.md); one that resolves outside the root is
-   `PATH_OUTSIDE_ROOT`.
+   `PATH_OUTSIDE_ROOT`. When the server follows symlinks, the resolved target
+   is checked against the same path rules before any stat, and an excluded
+   target reports `kind: excluded`. When it does not (the default), a path
+   that is itself a symlink is ineligible, as discovery skips it
+   (`symlink_ignored`): the call reports `kind: excluded` without following
+   it, and the reconcile retires anything indexed at the path.
 2. For a path that is not excluded, the server stats the resolved path once
    and reports `kind` as `file`, `directory`, or `missing`. The call walks no
    subtree and reads no document. A file withheld only for its content (a secret
@@ -513,7 +518,9 @@ lifetime of the process.
    children only when `recursive` is `false`), with a tombstone for an indexed
    document whose file is gone; a tombstone for a path still `missing` when
    the reconcile starts, and for every document under it; retirement for an
-   excluded path, and for every document under an excluded directory, exactly
+   excluded path (a symlink to an excluded target and a symlink the server
+   does not follow included), and for every document under an excluded
+   directory, exactly
    as the watcher retires it on a write (tombstoned, kept as a `skipped`
    document when discovery records a skip reason).
 4. The queue holds at most one pending request per normalized `rel_path`. A
@@ -523,7 +530,9 @@ lifetime of the process.
 5. Output: `rel_path` (normalized), `kind`, `queued` (`true` when this call
    added a request), `pending` (requests pending after this call, this one
    included when `queued`), all required, and nothing else. `kind` is `file`,
-   `directory`, `missing` or `excluded`. This is the successful result; a
+   `directory`, `missing` or `excluded` (ineligible: matched by the exclusion
+   path rules, a symlink to such a target, or a symlink the server does not
+   follow). This is the successful result; a
    failed call returns the standard tool error result, as for every tool.
 
 **Errors:** `MISSING_FIELD`, `INVALID_FIELD`, `PATH_OUTSIDE_ROOT`,

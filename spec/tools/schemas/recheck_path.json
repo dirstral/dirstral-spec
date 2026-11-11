@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://spec.dirstral.com/tools/schemas/recheck_path.json",
   "title": "dir2mcp_recheck_path",
-  "description": "Ask a running server in watch mode to reconcile one path under the corpus root now, instead of at the next periodic safety rescan (SPEC 15.13). Optional extension: served only when the server runs the file watcher and is not read-only; otherwise absent from tools/list and TOOL_UNAVAILABLE on call. The call enqueues the reconcile and returns; it does not wait for ingestion.",
+  "description": "Ask a running server in watch mode to reconcile one path under the corpus root now, instead of at the next periodic safety rescan (bs-007). Optional extension: served only when the server runs the file watcher and is not read-only; otherwise absent from tools/list and TOOL_UNAVAILABLE on call. The call enqueues the reconcile and returns; it does not wait for ingestion.",
   "input": {
     "type": "object",
     "additionalProperties": false,
@@ -38,7 +38,7 @@
           "missing",
           "excluded"
         ],
-        "description": "What the call found at call time: a regular file, a directory, nothing (missing), or excluded. An excluded path is matched by the exclusion engine's path rules and is never stat'ed, so 'excluded' says nothing about whether anything exists there."
+        "description": "What the call found at call time: a regular file, a directory, nothing (missing), or excluded. excluded means ineligible: the path matches the exclusion engine's path rules, is a symlink to such a target, or is a symlink the server does not follow. An excluded path is never stat'ed or read, so 'excluded' says nothing about whether anything exists there."
       },
       "queued": {
         "type": "boolean",

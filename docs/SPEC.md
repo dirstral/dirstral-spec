@@ -6451,7 +6451,15 @@ root, and return at once.
    `PATH_OUTSIDE_ROOT`. This is the narrow exception §17 names for this tool.
    A path that is not excluded is then resolved under the root with the
    root-isolation and symlink rules of §17; one that resolves outside the
-   root is `PATH_OUTSIDE_ROOT`.
+   root is `PATH_OUTSIDE_ROOT`. Symlinks follow the discovery rule (§7.1):
+   * with `ingest.follow_symlinks: true`, the resolved target is checked
+     against the same path rules before any stat. An excluded target reports
+     `kind: excluded` and is neither stat'ed nor read, exactly as an excluded
+     path;
+   * with `ingest.follow_symlinks: false` (the default), a path that is itself
+     a symlink is ineligible, as discovery skips it (`symlink_ignored`). The
+     call reports `kind: excluded` without following it, and the reconcile
+     retires anything indexed at the path (step 3).
 2. **Classification.** For a path that is not excluded, the server stats the
    resolved path once and reports `kind`: `file`, `directory`, or `missing`
    when nothing exists at the path. The call walks no subtree and reads no
@@ -6480,7 +6488,9 @@ root, and return at once.
      the deletion is the information. A file that appeared in the meantime
      is reconciled as a file, not tombstoned.
    * an excluded path (directory ignore list, `security.path_excludes`,
-     `.gitignore` rules or the secret patterns, §7.2): the path is ineligible.
+     `.gitignore` rules or the secret patterns, §7.2), a symlink whose target
+     those rules exclude, or a symlink the server does not follow: the path is
+     ineligible.
      A document indexed at it, and every document indexed under it when it is
      a directory, is retired exactly as the watcher retires it on a write to
      such a path: tombstoned, and kept as a `skipped` document when discovery
