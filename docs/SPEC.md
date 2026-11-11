@@ -5330,6 +5330,12 @@ Response contains an array of tools; each tool MUST include:
 * `inputSchema` (valid JSON Schema object)
 * (recommended) `outputSchema` (valid JSON Schema object)
 
+A tool this spec defines that the server does not serve in its current mode
+(an optional tool it leaves out, or one whose preconditions do not hold, such
+as `dir2mcp_recheck_path` without the file watcher, §15.13) MUST be absent
+from this list, and a `tools/call` that names it MUST fail with
+`TOOL_UNAVAILABLE` (§14.3).
+
 ### 12.3 Tool invocation: `tools/call`
 
 Request:
@@ -6460,6 +6466,16 @@ root, and return at once.
      a symlink is ineligible, as discovery skips it (`symlink_ignored`). The
      call reports `kind: excluded` without following it, and the reconcile
      retires anything indexed at the path (step 3).
+   * a path that is neither a regular file, a directory nor a symlink (a
+     FIFO, a socket or a device) is ineligible, because discovery reads only
+     regular files. The call reports `kind: excluded`, and the reconcile
+     retires anything indexed at the path and under it (step 3).
+
+   Only for a path the exclusion path rules match is `excluded` free of any
+   existence signal, because that path is never touched. A non-followed
+   symlink or a special entry is found by one `lstat`, so `excluded` there
+   tells the caller that something exists at the path. That discloses nothing
+   protected: neither is path-excluded, and neither is read.
 2. **Classification.** For a path that is not excluded, the server stats the
    resolved path once and reports `kind`: `file`, `directory`, or `missing`
    when nothing exists at the path. The call walks no subtree and reads no
@@ -6491,8 +6507,8 @@ root, and return at once.
      is reconciled as a file, not tombstoned.
    * an excluded path (directory ignore list, `security.path_excludes`,
      `.gitignore` rules or the secret patterns, §7.2), a symlink whose target
-     those rules exclude, or a symlink the server does not follow: the path is
-     ineligible.
+     those rules exclude, a symlink the server does not follow, or a special
+     entry (FIFO, socket, device): the path is ineligible.
      A document indexed at it, and every document indexed under it by path
      prefix (`<rel_path>/...`), whatever the path is now (a directory that
      became an ineligible symlink included), is retired exactly as the watcher

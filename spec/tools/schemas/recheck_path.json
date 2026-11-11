@@ -38,7 +38,7 @@
           "missing",
           "excluded"
         ],
-        "description": "What the call found at call time: a regular file, a directory, nothing (missing), or excluded. excluded means ineligible: the path matches the exclusion engine's path rules, is a symlink to such a target, or is a symlink the server does not follow. An excluded path is never stat'ed or read, so 'excluded' says nothing about whether anything exists there."
+        "description": "What the call found at call time: a regular file, a directory, nothing (missing), or excluded. excluded means ineligible: the path matches the exclusion engine's path rules, is a symlink to such a target, is a symlink the server does not follow, or is a special entry (FIFO, socket, device). A path the exclusion path rules match is never touched, so for it 'excluded' says nothing about whether anything exists there; a non-followed symlink or a special entry is found by one lstat, so for those 'excluded' shows that something exists, without reading it."
       },
       "queued": {
         "type": "boolean",

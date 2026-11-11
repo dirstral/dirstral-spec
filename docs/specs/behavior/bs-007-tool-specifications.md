@@ -500,7 +500,13 @@ lifetime of the process.
    target reports `kind: excluded`. When it does not (the default), a path
    that is itself a symlink is ineligible, as discovery skips it
    (`symlink_ignored`): the call reports `kind: excluded` without following
-   it, and the reconcile retires anything indexed at the path.
+   it, and the reconcile retires anything indexed at the path. A special
+   entry (a FIFO, a socket or a device) is ineligible too, since discovery
+   reads only regular files: `kind: excluded`, and the reconcile retires
+   anything indexed at it and under it. Only a path the exclusion path rules
+   match is answered with no filesystem access; for a non-followed symlink or
+   a special entry one `lstat` finds it, so `excluded` there shows that
+   something exists, which discloses nothing protected.
 2. For a path that is not excluded, the server stats the resolved path once
    and reports `kind` as `file`, `directory`, or `missing`. The call walks no
    subtree and reads no document. A file withheld only for its content (a secret
@@ -519,8 +525,8 @@ lifetime of the process.
    document whose file is gone and for a document indexed at the path itself
    (a file that became a directory); a tombstone for a path still `missing` when
    the reconcile starts, and for every document under it; retirement for an
-   excluded path (a symlink to an excluded target and a symlink the server
-   does not follow included), and for every document indexed under it by path
+   excluded path (a symlink to an excluded target, a symlink the server does
+   not follow and a special entry included), and for every document indexed under it by path
    prefix, whatever the path is now (a directory that became an ineligible
    symlink included), exactly
    as the watcher retires it on a write (tombstoned, kept as a `skipped`
@@ -533,8 +539,8 @@ lifetime of the process.
    added a request), `pending` (requests pending after this call, this one
    included when `queued`), all required, and nothing else. `kind` is `file`,
    `directory`, `missing` or `excluded` (ineligible: matched by the exclusion
-   path rules, a symlink to such a target, or a symlink the server does not
-   follow). This is the successful result; a
+   path rules, a symlink to such a target, a symlink the server does not
+   follow, or a special entry such as a FIFO, a socket or a device). This is the successful result; a
    failed call returns the standard tool error result, as for every tool.
 
 **Errors:** `MISSING_FIELD`, `INVALID_FIELD`, `PATH_OUTSIDE_ROOT`,
