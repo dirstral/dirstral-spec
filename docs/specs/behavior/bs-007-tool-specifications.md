@@ -519,8 +519,9 @@ lifetime of the process.
    document whose file is gone; a tombstone for a path still `missing` when
    the reconcile starts, and for every document under it; retirement for an
    excluded path (a symlink to an excluded target and a symlink the server
-   does not follow included), and for every document under an excluded
-   directory, exactly
+   does not follow included), and for every document indexed under it by path
+   prefix, whatever the path is now (a directory that became an ineligible
+   symlink included), exactly
    as the watcher retires it on a write (tombstoned, kept as a `skipped`
    document when discovery records a skip reason).
 4. The queue holds at most one pending request per normalized `rel_path`. A

@@ -6491,9 +6491,10 @@ root, and return at once.
      `.gitignore` rules or the secret patterns, §7.2), a symlink whose target
      those rules exclude, or a symlink the server does not follow: the path is
      ineligible.
-     A document indexed at it, and every document indexed under it when it is
-     a directory, is retired exactly as the watcher retires it on a write to
-     such a path: tombstoned, and kept as a `skipped` document when discovery
+     A document indexed at it, and every document indexed under it by path
+     prefix (`<rel_path>/...`), whatever the path is now (a directory that
+     became an ineligible symlink included), is retired exactly as the watcher
+     retires it on a write to such a path: tombstoned, and kept as a `skipped` document when discovery
      records a skip reason for it (§15.5).
 4. **Idempotence.** The queue holds at most one pending request per normalized
    `rel_path`. A request for a path that already has a pending request MUST NOT
