@@ -5449,6 +5449,9 @@ Example tool execution error:
   `dir2mcp_recheck_path` without the file watcher or under `--read-only`
   (§15.13); such a tool is also absent from `tools/list` (§12.2);
   **non-retryable** for the lifetime of the process)
+* `QUEUE_FULL` (a bounded request queue is full; first used by
+  `dir2mcp_recheck_path` (§15.13) for a call that would add a new pending
+  request; **retryable** once the worker drains the queue)
 
 ### 14.4 Ingestion/extraction
 
@@ -6523,6 +6526,13 @@ root, and return at once.
    add a second entry; it returns `queued: false`. When the new request is
    recursive and the pending one is not, the pending request becomes
    recursive. A request is pending from the call until its reconcile starts.
+   **Bound.** Because a missing path is accepted, distinct paths could grow
+   the queue without limit, so the server MUST bound the number of pending
+   requests (the bound is implementation-defined and SHOULD be configurable).
+   When the queue is full, a call that would add a new entry fails with
+   `QUEUE_FULL` (retryable: the worker drains the queue). A call for a path
+   that already has a pending request still deduplicates, and still makes a
+   pending request recursive, whatever the queue's fill.
 5. **Response.** `rel_path` is the normalized path (for `.`, the value is `.`).
    `queued` is `true` when this call added a request and `false` when a
    request for the same normalized `rel_path` was already pending (also when
@@ -6542,7 +6552,7 @@ root, and return at once.
     "rel_path": { "type": "string" },
     "kind": { "type": "string", "enum": ["file", "directory", "missing", "excluded"] },
     "queued": { "type": "boolean" },
-    "pending": { "type": "integer", "minimum": 0 }
+    "pending": { "type": "integer", "minimum": 1 }
   },
   "required": ["rel_path", "kind", "queued", "pending"]
 }
@@ -6554,7 +6564,7 @@ returns the tool error result of §12.4 (`isError: true`,
 tool's, describes the successful result only.
 
 **Errors:** `MISSING_FIELD`, `INVALID_FIELD` (a `recursive` that is not a
-boolean), `PATH_OUTSIDE_ROOT`, `TOOL_UNAVAILABLE` (§14).
+boolean), `PATH_OUTSIDE_ROOT`, `TOOL_UNAVAILABLE`, `QUEUE_FULL` (§14).
 
 ---
 

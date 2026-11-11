@@ -66,6 +66,10 @@ Each tool error returns an object with:
   `dir2mcp_recheck_path` without the file watcher or under `--read-only`;
   see [bs-007](../behavior/bs-007-tool-specifications.md)). Such a tool is
   also absent from `tools/list` ([bs-006](../behavior/bs-006-mcp-tools-list-call.md)).
+- `QUEUE_FULL`: a bounded request queue is full. First used by
+  `dir2mcp_recheck_path` for a call that would add a new pending request
+  ([bs-007](../behavior/bs-007-tool-specifications.md)). **Retryable** once the
+  worker drains the queue.
   **Non-retryable** for the lifetime of the process.
 
 ### 14.4 Ingestion / extraction
@@ -130,7 +134,8 @@ every error.
 ## Changelog
 
 - **0.4.0**: added `TOOL_UNAVAILABLE` (index/state) for a tool the running
-  server does not serve in its current mode; first used by
+  server does not serve in its current mode, and `QUEUE_FULL` (retryable) for
+  a bounded request queue that is full; both first used by
   `dir2mcp_recheck_path` ([bs-007](../behavior/bs-007-tool-specifications.md);
   SPEC §14.3; spec 0.92.0).
 - **0.3.0** — Added `SMIL_INVALID` and `SMIL_PATCH_FAILED` for the SMIL caption patch of SPEC §8.6.14 (spec 0.86.0).

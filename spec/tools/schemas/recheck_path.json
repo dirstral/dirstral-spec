@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://spec.dirstral.com/tools/schemas/recheck_path.json",
   "title": "dir2mcp_recheck_path",
-  "description": "Ask a running server in watch mode to reconcile one path under the corpus root now, instead of at the next periodic safety rescan (bs-007). Optional extension: served only when the server runs the file watcher and is not read-only; otherwise absent from tools/list and TOOL_UNAVAILABLE on call. The call enqueues the reconcile and returns; it does not wait for ingestion.",
+  "description": "Ask a running server in watch mode to reconcile one path under the corpus root now, instead of at the next periodic safety rescan (bs-007). Optional extension: served only when the server runs the file watcher and is not read-only; otherwise absent from tools/list and TOOL_UNAVAILABLE on call. The call enqueues the reconcile and returns; it does not wait for ingestion. The queue is bounded: a call that would add a new pending request to a full queue fails with QUEUE_FULL (retryable).",
   "input": {
     "type": "object",
     "additionalProperties": false,
@@ -46,8 +46,8 @@
       },
       "pending": {
         "type": "integer",
-        "minimum": 0,
-        "description": "Number of reconcile requests pending at the moment this call enqueued its request or found the pending one (one atomic step with the deduplication), this one included when queued is true. A worker that starts the request right after does not change the value."
+        "minimum": 1,
+        "description": "Number of reconcile requests pending at the moment this call enqueued its request or found the pending one (one atomic step with the deduplication), this one included (when queued is false, the already-pending request for the same path is counted), so the value is at least 1. A worker that starts the request right after does not change the value."
       }
     },
     "required": [

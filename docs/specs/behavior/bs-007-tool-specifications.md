@@ -538,7 +538,12 @@ lifetime of the process.
 4. The queue holds at most one pending request per normalized `rel_path`. A
    repeat for a pending path MUST NOT add an entry and returns `queued: false`;
    a recursive repeat makes a pending non-recursive request recursive. A
-   request is pending from the call until its reconcile starts.
+   request is pending from the call until its reconcile starts. The server
+   MUST bound the number of pending requests (implementation-defined, SHOULD
+   be configurable), since a missing path is accepted and distinct paths could
+   grow the queue without limit. When full, a call that would add a new entry
+   fails with `QUEUE_FULL` (retryable); a call for an already-pending path
+   still deduplicates and upgrades to recursive.
 5. Output: `rel_path` (normalized), `kind`, `queued` (`true` when this call
    added a request), `pending` (requests pending at the atomic enqueue or
    deduplication step, this one included when `queued`; a worker starting the
@@ -549,7 +554,7 @@ lifetime of the process.
    failed call returns the standard tool error result, as for every tool.
 
 **Errors:** `MISSING_FIELD`, `INVALID_FIELD`, `PATH_OUTSIDE_ROOT`,
-`TOOL_UNAVAILABLE` (df-008).
+`TOOL_UNAVAILABLE`, `QUEUE_FULL` (df-008).
 
 ## Changelog
 

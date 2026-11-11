@@ -42,6 +42,7 @@ These are returned with HTTP 200. The `isError: true` flag is set on the result.
 | `STORE_CORRUPT` | No | Store read failed with unexpected error |
 | `INTERNAL_ERROR` | Yes | Unexpected server-side error |
 | `TOOL_UNAVAILABLE` | No | The named tool is defined by the spec, but the running server does not serve it in its current mode (e.g. `dir2mcp_recheck_path` without the file watcher or under `--read-only`, bs-007); such a tool is also absent from `tools/list` (bs-006) |
+| `QUEUE_FULL` | Yes | A bounded request queue is full; `dir2mcp_recheck_path` returns it for a call that would add a new pending request (a call for an already-pending path still deduplicates). Retry once the worker drains the queue |
 
 ## Ingestion / extraction errors
 
