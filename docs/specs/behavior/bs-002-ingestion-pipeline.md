@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -27,6 +27,19 @@ deletion/tombstone semantics are in bs-008.
 ### 7.1 Discovery
 
 - Recursive walk from the corpus root.
+- **Parallel walk (optional).** `ingest.discovery_workers` (integer, default
+  `1`) bounds how many directories the walk reads at the same time. `1` is the
+  sequential walk. A larger value lets the walk read sibling subtrees
+  concurrently, which matters on a network filesystem, where each directory
+  read waits a round trip: a sequential walk of an NFS archive of 145,000
+  videos in a 20-level hash tree reads about 85 directories a second, so one
+  pass takes days. The result MUST NOT depend on the value: the same files, in
+  the same order (sorted by relative path), the same skip reports (their
+  order MAY differ), the same ignore, `.gitignore` and symlink rules, the same
+  directory-loop protection, and the same scan-cache contents. A value outside
+  `1`–`64` is `CONFIG_INVALID`. The key applies to a filesystem walk
+  (`source.kind: local` or `nfs`); a remote source (§7.8) lists by its own
+  pagination and ignores it.
 - Default ignore list includes: `.git/`, `node_modules/`, `dist/`, `build/`,
   `.venv/`, `.dir2mcp/`.
 - Optional `.gitignore` support.
@@ -485,6 +498,7 @@ re-indexes it.
 
 ## Changelog
 
+- **0.6.0** (§7.1): mirrors spec 0.92.0: `ingest.discovery_workers` (default `1`, range `1`–`64`) lets the walk read directories concurrently; the result MUST NOT depend on the value.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript
