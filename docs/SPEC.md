@@ -1029,7 +1029,9 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   concurrently, which matters on a network filesystem, where each directory
   read waits a round trip: a sequential walk of an NFS archive of 145,000
   videos in a 20-level hash tree reads about 85 directories a second, so one
-  pass takes days. The result MUST NOT depend on the value: the same files, in
+  pass takes about 8.5 hours before any file is processed; with 16 concurrent
+  readers the same tree was listed in about 50 minutes. The result MUST NOT
+  depend on the value: the same files, in
   the same order (sorted by relative path), the same skip reports (their
   order MAY differ), the same ignore, `.gitignore` and symlink rules, the same
   directory-loop protection, and the same scan-cache contents. `0` means the
