@@ -1090,7 +1090,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * AWS Access Key ID: `AKIA[0-9A-Z]{16}`
   * AWS/Secret assignment heuristic: `(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`
   * JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
-  * Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|bearer|secret|private|session|refresh|personal|client|oauth|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
+  * Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
   * Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
   * Common API key formats: `(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
@@ -1101,7 +1101,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * **AWS Access Key ID** (`AKIA[0-9A-Z]{16}`): may match synthetic examples in docs/tests or random uppercase identifiers of the same shape.
   * **AWS/Secret assignment heuristic** (`(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`): reduces prose false positives (for example “AWS Secrets Manager”) by requiring assignment-like context.
   * **JWTs** (`(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`): reduced false positives via auth/key context and minimum segment lengths; can still match synthetic token-like test strings with those contexts.
-  * **Generic bearer token** (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|bearer|secret|private|session|refresh|personal|client|oauth|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule constrains the key name. The key is a bare `token`, or a key whose last word before `token` is a credential word (`GITHUB_TOKEN`, `x-auth-token`, `access_token`, `bearer_token`). A key whose last word before `token` is another word does not match: `redir_token`, `next_page_token`, `csrf_token`, `mytoken`. The left boundary stops a match inside a longer key. The rule can still match a bare `token` key that holds a feature or cache value and not a credential. Before spec 0.93.0 the default was `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`. It matched any key that ends in `token`, so a pasted video-host redirect link (`...&redir_token=<base64>`) withheld the whole document.
+  * **Generic bearer token** (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule constrains the key name. The key is a bare `token`, or a key whose last word before `token` is a credential word (`GITHUB_TOKEN`, `x-auth-token`, `access_token`, `bearer_token`, `PASSWORD_RESET_TOKEN`). A key whose last word before `token` is another word does not match: `redir_token`, `next_page_token`, `csrf_token`, `mytoken`. The left boundary stops a match inside a longer key. The trade-off is stated: a credential key whose last word is not in the list (for example `foo_token`) no longer matches, so an operator with such keys adds them through `security.secret_patterns`. The rule can still match a bare `token` key that holds a feature or cache value and not a credential. Before spec 0.93.0 the default was `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`. It matched any key that ends in `token`, so a pasted video-host redirect link (`...&redir_token=<base64>`) withheld the whole document.
   * **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the left boundary requires `sk-` to start a word. Without it, the rule matched inside a transliterated URL slug (`.../krasnoyarsk-podpisanie-dogovorov-...`, where `sk-` closes a place name) and withheld the whole document. It can still match a slug segment that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page) when 20 or more letters, digits or hyphens follow.
   * **Common API key formats** (`(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left boundary requires the prefix to follow a non-alphanumeric character, so a longer identifier (`task_...`) does not match. The rule can still match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
 
@@ -1130,12 +1130,13 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * Must hit (each sample matches at least one default):
     * `GITHUB_TOKEN=<40 chars>`
     * `token: <24 chars>`
+    * `PASSWORD_RESET_TOKEN=<24 chars>`
     * `OPENAI_API_KEY=sk-proj-<40 chars>`
   * Must not hit (no default matches the sample):
     * `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org` (a redirect link pasted into a document)
     * `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve` (a transliterated URL slug)
 
-  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.93.0 did) or when an operator edits `security.secret_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld: the scan indexes it. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered pattern list) and compare it at each scan. A document already indexed that a new pattern matches SHOULD be withheld on the same pass, and its chunks retired. That direction reads every indexed document once, so an implementation MAY run it as a background pass.
+  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.93.0 did) or when an operator edits `security.secret_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld: the scan indexes it. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered pattern list) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan.
 
 * Exclude large binaries by default:
 
@@ -1529,14 +1530,17 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   (for example `-env:UserInstallation=file:///<tmp>/profile`). A shared profile
   holds a lock, so a second concurrent conversion fails or waits. The output
   directory MUST be a temporary directory outside the corpus root: the engine
-  never writes into the corpus. The implementation removes the profile, the
-  output directory and the `.docx` when the conversion ends.
+  never writes into the corpus.
 * **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
   `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
   representation is `extracted_markdown`, `rep_hash` is computed over the
   rendered Markdown, and the spans carry the section breadcrumb and `label` and
   no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
   implementation MAY cache it, as an implementation-private artifact.
+* **Clean-up.** After the read step ends, and also after a failure or a
+  timeout in either step, the implementation removes the temporary profile and
+  the temporary output directory with the `.docx` in it. A cached copy of the
+  `.docx` (above) is a separate file and is not removed.
 * **Time limit.** One conversion of one document MUST have a time limit, so
   one document cannot stop the index run. `ingest.libreoffice.timeout_sec` sets the
   limit in seconds (env `DIR2MCP_LIBREOFFICE_TIMEOUT_SEC`). The default is
@@ -1553,6 +1557,12 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
 * Re-indexing semantics are unchanged (§7.6): under `auto`, a `.doc` later
   covered by a higher-fidelity active engine is extracted again through it on
   re-index.
+* **An engine that becomes available.** A `.doc` that an earlier scan recorded
+  as an unsupported-format skip or error (§7.4.B.2) because no active engine
+  covered it MUST be extracted on the first scan in which `libreoffice` is
+  available and eligible, also when its `content_hash` is unchanged (§7.6).
+  Otherwise the operator who follows the remediation (install LibreOffice and
+  `pandoc`) sees no change.
 
 See [Design 0002](design/0002-structured-extraction.md) for rationale and the
 structure-to-provenance mapping.
@@ -2703,8 +2713,10 @@ no model is trained or adapted, and every model choice stays the operator's.
     implementation's confidence floor, or with no language, is **no signal**:
     resolution continues down the precedence (decoder report, then text), and
     under `window` the §8.2.2 continuity rule applies to what remains. A
-    no-speech result (§8.2) from the identifier is a report with no language,
-    so it is no signal too.
+    no-speech result (§8.2) from the identifier that reports no language is no
+    signal too. An identifier response that reports a language (at or above
+    the floor) is a signal even when its text is empty: an identifier's text is
+    discarded in any case, so an empty text does not void its language report.
   * **Failure.** An identifier request that fails (transport or provider error)
     is no signal for that item or window, exactly as a report below the floor.
     It MUST NOT fail the item: identification is advisory.
@@ -2787,9 +2799,10 @@ language list and no model ship, and every model choice stays the operator's.
     fails (transport or provider error) is no signal (§8.2.3), and the item is
     decoded exactly as it is today: the default profile decodes, and the
     language is resolved from the text afterwards. It MUST NOT fail the item.
-    A no-speech result (§8.2) from the identifier is no signal: the probe held
-    no speech, and other parts of the item can still hold speech. The default
-    profile decodes the item. When that decode is also a no-speech result, the
+    A no-speech result (§8.2) from the identifier that reports no language is
+    no signal: the probe held no speech, and other parts of the item can still
+    hold speech. The default profile decodes the item. (An identifier response
+    with empty text that reports a language is a signal, §8.2.3.) When that decode is also a no-speech result, the
     outcome is `no_speech` (§8.6.13).
   * **Recording.** A transcript decoded with an identifier bound under `item`
     records `language_identifier` (the profile name), `language_scope: item`
@@ -3815,7 +3828,10 @@ languages in one document**.
   A track whose decode is a no-speech result (§8.2) did not fail: it produces no
   transcript representation and is not an error. The document outcome
   `no_speech` (§8.6.13) applies only when every selected track is a no-speech
-  result.
+  result. When at least one selected track failed and every other selected
+  track is a no-speech result, no track produced a transcript and the document
+  is `error`, as when every track failed: the failure is retried on the next
+  run, because the failed track can hold speech.
 
 * **Determinism.** Tracks are processed in **container stream order**, and the
   `@t<N>` index is the stream's 0-based audio index, so representation keys and
@@ -3928,10 +3944,12 @@ transcript exactly as it applies to an unreadable format.
     `status=skipped` with `skip_reason="no_speech"` (§15.6). It is not an
     error. When the document keeps another searchable representation, it stays
     `status=ok`, as §7.4.B.2 rules for an absent extraction.
-  * The implementation MUST NOT decode the recording again while its
-    `content_hash` (§7.6) is unchanged. It MAY decode it again when the STT
-    derivation identity (§8.6.7) changes, because another model can find speech
-    that this one did not.
+  * The implementation MUST NOT decode the recording again while both its
+    `content_hash` (§7.6) and the STT derivation identity (§8.6.7) are
+    unchanged. When the derivation identity changes and the content does not,
+    it MAY decode the recording again, because another model can find speech
+    that this one did not. A change of `content_hash` decodes it again as for
+    any changed file.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused
@@ -7264,7 +7282,7 @@ security:
     - 'AKIA[0-9A-Z]{16}'
     - '(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}'
     - '(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'
-    - '(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|bearer|secret|private|session|refresh|personal|client|oauth|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
+    - '(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
     - '(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}'
     - '(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
 ```

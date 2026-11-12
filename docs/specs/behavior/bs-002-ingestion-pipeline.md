@@ -48,7 +48,7 @@ deletion/tombstone semantics are in bs-008.
   - AWS Access Key ID: `AKIA[0-9A-Z]{16}`
   - AWS/Secret assignment heuristic: `(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`
   - JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
-  - Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|bearer|secret|private|session|refresh|personal|client|oauth|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
+  - Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
   - Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
   - Common API key formats: `(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
@@ -66,14 +66,17 @@ deletion/tombstone semantics are in bs-008.
     reduced false positives via auth/key context and minimum segment lengths; can
     still match synthetic token-like test strings with those contexts.
   - **Generic bearer token**
-    (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|bearer|secret|private|session|refresh|personal|client|oauth|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`):
+    (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`):
     the rule constrains the key name. The key is a bare `token`, or a key whose
     last word before `token` is a credential word (`GITHUB_TOKEN`,
-    `x-auth-token`, `access_token`, `bearer_token`). A key whose last word
-    before `token` is another word does not match: `redir_token`,
-    `next_page_token`, `csrf_token`, `mytoken`. The left boundary stops a match
-    inside a longer key. The rule can still match a bare `token` key that holds
-    a feature or cache value and not a credential. Before spec 0.93.0 the
+    `x-auth-token`, `access_token`, `bearer_token`, `PASSWORD_RESET_TOKEN`). A
+    key whose last word before `token` is another word does not match:
+    `redir_token`, `next_page_token`, `csrf_token`, `mytoken`. The left boundary
+    stops a match inside a longer key. The trade-off is stated: a credential key
+    whose last word is not in the list (for example `foo_token`) no longer
+    matches, so an operator with such keys adds them through
+    `security.secret_patterns`. The rule can still match a bare `token` key that
+    holds a feature or cache value and not a credential. Before spec 0.93.0 the
     default was `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`. It matched any key
     that ends in `token`, so a pasted video-host redirect link
     (`...&redir_token=<base64>`) withheld the whole document.
@@ -131,6 +134,7 @@ deletion/tombstone semantics are in bs-008.
   - Must hit (each sample matches at least one default):
     - `GITHUB_TOKEN=<40 chars>`
     - `token: <24 chars>`
+    - `PASSWORD_RESET_TOKEN=<24 chars>`
     - `OPENAI_API_KEY=sk-proj-<40 chars>`
   - Must not hit (no default matches the sample):
     - `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org`
@@ -147,9 +151,11 @@ deletion/tombstone semantics are in bs-008.
   the new set does not match is no longer withheld: the scan indexes it. To
   detect the change, an implementation SHOULD persist a fingerprint of the
   effective set (for example a hash of the ordered pattern list) and compare it
-  at each scan. A document already indexed that a new pattern matches SHOULD be
-  withheld on the same pass, and its chunks retired. That direction reads every
-  indexed document once, so an implementation MAY run it as a background pass.
+  at each scan. A document already indexed that the new set matches MUST be
+  withheld, and its representations and chunks retired, so a credential that a
+  new pattern finds does not stay searchable. That direction reads every indexed
+  document once, so an implementation MAY run it as a background pass after the
+  scan.
 
 - Exclude large binaries by default:
   - configurable max file size per `doc_type`.
@@ -549,7 +555,7 @@ re-indexes it.
 
 ## Changelog
 
-- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: the generic bearer-token default is key-anchored (a bare `token` key or a credential word before `token`; `redir_token`, `next_page_token` and `csrf_token` no longer match). The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
+- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: the generic bearer-token default is key-anchored (a bare `token` key or a credential word before `token`; `redir_token`, `next_page_token` and `csrf_token` no longer match). The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript

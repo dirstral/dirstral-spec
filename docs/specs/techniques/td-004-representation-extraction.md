@@ -446,14 +446,17 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
   (for example `-env:UserInstallation=file:///<tmp>/profile`). A shared profile
   holds a lock, so a second concurrent conversion fails or waits. The output
   directory **MUST** be a temporary directory outside the corpus root: the engine
-  never writes into the corpus. The implementation removes the profile, the
-  output directory and the `.docx` when the conversion ends.
+  never writes into the corpus.
 - **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
   `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
   representation is `extracted_markdown`, `rep_hash` is computed over the
   rendered Markdown, and the spans carry the section breadcrumb and `label` and
   no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
   implementation **MAY** cache it, as an implementation-private artifact.
+- **Clean-up.** After the read step ends, and also after a failure or a
+  timeout in either step, the implementation removes the temporary profile and
+  the temporary output directory with the `.docx` in it. A cached copy of the
+  `.docx` (above) is a separate file and is not removed.
 - **Time limit.** One conversion of one document **MUST** have a time limit, so
   one document cannot stop the index run. `ingest.libreoffice.timeout_sec` sets the
   limit in seconds (env `DIR2MCP_LIBREOFFICE_TIMEOUT_SEC`). The default is
@@ -470,9 +473,16 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
   that is absent or not functional is not a per-document error: it makes the engine
   unavailable, and each `.doc` is a coverage gap under §B.2.
 - Re-indexing semantics are unchanged
-  ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.6): under `auto`, a `.doc` later
-  covered by a higher-fidelity active engine is extracted again through it on
-  re-index.
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.6): under `auto`, a
+  `.doc` later covered by a higher-fidelity active engine is extracted again
+  through it on re-index.
+- **An engine that becomes available.** A `.doc` that an earlier scan recorded
+  as an unsupported-format skip or error (§B.2) because no active engine
+  covered it **MUST** be extracted on the first scan in which `libreoffice` is
+  available and eligible, also when its `content_hash` is unchanged
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.6). Otherwise the
+  operator who follows the remediation (install LibreOffice and `pandoc`) sees
+  no change.
 
 ### C) Audio (STT provider is configurable)
 
@@ -528,7 +538,7 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
-- **0.8.0**: mirrors spec 0.93.0 (SPEC.md §7.4.B): a capability-activated T2 engine `libreoffice` reads legacy binary Word `.doc`. It converts the `.doc` to `.docx` with a headless LibreOffice (an isolated user profile per conversion, a temporary output directory outside the corpus, `ingest.libreoffice.timeout_sec`, default `300`) and reads the result with the pandoc `docx` reader, so its provenance equals pandoc's. It is active only when a LibreOffice binary and `pandoc` both pass a probe. Its only `✅` cell is `.doc`. `ingest.extractor: libreoffice` pins it with no cross-engine fallback. A conversion failure or timeout is a per-document error; a missing binary is a coverage gap.
+- **0.8.0**: mirrors spec 0.93.0 (SPEC.md §7.4.B): a capability-activated T2 engine `libreoffice` reads legacy binary Word `.doc`. It converts the `.doc` to `.docx` with a headless LibreOffice (an isolated user profile per conversion, a temporary output directory outside the corpus, `ingest.libreoffice.timeout_sec`, default `300`) and reads the result with the pandoc `docx` reader, so its provenance equals pandoc's. It is active only when a LibreOffice binary and `pandoc` both pass a probe. Its only `✅` cell is `.doc`. `ingest.extractor: libreoffice` pins it with no cross-engine fallback. A conversion failure or timeout is a per-document error; an absent binary is a coverage gap. A `.doc` skipped for want of an engine is extracted on the first scan in which the engine is available.
 - **0.7.0**: mirrors spec 0.77.0 (SPEC.md §7.4.B): the default of
   `ingest.docling.timeout_sec` is `3600` (was `900`). docling on CPU needed
   about 20 minutes for one 195-page PDF on a loaded host.
