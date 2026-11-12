@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.11.0
+- **Version:** 0.12.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -111,11 +111,11 @@ open (8.3) — never as `CONFIG_INVALID`. All other `✅` cells are statically
 valid.
 
 **Extraction is not a cell in this matrix.** Document/image *extraction-engine*
-selection (docling / docling-serve / mistral-ocr / pandoc) is a per-format,
-fidelity-ordered routing decision owned by
+selection (docling / docling-serve / mistral-ocr / pandoc / libreoffice) is a
+per-format, fidelity-ordered routing decision owned by
 [td-004](td-004-representation-extraction.md) §B.1, not a `kind`-level capability
-here: extraction fidelity is per-format and two engines (`docling`, `pandoc`)
-have no §8.1.1 provider profile. Where an extraction engine *is* an §8 surface,
+here: extraction fidelity is per-format and three engines (`docling`, `pandoc`,
+`libreoffice`) have no §8.1.1 provider profile. Where an extraction engine *is* an §8 surface,
 it binds through the corresponding capability — the `mistral` extraction engine
 is the active `ocr` provider (selected per 8.1.3), and the audio extraction path
 binds `stt` ([td-004](td-004-representation-extraction.md) §C). No
@@ -412,6 +412,28 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   `kind` carries the `stt` capability (8.1.2) qualifies.
 * Outputs MUST be normalized to the same `transcript` representation format
   regardless of provider.
+* **A response with no speech is a result, not an error (normative).** An STT
+  provider can return a well-formed response for audio that holds no speech. For
+  example, an OpenAI-compatible server returns `{"text":"","segments":[]}` for a
+  clip that holds only music or ambient sound. Such a response is a **no-speech
+  result**: a successful decode that found no speech. A response is a no-speech
+  result when all of these are true:
+  * it parses;
+  * it has a text field, a segments field, or both;
+  * its text is empty or holds only whitespace;
+  * it holds no segment whose text holds more than whitespace (zero segments
+    is the usual case).
+
+  The implementation MUST NOT treat a no-speech result as a transport or
+  provider error. It is not a failed window
+  ([td-003](td-003-transcription-translation-subtitles.md) §8.6.13), it does not
+  trigger `media.stt.on_route_error` (§8.2.4), and it does not advance a
+  candidate list (§8.2.3). A response that does not parse, or that has neither a
+  text field nor a segments field, is malformed and stays a provider error.
+  td-003 §8.6.6 and §8.6.13 say what a no-speech result does to the transcript
+  and to the document (`no_speech`). A sidecar (td-003 §8.6.4) still replaces
+  STT, so these rules never apply to a document whose transcript comes from a
+  sidecar.
 * **Gemini** transcribes via the native `models/{model}:generateContent` surface:
   the audio is sent as an inline-data part (base64, with its MIME type) alongside
   a transcription instruction, and the model's text output is the transcript.
@@ -461,6 +483,11 @@ the authoritative text.
 Spec 0.82.0 adds rules for when a route-fallback transcript is decoded again
 (`media.stt.route_retry_after`, `route_fallback_at`, `route_fallback_by`). See
 SPEC.md §8.2.4, the authoritative text.
+
+Spec 0.93.0: a no-speech result (§8.2) from the language identifier is no
+signal, under `item` and under `window` (SPEC.md §8.2.3, §8.2.4). The default
+profile then decodes the item, and when that decode is also a no-speech result
+the outcome is `no_speech` (td-003 §8.6.13).
 
 ### 8.3 Note on TTS
 
@@ -589,6 +616,8 @@ it MUST NOT make ingestion fail.
   only the start. SPEC.md §8.8 holds the rules.
 
 ## Changelog
+
+- **0.12.0**: §8.2 (spec 0.93.0): a well-formed STT response with empty text and no segment that holds text is a **no-speech result**, a successful decode, not a provider error; a malformed response stays an error. §8.2.3/§8.2.4: a no-speech identifier response is no signal. §8.1.2: the extraction-engine list names `libreoffice`.
 
 - **0.11.0**: §8.8 (spec 0.85.0): pointers to the `media.language` pin rules and
   the sampled-detection rule for a long text.

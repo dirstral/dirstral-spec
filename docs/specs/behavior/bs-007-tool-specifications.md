@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.18.0
+- **Version:** 0.19.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -278,7 +278,10 @@ and `evidence` are optional.
   minor: `unsupported_format` (no extractor — e.g. `.odt`/`.rtf`, encrypted PDF,
   image outside the OCR allowlist, video with no sidecar), `binary_ignored`,
   `archive` (container or un-expanded nested member), `ignore_rule`,
-  `secret_excluded`, `path_excluded`, `size_cap`. New reasons are added only by a
+  `secret_excluded`, `path_excluded`, `size_cap`, `language_uncovered`,
+  `transcript_partial`, `symlink_ignored`, `no_speech` (media whose STT decode
+  found no speech in the whole recording, with no other searchable
+  representation; td-003 §8.6.13). New reasons are added only by a
   minor version bump (additive); a client MAY receive an unrecognized value from
   a newer server and SHOULD render it verbatim rather than error. `count` is
   always **>= 1** (zero-count reasons are omitted). Implementations MAY omit the
@@ -564,6 +567,7 @@ lifetime of the process.
 
 ## Changelog
 
+- **0.19.0**: the `skip_reasons` enum list names `no_speech` (spec 0.93.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
 - **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
   spec 0.92.0): a client asks a server in watch mode to reconcile one path
   under the root now; the call validates, classifies, enqueues and returns,

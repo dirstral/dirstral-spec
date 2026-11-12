@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.17.0
+- **Version:** 0.18.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -162,12 +162,15 @@ rag:
 
 ingest:
   gitignore: true
-  extractor: auto      # auto|docling|docling-serve|mistral|off
+  extractor: auto      # auto|docling|docling-serve|mistral|pandoc|libreoffice|off
   # auto = best-available per format (td-004 §B.1): highest-fidelity ACTIVE
   # engine that supports each format; no format routed to an engine that can't
   # read it, no higher-fidelity engine bypassed. A pinned engine (docling|
-  # docling-serve|mistral) is honored exactly; formats it can't read degrade
-  # per on_unsupported.
+  # docling-serve|mistral|pandoc|libreoffice) is honored exactly; formats it
+  # can't read degrade per on_unsupported. pandoc and libreoffice (both T2) are
+  # capability-activated: a functional pandoc activates the docx/odt/rtf/epub/html
+  # cells; a functional soffice/libreoffice binary AND a functional pandoc activate
+  # the .doc cell.
   on_unsupported: lenient   # lenient|strict (td-004 §B.2). lenient (default) =
     # skip-with-warning + name the gap in the coverage report (bs-002 §7.7);
     # strict = non-fatal per-document UNSUPPORTED_FORMAT error (bs-002 §7.7).
@@ -183,6 +186,20 @@ ingest:
     # MUST be greater than 0. A timeout records a per-document error that names
     # the document and the limit. Env: DIR2MCP_DOCLING_TIMEOUT_SEC.
     timeout_sec: 3600
+  pandoc:
+    # Optional override for the pandoc binary (td-004). Empty = resolve `pandoc`
+    # from PATH. Capability-activated: a working binary activates the T2 matrix
+    # cells; no enable flag. A resolved-but-non-functional binary is unavailable.
+    command: ""        # e.g. /opt/homebrew/bin/pandoc
+  libreoffice:
+    # Optional override for the LibreOffice binary (td-004). Empty = resolve
+    # `soffice`, then `libreoffice`, from PATH. Converts a legacy .doc to .docx
+    # for the pandoc docx reader; needs a functional pandoc too. No enable flag.
+    command: ""        # e.g. /usr/bin/soffice
+    # Time limit in seconds for one .doc conversion. MUST be greater than 0. A
+    # timeout records a per-document error that names the document and the
+    # limit. Env: DIR2MCP_LIBREOFFICE_TIMEOUT_SEC.
+    timeout_sec: 300
   pdf:
     mode: ocr          # off|ocr|auto
   images:
@@ -399,8 +416,9 @@ security:
     - 'AKIA[0-9A-Z]{16}'
     - '(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}'
     - '(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'
-    - '(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
-    - 'sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32}'
+    - '(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|bearer|secret|private|session|refresh|personal|client|oauth|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
+    - '(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}'
+    - '(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
 ```
 
 > **Drift note:** the `media.clip` comment still cites `§15.11`
@@ -410,6 +428,7 @@ security:
 
 ## Changelog
 
+- **0.18.0**: mirrors spec 0.93.0 (SPEC.md §7.2, §7.4.B, §16.2): the `security.secret_patterns` defaults change (key-anchored generic token; the `sk-` key format with a left boundary; a left boundary on `sk_`/`api_`). `ingest.extractor` lists `pandoc` (missing here since spec 0.31.0) and the new `libreoffice`; the template lists the `ingest.pandoc` block and the new `ingest.libreoffice.{command, timeout_sec}` block.
 - **0.17.0**: mirrors spec 0.91.0 (SPEC.md §8.6.10, §16.2): the template lists `media.subtitles.ttml.layout` (`spans` default, or `divs`) and `media.subtitles.ttml.language_codes` (`bcp47` default, or `iso639_2`).
 - **0.16.0**: mirrors spec 0.86.0 (SPEC.md §8.6.14, §16.2): the template lists `media.subtitles.emit.{smil, smil_params, smil_language_codes, ttml_name}` and `media.subtitles.ttml.segmentation`, all off or unchanged by default.
 - **0.15.0**: mirrors spec 0.82.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.route_retry_after: 24h` (env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`), with a pointer to SPEC.md §8.2.4 and §16.2 for its rules.

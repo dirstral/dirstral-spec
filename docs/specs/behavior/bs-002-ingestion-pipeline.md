@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -48,8 +48,9 @@ deletion/tombstone semantics are in bs-008.
   - AWS Access Key ID: `AKIA[0-9A-Z]{16}`
   - AWS/Secret assignment heuristic: `(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`
   - JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
-  - Generic bearer token: `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`
-  - Common API key formats (e.g. `sk_[a-z0-9]{32}`, `api_[A-Za-z0-9]{32}`)
+  - Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|bearer|secret|private|session|refresh|personal|client|oauth|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
+  - Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
+  - Common API key formats: `(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
   These patterns are the **defaults**; they live in configuration under
   `security.secret_patterns` (bs-011) and can be extended or overridden by users.
@@ -64,11 +65,30 @@ deletion/tombstone semantics are in bs-008.
   - **JWTs** (`(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`):
     reduced false positives via auth/key context and minimum segment lengths; can
     still match synthetic token-like test strings with those contexts.
-  - **Generic bearer token** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): can match
-    innocuous config values named `token` (feature tokens, cache tokens) that are
-    not credentials.
-  - **Common API key formats** (`sk_[a-z0-9]{32}`, `api_[A-Za-z0-9]{32}`): can
-    match placeholders, test fixtures, or generated IDs that happen to share the
+  - **Generic bearer token**
+    (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|bearer|secret|private|session|refresh|personal|client|oauth|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`):
+    the rule constrains the key name. The key is a bare `token`, or a key whose
+    last word before `token` is a credential word (`GITHUB_TOKEN`,
+    `x-auth-token`, `access_token`, `bearer_token`). A key whose last word
+    before `token` is another word does not match: `redir_token`,
+    `next_page_token`, `csrf_token`, `mytoken`. The left boundary stops a match
+    inside a longer key. The rule can still match a bare `token` key that holds
+    a feature or cache value and not a credential. Before spec 0.93.0 the
+    default was `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`. It matched any key
+    that ends in `token`, so a pasted video-host redirect link
+    (`...&redir_token=<base64>`) withheld the whole document.
+  - **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the
+    left boundary requires `sk-` to start a word. Without it, the rule matched
+    inside a transliterated URL slug
+    (`.../krasnoyarsk-podpisanie-dogovorov-...`, where `sk-` closes a place
+    name) and withheld the whole document. It can still match a slug segment
+    that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page)
+    when 20 or more letters, digits or hyphens follow.
+  - **Common API key formats**
+    (`(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left
+    boundary requires the prefix to follow a non-alphanumeric character, so a
+    longer identifier (`task_...`) does not match. The rule can still match
+    placeholders, test fixtures, or generated IDs that happen to share the
     prefix/length.
 
   Refinement guidance via `security.secret_patterns`:
@@ -86,8 +106,10 @@ deletion/tombstone semantics are in bs-008.
 
   - JWT: anchor to `Authorization: Bearer` or token key names and enforce minimum
     segment lengths.
-  - Bearer token: constrain key names (`access_token`, `bearer_token`) and reduce
-    accidental matches in generic `token=` fields.
+  - Bearer token: constrain key names (`access_token`, `bearer_token`) and
+    reduce accidental matches in generic `token=` fields. The default does this
+    since spec 0.93.0. To add a credential word, copy the default and extend its
+    word list.
   - AWS secret heuristic: keep assignment/credential context anchors and avoid
     broad prose matching.
 
@@ -101,6 +123,33 @@ deletion/tombstone semantics are in bs-008.
     positive or false negative).
   - Review CI diffs of matched files/lines before merging pattern changes;
     iterate by tightening context anchors or path excludes.
+
+  **Regression fixtures for the defaults (normative).** An implementation MUST
+  test its default set against these samples. `<n chars>` stands for that many
+  characters from `[A-Za-z0-9]`.
+
+  - Must hit (each sample matches at least one default):
+    - `GITHUB_TOKEN=<40 chars>`
+    - `token: <24 chars>`
+    - `OPENAI_API_KEY=sk-proj-<40 chars>`
+  - Must not hit (no default matches the sample):
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org`
+      (a redirect link pasted into a document)
+    - `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve`
+      (a transliterated URL slug)
+
+  **A change of the effective pattern set (normative).** A document withheld as
+  `secret_excluded` (bs-007) was judged against one pattern set. The effective
+  set changes when a spec version changes a default (0.93.0 did) or when an
+  operator edits `security.secret_patterns`. On the first scan after such a
+  change, the implementation MUST evaluate each withheld document again against
+  the new set, also when its `content_hash` is unchanged (§7.6). A document that
+  the new set does not match is no longer withheld: the scan indexes it. To
+  detect the change, an implementation SHOULD persist a fingerprint of the
+  effective set (for example a hash of the ordered pattern list) and compare it
+  at each scan. A document already indexed that a new pattern matches SHOULD be
+  withheld on the same pass, and its chunks retired. That direction reads every
+  indexed document once, so an implementation MAY run it as a background pass.
 
 - Exclude large binaries by default:
   - configurable max file size per `doc_type`.
@@ -120,6 +169,20 @@ Use extension + MIME sniff + binary heuristics to classify:
 - `pdf`, `image`, `audio`, `video`
 - `archive` (zip/tar/tar.gz) — optionally deep-extracts members
 - `binary_ignored`
+
+**Video containers and shared extensions.** This is a clarification of the rule above: it
+states what "extension + MIME sniff" above means for video. Video containers include
+`.mp4 .mov .mkv .m4v .webm .avi .flv .wmv .mpg .mpeg .mxf .vob .3gp .m2ts`. An
+implementation SHOULD classify each of these as `video`. Some extensions are
+shared by code and media: `.ts` is TypeScript or an MPEG transport stream, and
+`.mts` is a TypeScript module or an AVCHD transport stream. The extension
+cannot decide such a file, so the implementation MUST decide it by content. A
+file is an MPEG transport stream when it holds the sync byte `0x47` at a fixed
+interval of 188 bytes, or of 192 bytes for the BDAV variant (a 4-byte
+timestamp before each 188-byte packet, so the sync byte is at offset 4 of each
+packet). Such a file is `video`. Other content is `code`. An implementation
+SHOULD check several consecutive packets (for example the first five) before it
+decides `video`, so one `0x47` byte in a text file does not decide it.
 
 ### 7.4 Representation generation
 
@@ -191,7 +254,8 @@ that a present-but-broken extractor be visible rather than reported as healthy
   engine (per the td-004 §B.1 matrix) — e.g. "`.odt`, `.tiff` present, no active
   engine covers them";
 - for each uncovered class, name a **remediation** — the engine/config to add
-  (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393); or
+  (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393);
+  install LibreOffice and `pandoc` for `.doc`; or
   set `ingest.on_unsupported: strict` to fail instead of skip").
 
 **Basis of "present" and of the engine list.** Two readings of the report have
@@ -213,7 +277,7 @@ proven wrong in practice and are ruled out here:
   and by `doctor`, not only by the run that found it.
 * The **engine list** covers every engine the `ingest.extractor` policy makes
   eligible (td-004 §B.1), including a capability-activated secondary engine such as
-  `pandoc` under `auto`, and not only the primary engine of the cascade. An eligible
+  `pandoc` or `libreoffice` under `auto`, and not only the primary engine of the cascade. An eligible
   engine that is unavailable is listed with its reason, because its absence is
   what leaves a format class uncovered.
 
@@ -485,6 +549,7 @@ re-indexes it.
 
 ## Changelog
 
+- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: the generic bearer-token default is key-anchored (a bare `token` key or a credential word before `token`; `redir_token`, `next_page_token` and `csrf_token` no longer match). The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript
