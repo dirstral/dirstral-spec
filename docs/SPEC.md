@@ -1092,7 +1092,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
   * Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
   * Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
-  * Common API key formats: `(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
+  * Common API key formats: `(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
   These patterns are the **defaults**; they live in configuration under `security.secret_patterns` and can be extended or overridden by users.
 
@@ -1103,7 +1103,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * **JWTs** (`(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`): reduced false positives via auth/key context and minimum segment lengths; can still match synthetic token-like test strings with those contexts.
   * **Generic bearer token** (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule constrains the key name. The key is a bare `token`, or a key whose last word before `token` is a credential word (`GITHUB_TOKEN`, `x-auth-token`, `access_token`, `bearer_token`, `PASSWORD_RESET_TOKEN`). A key whose last word before `token` is another word does not match: `redir_token`, `next_page_token`, `csrf_token`, `mytoken`. The left boundary stops a match inside a longer key. The trade-off is stated: a credential key whose last word is not in the list (for example `foo_token`) no longer matches, so an operator with such keys adds them through `security.secret_patterns`. The rule can still match a bare `token` key that holds a feature or cache value and not a credential. Before spec 0.93.0 the default was `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`. It matched any key that ends in `token`, so a pasted video-host redirect link (`...&redir_token=<base64>`) withheld the whole document.
   * **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the left boundary requires `sk-` to start a word. Without it, the rule matched inside a transliterated URL slug (`.../krasnoyarsk-podpisanie-dogovorov-...`, where `sk-` closes a place name) and withheld the whole document. It can still match a slug segment that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page) when 20 or more letters, digits or hyphens follow.
-  * **Common API key formats** (`(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left boundary requires the prefix to follow a non-alphanumeric character, so a longer identifier (`task_...`) does not match. The rule can still match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
+  * **Common API key formats** (`(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left boundary requires the prefix to follow a character that is not a letter, a digit or `_`, so a prefix inside a longer identifier (`task_...`, `task_sk_...`) does not match. The rule can still match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
 
   Refinement guidance via `security.secret_patterns`:
 
@@ -7302,7 +7302,7 @@ security:
     - '(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'
     - '(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
     - '(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}'
-    - '(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
+    - '(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
 ```
 
 ---

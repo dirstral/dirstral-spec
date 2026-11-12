@@ -50,7 +50,7 @@ deletion/tombstone semantics are in bs-008.
   - JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
   - Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
   - Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
-  - Common API key formats: `(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
+  - Common API key formats: `(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
   These patterns are the **defaults**; they live in configuration under
   `security.secret_patterns` (bs-011) and can be extended or overridden by users.
@@ -88,9 +88,10 @@ deletion/tombstone semantics are in bs-008.
     that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page)
     when 20 or more letters, digits or hyphens follow.
   - **Common API key formats**
-    (`(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left
-    boundary requires the prefix to follow a non-alphanumeric character, so a
-    longer identifier (`task_...`) does not match. The rule can still match
+    (`(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left
+    boundary requires the prefix to follow a character that is not a letter,
+    a digit or `_`, so a prefix inside a longer identifier (`task_...`,
+    `task_sk_...`) does not match. The rule can still match
     placeholders, test fixtures, or generated IDs that happen to share the
     prefix/length.
 
