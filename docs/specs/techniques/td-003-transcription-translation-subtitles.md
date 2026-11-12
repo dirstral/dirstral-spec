@@ -292,6 +292,9 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
     gate MUST NOT reject it, and it is not a refused range. §8.6.13 sets its
     outcome. The empty check applies to OCR and translation output, and to STT
     output that is not a no-speech result.
+  * The **low density** check MUST NOT count the length of a no-speech window
+    (§8.6.13) in the duration it compares the text with. A recording with one
+    window of speech and long windows of music is not degenerate output.
 * A failed gate is a **non-fatal per-document error** (bs-002 §7.7): the document
   is marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (df-008 §14.4) — and indexing
@@ -713,8 +716,9 @@ transcript exactly as it applies to an unreadable format.
   * The implementation MUST NOT decode the recording again while both its
     `content_hash` (bs-002 §7.6) and the STT derivation identity (§8.6.7) are
     unchanged. When the derivation identity changes and the content does not,
-    it MAY decode the recording again, because another model can find speech
-    that this one did not. A change of `content_hash` decodes it again as for
+    the no-speech outcome is stale, as any derived transcript is (§8.6.7): the
+    implementation MUST decode the recording again on the next run, because
+    another model can find speech that this one did not. A change of `content_hash` decodes it again as for
     any changed file.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
@@ -787,7 +791,7 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
-- **0.14.0**: spec 0.93.0: §8.6.6: a no-speech result (td-001 §8.2) is not empty output for the quality gate. §8.6.13: a no-speech window counts as decoded (it joins `windows_decoded`, `ranges` and `decoded_ms`, so it is no shortfall under `min_coverage`). A recording whose decode is a no-speech result as a whole is `status=skipped` with the new `skip_reason=no_speech` when it has no other searchable representation. It is not an error and is not decoded again while its `content_hash` and the STT derivation identity are unchanged. A failed window or track with the rest no-speech is still an error.
+- **0.14.0**: spec 0.93.0: §8.6.6: a no-speech result (td-001 §8.2) is not empty output for the quality gate, and the low-density check does not count no-speech windows in the duration. §8.6.13: a no-speech window counts as decoded (it joins `windows_decoded`, `ranges` and `decoded_ms`, so it is no shortfall under `min_coverage`). A recording whose decode is a no-speech result as a whole is `status=skipped` with the new `skip_reason=no_speech` when it has no other searchable representation. It is not an error and is not decoded again while its `content_hash` and the STT derivation identity are unchanged; an identity change makes it stale. A failed window or track with the rest no-speech is still an error.
 - **0.13.0**: spec 0.91.0: §8.6.10 adds the **TTML layout**:
   `media.subtitles.ttml.layout` (`spans` default, or `divs`: one
   `<div xml:lang>` per language) and `media.subtitles.ttml.language_codes`

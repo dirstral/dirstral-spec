@@ -457,14 +457,16 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
   timeout in either step, the implementation removes the temporary profile and
   the temporary output directory with the `.docx` in it. A cached copy of the
   `.docx` (above) is a separate file and is not removed.
-- **Time limit.** One conversion of one document **MUST** have a time limit, so
+- **Time limit.** One extraction of one document (the conversion and the
+  read step together) **MUST** have a time limit, so
   one document cannot stop the index run. `ingest.libreoffice.timeout_sec` sets the
   limit in seconds (env `DIR2MCP_LIBREOFFICE_TIMEOUT_SEC`). The default is
   `300`. The value **MUST** be an integer greater than `0`; `0` or a negative
   value is `CONFIG_INVALID` at load
   ([bs-011](../behavior/bs-011-configuration.md)). When the limit expires, the
-  implementation **MUST** stop the LibreOffice process and every process it
-  started.
+  implementation **MUST** stop every process the engine started for the
+  document: the LibreOffice process with the processes it started, and the
+  `pandoc` process.
 - **Failure.** A conversion that fails (a non-zero exit, no `.docx` output, or
   a `.docx` that pandoc cannot read) or that reaches the time limit is a
   non-fatal per-document error

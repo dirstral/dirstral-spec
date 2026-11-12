@@ -1090,7 +1090,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * AWS Access Key ID: `AKIA[0-9A-Z]{16}`
   * AWS/Secret assignment heuristic: `(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`
   * JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
-  * Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
+  * Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
   * Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
   * Common API key formats: `(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
@@ -1101,7 +1101,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * **AWS Access Key ID** (`AKIA[0-9A-Z]{16}`): may match synthetic examples in docs/tests or random uppercase identifiers of the same shape.
   * **AWS/Secret assignment heuristic** (`(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`): reduces prose false positives (for example “AWS Secrets Manager”) by requiring assignment-like context.
   * **JWTs** (`(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`): reduced false positives via auth/key context and minimum segment lengths; can still match synthetic token-like test strings with those contexts.
-  * **Generic bearer token** (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule constrains the key name. The key is a bare `token`, or a key whose last word before `token` is a credential word (`GITHUB_TOKEN`, `x-auth-token`, `access_token`, `bearer_token`, `PASSWORD_RESET_TOKEN`). A key whose last word before `token` is another word does not match: `redir_token`, `next_page_token`, `csrf_token`, `mytoken`. The left boundary stops a match inside a longer key. The trade-off is stated: a credential key whose last word is not in the list (for example `foo_token`) no longer matches, so an operator with such keys adds them through `security.secret_patterns`. The rule can still match a bare `token` key that holds a feature or cache value and not a credential. Before spec 0.93.0 the default was `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`. It matched any key that ends in `token`, so a pasted video-host redirect link (`...&redir_token=<base64>`) withheld the whole document.
+  * **Generic bearer token** (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule constrains the key name. The key is a bare `token`, or a key whose last word before `token` is a credential word (`GITHUB_TOKEN`, `x-auth-token`, `access_token`, `bearer_token`, `PASSWORD_RESET_TOKEN`). A key whose last word before `token` is another word does not match: `redir_token`, `next_page_token`, `csrf_token`, `mytoken`. The left boundary stops a match inside a longer key. The trade-off is stated: a credential key whose last word is not in the list (for example `foo_token`) no longer matches, so an operator with such keys adds them through `security.secret_patterns`. The rule can still match a bare `token` key that holds a feature or cache value and not a credential. Before spec 0.93.0 the default was `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`. It matched any key that ends in `token`, so a pasted video-host redirect link (`...&redir_token=<base64>`) withheld the whole document.
   * **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the left boundary requires `sk-` to start a word. Without it, the rule matched inside a transliterated URL slug (`.../krasnoyarsk-podpisanie-dogovorov-...`, where `sk-` closes a place name) and withheld the whole document. It can still match a slug segment that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page) when 20 or more letters, digits or hyphens follow.
   * **Common API key formats** (`(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left boundary requires the prefix to follow a non-alphanumeric character, so a longer identifier (`task_...`) does not match. The rule can still match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
 
@@ -1541,13 +1541,15 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   timeout in either step, the implementation removes the temporary profile and
   the temporary output directory with the `.docx` in it. A cached copy of the
   `.docx` (above) is a separate file and is not removed.
-* **Time limit.** One conversion of one document MUST have a time limit, so
+* **Time limit.** One extraction of one document (the conversion and the
+  read step together) MUST have a time limit, so
   one document cannot stop the index run. `ingest.libreoffice.timeout_sec` sets the
   limit in seconds (env `DIR2MCP_LIBREOFFICE_TIMEOUT_SEC`). The default is
   `300`. The value MUST be an integer greater than `0`; `0` or a negative
   value is `CONFIG_INVALID` at load (§16.2). When the limit expires, the
-  implementation MUST stop the LibreOffice process and every process it
-  started.
+  implementation MUST stop every process the engine started for the
+  document: the LibreOffice process with the processes it started, and the
+  `pandoc` process.
 * **Failure.** A conversion that fails (a non-zero exit, no `.docx` output, or
   a `.docx` that pandoc cannot read) or that reaches the time limit is a
   non-fatal per-document error (§7.7). The error MUST name the document by its
@@ -3402,6 +3404,9 @@ stable across re-indexing.
     it, and it is not a refused range. §8.6.13 sets its outcome. The empty check
     applies to OCR and translation output, and to STT output that is not a
     no-speech result.
+  * The **low density** check MUST NOT count the length of a no-speech window
+    (§8.6.13) in the duration it compares the text with. A recording with one
+    window of speech and long windows of music is not degenerate output.
 * A failed gate is a **non-fatal per-document error** (§7.7): the document is
   marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (§14.4) — and indexing continues.
@@ -3947,8 +3952,9 @@ transcript exactly as it applies to an unreadable format.
   * The implementation MUST NOT decode the recording again while both its
     `content_hash` (§7.6) and the STT derivation identity (§8.6.7) are
     unchanged. When the derivation identity changes and the content does not,
-    it MAY decode the recording again, because another model can find speech
-    that this one did not. A change of `content_hash` decodes it again as for
+    the no-speech outcome is stale, as any derived transcript is (§8.6.7): the
+    implementation MUST decode the recording again on the next run, because
+    another model can find speech that this one did not. A change of `content_hash` decodes it again as for
     any changed file.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
@@ -6945,9 +6951,9 @@ ingest:
     # `soffice`, then `libreoffice`, from PATH. Converts a legacy .doc to .docx
     # for the pandoc docx reader; needs a functional pandoc too. No enable flag.
     command: ""        # e.g. /usr/bin/soffice
-    # Time limit in seconds for one .doc conversion. MUST be greater than 0. A
-    # timeout records a per-document error that names the document and the
-    # limit. Env: DIR2MCP_LIBREOFFICE_TIMEOUT_SEC.
+    # Time limit in seconds for one .doc extraction (conversion + read). MUST be
+    # greater than 0. A timeout records a per-document error that names the
+    # document and the limit. Env: DIR2MCP_LIBREOFFICE_TIMEOUT_SEC.
     timeout_sec: 300
   pdf:
     mode: ocr          # off|ocr|auto
@@ -7282,7 +7288,7 @@ security:
     - 'AKIA[0-9A-Z]{16}'
     - '(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}'
     - '(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'
-    - '(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
+    - '(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
     - '(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}'
     - '(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
 ```

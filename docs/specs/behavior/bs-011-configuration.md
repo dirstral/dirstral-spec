@@ -196,9 +196,9 @@ ingest:
     # `soffice`, then `libreoffice`, from PATH. Converts a legacy .doc to .docx
     # for the pandoc docx reader; needs a functional pandoc too. No enable flag.
     command: ""        # e.g. /usr/bin/soffice
-    # Time limit in seconds for one .doc conversion. MUST be greater than 0. A
-    # timeout records a per-document error that names the document and the
-    # limit. Env: DIR2MCP_LIBREOFFICE_TIMEOUT_SEC.
+    # Time limit in seconds for one .doc extraction (conversion + read). MUST be
+    # greater than 0. A timeout records a per-document error that names the
+    # document and the limit. Env: DIR2MCP_LIBREOFFICE_TIMEOUT_SEC.
     timeout_sec: 300
   pdf:
     mode: ocr          # off|ocr|auto
@@ -416,7 +416,7 @@ security:
     - 'AKIA[0-9A-Z]{16}'
     - '(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}'
     - '(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'
-    - '(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
+    - '(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
     - '(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}'
     - '(?:^|[^A-Za-z0-9])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
 ```
