@@ -432,7 +432,10 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   text field nor a segments field, is malformed and stays a provider error. A response is
   also malformed when its `text` is present and not a string, when its
   `segments` is present and not an array, or when a segment is not an object or
-  has a `text` that is present and not a string. A malformed response is never
+  has a `text` that is present and not a string. A response is
+  also malformed when it carries timed words (a top-level `words` array or a
+  `words` array inside a segment, with at least one entry) but no text: the
+  decoder reports speech that the text does not hold. A malformed response is never
   a no-speech result, so it never becomes a durable `no_speech` skip.
   td-003 §8.6.6 and §8.6.13 say what a no-speech result does to the transcript
   and to the document (`no_speech`). A sidecar (td-003 §8.6.4) still replaces
