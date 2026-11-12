@@ -429,7 +429,11 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   ([td-003](td-003-transcription-translation-subtitles.md) §8.6.13), it does not
   trigger `media.stt.on_route_error` (§8.2.4), and it does not advance a
   candidate list (§8.2.3). A response that does not parse, or that has neither a
-  text field nor a segments field, is malformed and stays a provider error.
+  text field nor a segments field, is malformed and stays a provider error. A response is
+  also malformed when its `text` is present and not a string, when its
+  `segments` is present and not an array, or when a segment is not an object or
+  has a `text` that is present and not a string. A malformed response is never
+  a no-speech result, so it never becomes a durable `no_speech` skip.
   td-003 §8.6.6 and §8.6.13 say what a no-speech result does to the transcript
   and to the document (`no_speech`). A sidecar (td-003 §8.6.4) still replaces
   STT, so these rules never apply to a document whose transcript comes from a
@@ -487,9 +491,11 @@ SPEC.md §8.2.4, the authoritative text.
 Spec 0.93.0: a no-speech result (§8.2) from the language identifier that
 reports no language is no signal, under `item` and under `window` (SPEC.md
 §8.2.3, §8.2.4). An identifier response with empty text that reports a language
-is still a signal: the identifier's text is discarded in any case. On no signal
-the default profile decodes the item, and when that decode is also a no-speech
-result the outcome is `no_speech` (td-003 §8.6.13).
+is still a signal: the identifier's text is discarded in any case. Under `item`,
+on no signal the default profile decodes the item, and when that decode is also
+a no-speech result the outcome is `no_speech` (td-003 §8.6.13). Under `window`,
+resolution continues per window down the SPEC.md §8.2.3 precedence (decoder
+report, then text) and the §8.2.2 continuity rule applies.
 
 ### 8.3 Note on TTS
 

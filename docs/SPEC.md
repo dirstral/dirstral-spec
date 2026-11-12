@@ -1166,9 +1166,10 @@ shared by code and media: `.ts` is TypeScript or an MPEG transport stream, and
 `.mts` is a TypeScript module or an AVCHD transport stream. The extension
 cannot decide such a file, so the implementation MUST decide it by content. A
 file is an MPEG transport stream when it holds the sync byte `0x47` at a fixed
-interval of 188 bytes, or of 192 bytes for the BDAV variant (a 4-byte
-timestamp before each 188-byte packet, so the sync byte is at offset 4 of each
-packet). Such a file is `video`. Other content is `code`. An implementation
+interval of 188 bytes, of 192 bytes for the BDAV variant (a 4-byte timestamp
+before each 188-byte packet, so the sync byte is at offset 4 of each packet), or
+of 204 bytes for the variant with 16 bytes of error correction after each
+packet. Such a file is `video`. Other content is `code`. An implementation
 SHOULD check several consecutive packets (for example the first five) before it
 decides `video`, so one `0x47` byte in a text file does not decide it.
 
@@ -1528,8 +1529,10 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   (`soffice --headless --convert-to docx --outdir <dir> <file>`). Each conversion
   MUST use its own LibreOffice user profile in a new temporary directory
   (for example `-env:UserInstallation=file:///<tmp>/profile`). A shared profile
-  holds a lock, so a second concurrent conversion fails or waits. The output
-  directory MUST be a temporary directory outside the corpus root: the engine
+  holds a lock, so a second concurrent conversion fails or waits. Each
+  conversion MUST also use its own new temporary output directory, outside the
+  corpus root: two documents with the same name (`a/report.doc`,
+  `b/report.doc`) then never write the same `report.docx`, and the engine
   never writes into the corpus.
 * **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
   `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
@@ -2467,7 +2470,11 @@ worker reads the document text and rune spans from the shared store (8.7.4).
   provider error. It is not a failed window (§8.6.13), it does not trigger
   `media.stt.on_route_error` (§8.2.4), and it does not advance a candidate list
   (§8.2.3). A response that does not parse, or that has neither a text field
-  nor a segments field, is malformed and stays a provider error. §8.6.6 and
+  nor a segments field, is malformed and stays a provider error. A response is
+  also malformed when its `text` is present and not a string, when its
+  `segments` is present and not an array, or when a segment is not an object or
+  has a `text` that is present and not a string. A malformed response is never
+  a no-speech result, so it never becomes a durable `no_speech` skip. §8.6.6 and
   §8.6.13 say what a no-speech result does to the transcript and to the
   document (`no_speech`). A sidecar (§8.6.4) still replaces STT, so these rules
   never apply to a document whose transcript comes from a sidecar.
@@ -3949,13 +3956,15 @@ transcript exactly as it applies to an unreadable format.
     `status=skipped` with `skip_reason="no_speech"` (§15.6). It is not an
     error. When the document keeps another searchable representation, it stays
     `status=ok`, as §7.4.B.2 rules for an absent extraction.
-  * The implementation MUST NOT decode the recording again while both its
+  * The implementation MUST NOT decode a no-speech track again while both the
     `content_hash` (§7.6) and the STT derivation identity (§8.6.7) are
     unchanged. When the derivation identity changes and the content does not,
     the no-speech outcome is stale, as any derived transcript is (§8.6.7): the
-    implementation MUST decode the recording again on the next run, because
-    another model can find speech that this one did not. A change of `content_hash` decodes it again as for
-    any changed file.
+    implementation MUST decode the track again on the next run, because another
+    model can find speech that this one did not. A change of `content_hash`
+    decodes it again as for any changed file. This guard covers only a track
+    whose decode was a no-speech result. A failed track is retried on the next
+    run, as §8.6.12 and the rule above require.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused

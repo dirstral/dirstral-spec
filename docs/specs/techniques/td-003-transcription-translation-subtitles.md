@@ -713,13 +713,15 @@ transcript exactly as it applies to an unreadable format.
     `status=skipped` with `skip_reason="no_speech"` (df-007). It is not an
     error. When the document keeps another searchable representation, it stays
     `status=ok`, as td-004 §B.2 rules for an absent extraction.
-  * The implementation MUST NOT decode the recording again while both its
+  * The implementation MUST NOT decode a no-speech track again while both the
     `content_hash` (bs-002 §7.6) and the STT derivation identity (§8.6.7) are
     unchanged. When the derivation identity changes and the content does not,
     the no-speech outcome is stale, as any derived transcript is (§8.6.7): the
-    implementation MUST decode the recording again on the next run, because
-    another model can find speech that this one did not. A change of `content_hash` decodes it again as for
-    any changed file.
+    implementation MUST decode the track again on the next run, because another
+    model can find speech that this one did not. A change of `content_hash`
+    decodes it again as for any changed file. This guard covers only a track
+    whose decode was a no-speech result. A failed track is retried on the next
+    run, as §8.6.12 and the rule above require.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused

@@ -184,9 +184,10 @@ shared by code and media: `.ts` is TypeScript or an MPEG transport stream, and
 `.mts` is a TypeScript module or an AVCHD transport stream. The extension
 cannot decide such a file, so the implementation MUST decide it by content. A
 file is an MPEG transport stream when it holds the sync byte `0x47` at a fixed
-interval of 188 bytes, or of 192 bytes for the BDAV variant (a 4-byte
-timestamp before each 188-byte packet, so the sync byte is at offset 4 of each
-packet). Such a file is `video`. Other content is `code`. An implementation
+interval of 188 bytes, of 192 bytes for the BDAV variant (a 4-byte timestamp
+before each 188-byte packet, so the sync byte is at offset 4 of each packet), or
+of 204 bytes for the variant with 16 bytes of error correction after each
+packet. Such a file is `video`. Other content is `code`. An implementation
 SHOULD check several consecutive packets (for example the first five) before it
 decides `video`, so one `0x47` byte in a text file does not decide it.
 

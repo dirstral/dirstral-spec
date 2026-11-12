@@ -444,8 +444,10 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
   (`soffice --headless --convert-to docx --outdir <dir> <file>`). Each conversion
   **MUST** use its own LibreOffice user profile in a new temporary directory
   (for example `-env:UserInstallation=file:///<tmp>/profile`). A shared profile
-  holds a lock, so a second concurrent conversion fails or waits. The output
-  directory **MUST** be a temporary directory outside the corpus root: the engine
+  holds a lock, so a second concurrent conversion fails or waits. Each
+  conversion **MUST** also use its own new temporary output directory, outside the
+  corpus root: two documents with the same name (`a/report.doc`,
+  `b/report.doc`) then never write the same `report.docx`, and the engine
   never writes into the corpus.
 - **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
   `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
