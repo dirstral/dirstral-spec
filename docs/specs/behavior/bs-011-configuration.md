@@ -421,7 +421,7 @@ security:
     - '(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
   # A secret match that an allow match covers is cancelled (bs-002 §7.2).
   secret_allow_patterns:
-    - '(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#<>"]*'
+    - '(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;<>"]*'
 ```
 
 > **Drift note:** the `media.clip` comment still cites `§15.11`

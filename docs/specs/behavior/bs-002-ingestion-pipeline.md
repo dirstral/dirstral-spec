@@ -60,15 +60,21 @@ deletion/tombstone semantics are in bs-008.
   one. The default list holds one pattern, for URL query parameters that carry
   no credential (a video-host redirect link, a pagination cursor):
 
-  - `(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#<>"]*`
+  - `(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;<>"]*`
 
-  The implementation finds every match of every secret pattern in the text. A
-  secret match is **cancelled** when a match of an allow pattern in the same
-  text covers it: the allow match starts at or before the start of the secret
-  match and ends at or after its end. The text matches the secret set when at
-  least one secret match is not cancelled. An allow pattern therefore releases
-  only the text it covers: a document that holds a redirect link and a real
-  credential is still withheld. The allow list applies wherever the secret
+  The implementation finds every match of every secret pattern in the text. An
+  allow pattern can cancel only a match of the **generic bearer-token default**
+  (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret
+  pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled,
+  also when an allow match covers it. A generic bearer-token match is
+  **cancelled** when a match of an allow pattern in the same text covers it:
+  the allow match starts at or before the start of the secret match and ends at
+  or after its end. The text matches the secret set when at least one secret
+  match is not cancelled. An allow pattern therefore releases only the text it
+  covers: a document that holds a redirect link and a real credential is still
+  withheld. The value of a default allow pattern stops at `&`, `#`, `;`,
+  whitespace, a quote and an angle bracket, so it never runs into the next
+  parameter. The allow list applies wherever the secret
   patterns apply: source bytes, derived text, and the text a tool returns. It
   has the list semantics of §7.1, and an empty list cancels nothing. Every allow
   pattern is valid RE2.
@@ -156,6 +162,10 @@ deletion/tombstone semantics are in bs-008.
     - `https://www.youtube.com/redirect?event=video_description&redir_token=<24 chars> GITHUB_TOKEN=<40 chars>`
       (a redirect link and a credential in one text: the allow match covers
       only the first)
+    - `https://example.org/list?page_token=abc;GITHUB_TOKEN=<40 chars>` (the
+      allow value stops at `;`)
+    - `https://example.org/list?page_token=AKIA<16 chars from [0-9A-Z]>` (an
+      allow match never cancels an AWS key match)
   - Must not hit (with the default allow list, no secret match is left
     uncancelled):
     - `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org`
