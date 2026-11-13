@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.92.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.94.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1023,6 +1023,24 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 ### 7.1 Discovery
 
 * Recursive walk from root.
+* **Parallel walk (optional).** `ingest.discovery_workers` (integer, default
+  `1`) bounds how many directories the walk reads at the same time. `1` is the
+  sequential walk. A larger value lets the walk read sibling subtrees
+  concurrently, which matters on a network filesystem, where each directory
+  read waits a round trip: a sequential walk of an NFS archive of 145,000
+  videos in a 20-level hash tree reads about 85 directories a second, so one
+  pass takes about 8.5 hours before any file is processed; with 16 concurrent
+  readers the same tree was listed in about 50 minutes. The result MUST NOT
+  depend on the value: the same files, in
+  the same order (sorted by relative path), the same skip reports (their
+  order MAY differ), the same ignore, `.gitignore` and symlink rules, the same
+  directory-loop protection, and the same scan-cache contents. `0` means the
+  default `1`; a negative value or one above `64` is `CONFIG_INVALID`. With
+  symlink following on, an implementation MAY walk sequentially whatever the
+  value: which path reaches a directory first decides the relative paths of
+  its files, and that must not depend on timing. The key applies to a filesystem walk
+  (`source.kind: local` or `nfs`); a remote source (§7.8) lists by its own
+  pagination and ignores it.
 * **Directory ignore list.** Discovery does not descend into a directory whose
   **name** matches an entry in the ignore list. The default list is: `.git/`,
   `.dir2mcp/`, `node_modules/`, `vendor/`, `__pycache__/`, `dist/`, `build/`,
@@ -6720,6 +6738,7 @@ rag:
 
 ingest:
   gitignore: true
+  discovery_workers: 1   # directories the walk reads at once (bs-002 §7.1); raise on a network filesystem
   extractor: auto      # auto|docling|docling-serve|mistral|pandoc|off
   # auto = best-available per format (§7.4.B.1): highest-fidelity ACTIVE engine
   # that supports each format; no format routed to an engine that can't read it,
