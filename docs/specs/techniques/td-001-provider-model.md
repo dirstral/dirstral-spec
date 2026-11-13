@@ -496,8 +496,10 @@ reports no language is no signal, under `item` and under `window` (SPEC.md
 §8.2.3, §8.2.4). An identifier response with empty text that reports a language
 at or above the implementation's confidence floor is still a signal (a report
 below the floor is no signal, as SPEC.md §8.2.3 states): the identifier's text is discarded in any case. Under `item`,
-on no signal the default profile decodes the item, and when that decode is also
-a no-speech result the outcome is `no_speech` (td-003 §8.6.13). Under `window`,
+on no signal the default profile decodes the item. When that decode is also a
+no-speech result, the document outcome follows the conditions of td-003
+§8.6.13: the skip reason `no_speech` applies only when the document has no other
+searchable representation. Under `window`,
 resolution continues per window down the SPEC.md §8.2.3 precedence (decoder
 report, then text) and the §8.2.2 continuity rule applies.
 

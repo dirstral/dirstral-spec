@@ -315,7 +315,7 @@
                 "symlink_ignored",
                 "no_speech"
               ],
-              "description": "Stable, closed skip-reason enum for a given spec minor. no_speech: media whose STT decode found no speech in the whole recording (SPEC.md \u00a78.2, \u00a78.6.13): every decode returned a well-formed response with empty text and no segment that holds text, for example a recording that holds only music or ambient sound, and the document has no other searchable representation. It is not an error, and the recording is not decoded again while the file is unchanged. New reasons are added only by a minor version bump (additive); a client MAY receive an unrecognized value from a newer server and SHOULD render it verbatim rather than error."
+              "description": "Stable, closed skip-reason enum for a given spec minor. no_speech: media whose STT decode found no speech in the whole recording (SPEC.md \u00a78.2, \u00a78.6.13): every decode returned a well-formed response with empty text and no segment that holds text, for example a recording that holds only music or ambient sound, and the document has no other searchable representation. It is not an error, and the recording is not decoded again while both its content_hash and the STT derivation identity are unchanged (td-003 \u00a78.6.13); a change of either makes the next run decode it again. New reasons are added only by a minor version bump (additive); a client MAY receive an unrecognized value from a newer server and SHOULD render it verbatim rather than error."
             },
             "count": {
               "type": "integer",

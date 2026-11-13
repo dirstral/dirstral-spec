@@ -176,7 +176,7 @@ deletion/tombstone semantics are in bs-008.
       (a redirect link pasted into a document)
     - `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve`
       (a transliterated URL slug)
-    - `https://www.googleapis.com/youtube/v3/search?part=snippet&pageToken=<24 chars>`
+    - `https://www.googleapis.com/youtube/v3/search?part=snippet&pageToken=CAUQAQnextPageCursorAAA1`
       (a pagination cursor)
 
   **A change of the effective pattern set (normative).** A document withheld as
@@ -277,7 +277,11 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
 
 - Document-level:
   - compute `content_hash`; if unchanged and not deleted → **skip** rep
-    generation
+    generation, unless the type that the current version assigns to the file
+    (§7.3) differs from the stored `doc_type`. A classification change (for
+    example a `.ts` stored as `code` that §7.3 now decides is `video`) makes
+    the next scan process the document again, also with an unchanged
+    `content_hash`.
 - Representation-level:
   - compute `rep_hash`; if unchanged → **skip** chunk rebuild
 - Chunk-level:
