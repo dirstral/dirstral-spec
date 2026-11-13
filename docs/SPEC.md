@@ -5958,6 +5958,14 @@ return the secret content; it should either return an error (e.g. `FORBIDDEN`)
 or an empty/plain-text placeholder.  This ensures tool-level bypass of ingestion
 filters is impossible.
 
+The content check covers the whole source text, not only the slice that the
+call returns (spec 0.93.0). A credential outside the requested lines or page
+still refuses the call, as ingestion withholds that document (§7.2). A slice
+check alone can miss a match that crosses the slice edge. A text source larger
+than `ingest.max_file_mb`, which ingestion never scans or indexes, returns
+`FILE_TOO_LARGE` (§14.4); the server reads at most that many bytes plus one to
+decide.
+
 **Input schema:**
 
 ```json
