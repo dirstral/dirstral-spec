@@ -1,7 +1,7 @@
 # bs-009: Security & safety requirements
 
 - **ID:** bs-009
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -94,6 +94,11 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
 
 ## Changelog
 
+- **0.3.0** (spec 0.93.0): tool handlers refuse content that matches the
+  secret set as bs-002 §7.2 defines it: a generic bearer-token match that a
+  `security.secret_allow_patterns` match covers is cancelled. A document that
+  ingestion releases is therefore not refused here. Before this version, any
+  match of a configured pattern was refused.
 - **0.2.0** (spec 0.92.0): the sensitive-file rule names its one exception,
   `dir2mcp_recheck_path`: it accepts a path-excluded path so the reconcile can
   retire it, checks the path rules before any filesystem access, never stats,

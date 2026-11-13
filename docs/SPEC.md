@@ -1149,6 +1149,8 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
     * `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve` (a transliterated URL slug)
     * `https://www.googleapis.com/youtube/v3/search?part=snippet&pageToken=CAUQAQnextPageCursorAAA1` (a pagination cursor)
 
+  **Media and other binary sources.** For a source whose searchable text is derived (audio, video, a PDF, an image), the check of the source bytes MAY cover only a leading sample of them (the reference implementation reads 64 KiB), and the derived text (transcript, sidecar, translation, extracted text) MUST be screened in full before it is indexed. The re-evaluation after a pattern change applies the same rule: for an audio or video document it checks the same leading sample and screens the stored derived text. So it never needs bytes outside that sample, and `ingest.media_identity: sampled` (§7.6) needs no extra read for it.
+
   **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.93.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
 
 * Exclude large binaries by default:
@@ -1184,7 +1186,12 @@ before each 188-byte packet, so the sync byte is at offset 4 of each packet), or
 of 204 bytes for the variant with 16 bytes of error correction after each
 packet. Such a file is `video`. Other content is `code`. An implementation
 SHOULD check several consecutive packets (for example the first five) before it
-decides `video`, so one `0x47` byte in a text file does not decide it.
+decides `video`, so one `0x47` byte in a text file does not decide it. The sync
+byte is the ASCII letter `G`, so sync spacing alone is not enough: a text file
+can hold a `G` at every 188th byte (lines of 188 bytes that start with `//G`).
+The checked bytes MUST also hold a byte that text never holds (a NUL byte, or a
+sequence that is not valid UTF-8). A real transport stream always holds one in
+its packet headers; a source file does not.
 
 ### 7.4 Representation generation rules
 
@@ -2479,7 +2486,8 @@ worker reads the document text and rune spans from the shared store (8.7.4).
   result when all of these are true:
   * it parses;
   * it has a text field, a segments field, or both;
-  * its text is empty or holds only whitespace;
+  * its text is empty or holds only whitespace (an absent text field counts
+    as empty, so `{"segments":[]}` is a no-speech result);
   * it holds no segment whose text holds more than whitespace (zero segments
     is the usual case).
 

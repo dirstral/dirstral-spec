@@ -420,7 +420,8 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   result when all of these are true:
   * it parses;
   * it has a text field, a segments field, or both;
-  * its text is empty or holds only whitespace;
+  * its text is empty or holds only whitespace (an absent text field counts
+    as empty, so `{"segments":[]}` is a no-speech result);
   * it holds no segment whose text holds more than whitespace (zero segments
     is the usual case).
 
