@@ -60,7 +60,7 @@ deletion/tombstone semantics are in bs-008.
   one. The default list holds one pattern, for URL query parameters that carry
   no credential (a video-host redirect link, a pagination cursor):
 
-  - `(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;<>"]*`
+  - `(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;?=:<>"]*`
 
   The implementation finds every match of every secret pattern in the text. An
   allow pattern can cancel only a match of the **generic bearer-token default**
@@ -72,9 +72,10 @@ deletion/tombstone semantics are in bs-008.
   or after its end. The text matches the secret set when at least one secret
   match is not cancelled. An allow pattern therefore releases only the text it
   covers: a document that holds a redirect link and a real credential is still
-  withheld. The value of a default allow pattern stops at `&`, `#`, `;`,
-  whitespace, a quote and an angle bracket, so it never runs into the next
-  parameter. The allow list applies wherever the secret
+  withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`,
+  `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the
+  next parameter or covers a second assignment
+  (`?page_token=abc?GITHUB_TOKEN=...`). The allow list applies wherever the secret
   patterns apply: source bytes, derived text, and the text a tool returns. It
   has the list semantics of §7.1, and an empty list cancels nothing. Every allow
   pattern is valid RE2.
@@ -164,6 +165,9 @@ deletion/tombstone semantics are in bs-008.
       only the first)
     - `https://example.org/list?page_token=abc;GITHUB_TOKEN=<40 chars>` (the
       allow value stops at `;`)
+    - `https://example.org/list?page_token=abc?GITHUB_TOKEN=<40 chars>` and
+      `https://example.org/list?page_token=abc,GITHUB_TOKEN:<40 chars>` (the
+      allow value stops at `?`, `=` and `:`)
     - `https://example.org/list?page_token=AKIA<16 chars from [0-9A-Z]>` (an
       allow match never cancels an AWS key match)
   - Must not hit (with the default allow list, no secret match is left
@@ -181,7 +185,10 @@ deletion/tombstone semantics are in bs-008.
   operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a
   change, the implementation MUST evaluate each withheld document again against
   the new set, also when its `content_hash` is unchanged (§7.6). A document that
-  the new set does not match is no longer withheld: the scan indexes it. To
+  the new set does not match is no longer withheld for a secret: the scan
+  treats it as a new document, so every other §7.1 gate (path rules,
+  `.gitignore`, size and type limits) still applies, and only a document that
+  passes them is indexed. To
   detect the change, an implementation SHOULD persist a fingerprint of the
   effective set (for example a hash of the ordered secret and allow lists) and compare it
   at each scan. A document already indexed that the new set matches MUST be

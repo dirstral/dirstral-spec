@@ -494,7 +494,8 @@ SPEC.md §8.2.4, the authoritative text.
 Spec 0.93.0: a no-speech result (§8.2) from the language identifier that
 reports no language is no signal, under `item` and under `window` (SPEC.md
 §8.2.3, §8.2.4). An identifier response with empty text that reports a language
-is still a signal: the identifier's text is discarded in any case. Under `item`,
+at or above the implementation's confidence floor is still a signal (a report
+below the floor is no signal, as SPEC.md §8.2.3 states): the identifier's text is discarded in any case. Under `item`,
 on no signal the default profile decodes the item, and when that decode is also
 a no-speech result the outcome is `no_speech` (td-003 §8.6.13). Under `window`,
 resolution continues per window down the SPEC.md §8.2.3 precedence (decoder

@@ -419,9 +419,10 @@ security:
     - '(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
     - '(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}'
     - '(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
-  # A secret match that an allow match covers is cancelled (bs-002 §7.2).
+  # An allow match cancels only a generic bearer-token match that it covers;
+  # a match of any other secret pattern is never cancelled (bs-002 §7.2).
   secret_allow_patterns:
-    - '(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;<>"]*'
+    - '(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;?=:<>"]*'
 ```
 
 > **Drift note:** the `media.clip` comment still cites `§15.11`
