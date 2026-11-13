@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.92.0`
+**Current spec version:** `0.94.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -62,7 +62,7 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
 
-## 0.92.0: discovery can read directories in parallel
+## 0.94.0: discovery can read directories in parallel
 
 One optional key (`MINOR` per the pre-1.0 policy). The default keeps the sequential walk.
 
@@ -71,6 +71,21 @@ One optional key (`MINOR` per the pre-1.0 policy). The default keeps the sequent
 - Mirrors: bs-002 0.6.0, bs-011 0.18.0.
 - Motivation: the TV Rain archive (NFS, ~145,000 videos in a 20-level hash tree, ~2.6 million directories). The sequential walk reads about 85 directories a second there, so one discovery pass takes about 8.5 hours before ingest processes anything, and a new upload waits that long for a rescan. With 16 concurrent readers the same tree was listed in about 50 minutes.
 - `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
+
+## 0.92.0: dir2mcp_recheck_path, an optional tool to reconcile one path now
+
+One new optional tool and two new error codes (`MINOR` per the pre-1.0 policy). A server that does not serve the tool adds nothing to its `tools/list`. One thing changes for every server: a call that names a tool this spec defines but the server does not serve in its current mode (`dir2mcp_recheck_path`, and any other spec-defined tool it leaves out, such as `dir2mcp_related`) MUST now return `TOOL_UNAVAILABLE` (§12.2, bs-006), where before it returned whatever the server returned for an unknown tool name. No existing tool or field changes. `spec/errors/taxonomy.md` now lists `PATH_OUTSIDE_ROOT` and names the policy code `FORBIDDEN`, as §14 and df-008 already did, in place of `PERMISSION_DENIED`, which no other document defines.
+
+- §15.13 (bs-007) **`dir2mcp_recheck_path`** (optional extension, §13.3, bs-006): a client asks a server in watch mode to reconcile one path under the corpus root now, instead of at the next periodic safety rescan. Input: `rel_path` (required; the grammar and normalization of `dir2mcp_open_file`, §15.4) and `recursive` (default `true`: the whole subtree of a directory; `false`: only the regular files that are its direct children). The server checks the input before any filesystem access: it normalizes the path lexically (a climb above the root is `PATH_OUTSIDE_ROOT`) and consults the exclusion engine's path rules (an excluded path reports `kind: excluded` without a stat, the one exception §17 and bs-009 name). Only then does it resolve a path that is not excluded under the root-isolation rules of §17 (bs-009; `PATH_OUTSIDE_ROOT`): with symlinks followed it checks each in-root target against the path rules before it dereferences it (an excluded hop, a cycle or more than 40 hops reports `excluded`); a symlink the server does not follow, in the path or in any component, and a special entry such as a FIFO are ineligible and report `excluded` after an `lstat`. It stats any other path once to report `kind` (`file`, `directory` or `missing`), enqueues the reconcile and returns without a wait for ingestion. The reconcile applies the rules of a filesystem event for that path (§7.6, §7.8, bs-002), as the path is found when the reconcile starts: change detection on a file (and a tombstone for every document under a path that turned from a directory into a file), the subtree of a directory (its direct regular-file children only, when `recursive` is `false`), a tombstone for a missing path, and retirement for an excluded path and everything under it. The queue holds at most one request per normalized path; a repeat returns `queued: false`. Output: `rel_path`, `kind`, `queued`, `pending`, and nothing else.
+- §15.13 **Availability**: the tool is served only when the server runs the file watcher (watch mode on a `local` or `nfs` source, §7.8) and is not read-only. Otherwise it is absent from `tools/list` and a call fails with `TOOL_UNAVAILABLE`. Availability is fixed for the lifetime of the process.
+- §14.3 (df-008) **`TOOL_UNAVAILABLE`**: a tool this spec defines that the running server does not serve in its current mode. Non-retryable for the lifetime of the process. Also added to `spec/errors/taxonomy.md`.
+- §14.3 (df-008) **`QUEUE_FULL`** (retryable): a bounded request queue is full. `dir2mcp_recheck_path` MUST bound its queue (a missing path is accepted, so distinct paths could grow it without limit) and returns this code for a call that would add a new pending request; a call for an already-pending path still deduplicates. Also added to `spec/errors/taxonomy.md`.
+- §7.8 (SPEC.md only; bs-002 is unchanged): an `nfs` mount reports no event for a write from another host; a new paragraph says so and points to the tool, whose guidance is in bs-007.
+- §19 is unchanged: the tool adds no write path of its own. The reconcile it enqueues is the watcher's, so the corpus sees only the writes that reconcile makes: none by default, and the opt-in subtitle write-back (§8.6.14) when it is enabled. It asks the server to reconcile a path it already owns, as `dir2mcp_transcribe` and `dir2mcp_annotate` already write representations to the store.
+- §17 (bs-009 0.2.0): the sensitive-file rule names `dir2mcp_recheck_path` as its one exception.
+- New `spec/tools/schemas/recheck_path.json`. `spec/tools/schemas.md` indexes it as `planned (optional extension)` until the implementation ships, as 0.68.0 did for the two tools before it.
+- Mirrors: bs-006 0.2.0, bs-007 0.18.0, bs-009 0.2.0, df-007 0.10.0, df-008 0.4.0.
+- Motivation: dir2mcp (TV Rain archive: NFS corpus written by the transcoder host). The watcher receives no inotify event for a write made by another host, so a new or changed file waits for the periodic safety rescan, which stats every file over NFS (289k files on that archive). A system that knows a path changed (a transcoder webhook) can now ask for that one path.
 
 ## 0.91.0: a TTML layout with one div per language
 

@@ -1,11 +1,11 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.17.0
+- **Version:** 0.18.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
-- **Source:** SPEC.md §15.2–§15.11 (behavior; schemas → df-007)
+- **Source:** SPEC.md §15.2–§15.11, §15.13 (behavior; schemas → df-007)
 
 ## Scope
 
@@ -450,8 +450,128 @@ optional refinement and MUST NOT change the bounds or error semantics above.
 **Errors:** `DOC_TYPE_UNSUPPORTED`, `FILE_NOT_FOUND`, `INVALID_RANGE`,
 `CLIP_TOO_LARGE`, `MEDIA_CLIP_FAILED` (df-008).
 
+### dir2mcp_recheck_path
+
+(Optional extension; SPEC §15.13.) Schema: `recheck_path.json` (df-007).
+
+**Purpose.** Ask a running server in watch mode to reconcile one path under
+the corpus root now, instead of at the next periodic safety rescan. The tool
+adds no write path of its own: the reconcile it enqueues is the watcher's, so
+the corpus sees exactly the writes that reconcile would make. By default that
+is none; with the opt-in subtitle write-back (SPEC §8.6.14) a re-ingested media
+document gets its subtitles and SMIL patch, and a recheck does not suppress
+them. It asks the server to reconcile a path it already owns, as
+`dir2mcp_transcribe` and `dir2mcp_annotate` already write representations to
+the store.
+
+**Availability.** Served only when the server runs the file watcher (watch mode
+on a `local` or `nfs` source, [bs-002](bs-002-ingestion-pipeline.md)) and is
+not read-only. Otherwise the tool MUST be absent from `tools/list` and a call
+MUST fail with `TOOL_UNAVAILABLE` (see
+[bs-006](bs-006-mcp-tools-list-call.md)). Availability is fixed for the
+lifetime of the process.
+
+**Parameters.**
+
+- `rel_path` (**required**, non-empty): a path relative to the corpus root,
+  with the grammar and normalization of `rel_path` in `dir2mcp_open_file`
+  (`/` as the separator, no leading `/`). A file or a directory. `.` names the
+  root itself.
+  For `.`, "every document indexed under the path" means every indexed
+  document, not a literal `./` prefix.
+- `recursive` (boolean, default **`true`**): for a directory, reconcile the
+  whole subtree; when `false`, only the regular files that are its direct
+  children. Ignored for a file.
+
+**Behavior.**
+
+1. The server first normalizes `rel_path` lexically, without filesystem
+   access; a path that climbs above the root (`..`) is `PATH_OUTSIDE_ROOT`. It
+   then consults the exclusion engine's path rules, still before any
+   filesystem access and so before symlink resolution. An excluded path is not
+   rejected (the reconcile retires what was indexed there, step 3), but the
+   call does not stat or resolve it and reports `kind: excluded`, revealing
+   nothing about whether anything exists there; an excluded symlink that
+   points outside the root is reported the same way, never as
+   `PATH_OUTSIDE_ROOT`. This is the narrow exception
+   [bs-009](bs-009-security-safety.md) names for this tool. A path that is not
+   excluded is then resolved with the root-isolation and symlink rules of
+   [bs-009](bs-009-security-safety.md); one that resolves outside the root is
+   `PATH_OUTSIDE_ROOT`. When the server follows symlinks, it resolves the
+   chain one hop at a time and checks each in-root target against the same
+   path rules before it dereferences it; the first excluded hop reports
+   `kind: excluded`, with nothing past it touched or read (`alias -> .env ->
+   outside` is `excluded`, never `PATH_OUTSIDE_ROOT`). When it does not (the default), a path
+   that is itself a symlink, or that has a symlink in any component
+   (`alias/report.txt` with `alias` a symlink), is ineligible, as discovery
+   neither indexes a symlink nor walks into one (`symlink_ignored`). The server
+   checks the components from the root down and stops at the first symlink:
+   the call reports `kind: excluded` without following it, and the reconcile
+   retires anything indexed at the path and under it. A special
+   entry (a FIFO, a socket or a device) is ineligible too, since discovery
+   reads only regular files: `kind: excluded`, and the reconcile retires
+   anything indexed at it and under it. Only a path the exclusion path rules
+   match is answered with no filesystem access. Otherwise `excluded` shows
+   only what the `lstat` checks found: a special entry, or a symlink at the
+   path or at one of its components; a symlink component (`alias` in
+   `alias/report.txt`) says nothing about whether the requested path exists.
+   Nothing protected is disclosed. With symlinks followed, a cycle or more
+   than 40 hops makes the path ineligible (`excluded`) as well.
+2. For a path that is not excluded, the server stats the resolved path once
+   and reports `kind` as `file`, `directory`, or `missing`. The call walks no
+   subtree and reads no document. A file withheld only for its content (a secret
+   pattern match) is not path-excluded and reports `file`: `dir2mcp_list_files`
+   already lists it as `skipped` with `secret_excluded`, and the call reads
+   none of its content.
+3. The server MUST enqueue the reconcile and return; it MUST NOT wait for
+   ingestion. The reconcile applies the rules of a filesystem event for that
+   path, with the watcher's worker and debounce. The worker classifies the
+   path again when the reconcile starts and applies the rule for what it
+   finds then; the call-time `kind` does not bind it: change detection then
+   re-ingest for a changed file, with a tombstone for every document indexed
+   under a path that was a directory and is now a file; every regular file
+   under a directory (direct
+   children only when `recursive` is `false`), with a tombstone for an indexed
+   document whose file is gone and for a document indexed at the path itself
+   (a file that became a directory); a tombstone for a path still `missing` when
+   the reconcile starts, and for every document under it; retirement for an
+   excluded path (a symlink to an excluded target, a symlink the server does
+   not follow and a special entry included), and for every document indexed under it by path
+   prefix, whatever the path is now (a directory that became an ineligible
+   symlink included), exactly
+   as the watcher retires it on a write (tombstoned, kept as a `skipped`
+   document when discovery records a skip reason).
+4. The queue holds at most one pending request per normalized `rel_path`. A
+   repeat for a pending path MUST NOT add an entry and returns `queued: false`;
+   a recursive repeat makes a pending non-recursive request recursive. A
+   request is pending from the call until its reconcile starts. The server
+   MUST bound the number of pending requests (implementation-defined, SHOULD
+   be configurable), since a missing path is accepted and distinct paths could
+   grow the queue without limit. When full, a call that would add a new entry
+   fails with `QUEUE_FULL` (retryable); a call for an already-pending path
+   still deduplicates and upgrades to recursive.
+5. Output: `rel_path` (normalized), `kind`, `queued` (`true` when this call
+   added a request), `pending` (requests pending at the atomic enqueue or
+   deduplication step, this one included when `queued`; a worker starting the
+   request right after does not change it), all required, and nothing else. `kind` is `file`,
+   `directory`, `missing` or `excluded` (ineligible: matched by the exclusion
+   path rules, a symlink to such a target, a symlink the server does not
+   follow, or a special entry such as a FIFO, a socket or a device). This is the successful result; a
+   failed call returns the standard tool error result, as for every tool.
+
+**Errors:** `MISSING_FIELD`, `INVALID_FIELD`, `PATH_OUTSIDE_ROOT`,
+`TOOL_UNAVAILABLE`, `QUEUE_FULL` (df-008).
+
 ## Changelog
 
+- **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
+  spec 0.92.0): a client asks a server in watch mode to reconcile one path
+  under the root now; the call validates, classifies, enqueues and returns,
+  and the reconcile follows the rules of a filesystem event for that path.
+  Served only with the file watcher on and not read-only; otherwise absent
+  from `tools/list` and `TOOL_UNAVAILABLE` on call. Motivation: an NFS corpus
+  written by another host gets no inotify event, and the safety rescan stats
+  every file.
 - **0.17.0**: declared the optional `evidence` object on `dir2mcp_stats` (SPEC §9.4.3 and §15.6, spec 0.80.0; dir2mcp #1081): the abstention thresholds in effect and the null baseline behind them, so a caller can reproduce a verdict from published numbers.
 - **0.15.0**: declared two `dir2mcp_list_files` fields this document had
   omitted. `include_hidden` is a documented input in `list_files.json` and the
