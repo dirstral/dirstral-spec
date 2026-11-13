@@ -6738,7 +6738,7 @@ rag:
 
 ingest:
   gitignore: true
-  discovery_workers: 1   # directories the walk reads at once (§7.1); raise on a network filesystem
+  discovery_workers: 1   # directories the walk reads at once (bs-002 §7.1); raise on a network filesystem
   extractor: auto      # auto|docling|docling-serve|mistral|pandoc|off
   # auto = best-available per format (§7.4.B.1): highest-fidelity ACTIVE engine
   # that supports each format; no format routed to an engine that can't read it,
