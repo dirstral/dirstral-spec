@@ -48,12 +48,30 @@ deletion/tombstone semantics are in bs-008.
   - AWS Access Key ID: `AKIA[0-9A-Z]{16}`
   - AWS/Secret assignment heuristic: `(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`
   - JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
-  - Generic bearer token: `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (key-anchored, below)
+  - Generic bearer token: `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (broad; the allow list below releases known benign keys)
   - Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
   - Common API key formats: `(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
   These patterns are the **defaults**; they live in configuration under
   `security.secret_patterns` (bs-011) and can be extended or overridden by users.
+
+  **Allowed matches (normative).** `security.secret_allow_patterns` (bs-011)
+  lists regular expressions for text that looks like a credential but is not
+  one. The default list holds one pattern, for URL query parameters that carry
+  no credential (a video-host redirect link, a pagination cursor):
+
+  - `(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#<>"]*`
+
+  The implementation finds every match of every secret pattern in the text. A
+  secret match is **cancelled** when a match of an allow pattern in the same
+  text covers it: the allow match starts at or before the start of the secret
+  match and ends at or after its end. The text matches the secret set when at
+  least one secret match is not cancelled. An allow pattern therefore releases
+  only the text it covers: a document that holds a redirect link and a real
+  credential is still withheld. The allow list applies wherever the secret
+  patterns apply: source bytes, derived text, and the text a tool returns. It
+  has the list semantics of §7.1, and an empty list cancels nothing. Every allow
+  pattern is valid RE2.
 
   Expected false positives and tuning notes (each note maps to its default rule):
 
@@ -66,20 +84,16 @@ deletion/tombstone semantics are in bs-008.
     reduced false positives via auth/key context and minimum segment lengths; can
     still match synthetic token-like test strings with those contexts.
   - **Generic bearer token**
-    (`(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:access|auth|api|app|bearer|secret|private|password|reset|session|refresh|personal|client|oauth|service|account|admin|deploy|webhook|install|invite|vault|ci|job|runner|registry|github|gh|gitlab|slack|npm|pypi|hf|bot)[_-]?)?token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`):
-    the rule constrains the key name. The key is a bare `token`, or a key whose
-    last word before `token` is a credential word (`GITHUB_TOKEN`,
-    `x-auth-token`, `access_token`, `bearer_token`, `PASSWORD_RESET_TOKEN`). A
-    key whose last word before `token` is another word does not match:
-    `redir_token`, `next_page_token`, `csrf_token`, `mytoken`. The left boundary
-    stops a match inside a longer key. The trade-off is stated: a credential key
-    whose last word is not in the list (for example `foo_token`) no longer
-    matches, so an operator with such keys adds them through
-    `security.secret_patterns`. The rule can still match a bare `token` key that
-    holds a feature or cache value and not a credential. Before spec 0.93.0 the
-    default was `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`. It matched any key
-    that ends in `token`, so a pasted video-host redirect link
-    (`...&redir_token=<base64>`) withheld the whole document.
+    (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule matches any key
+    that ends in `token` with a value of 20 or more key characters, so it
+    catches the credential keys of any provider (`GITHUB_TOKEN`,
+    `VERCEL_TOKEN`, `DOCKER_TOKEN`, `id_token`). It can match innocuous values
+    named `token` (feature tokens, cache tokens, pagination cursors). Release a
+    known benign key with `security.secret_allow_patterns`, not by a narrower
+    rule: a rule that lists credential key names misses every provider that
+    the list does not name. The default allow list releases the redirect and
+    pagination parameters (`redir_token`, `page_token`, `next_page_token`,
+    `pageToken`, `nextPageToken`) in a URL query string.
   - **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the
     left boundary requires `sk-` to start a word. Without it, the rule matched
     inside a transliterated URL slug
@@ -110,10 +124,10 @@ deletion/tombstone semantics are in bs-008.
 
   - JWT: anchor to `Authorization: Bearer` or token key names and enforce minimum
     segment lengths.
-  - Bearer token: constrain key names (`access_token`, `bearer_token`) and
-    reduce accidental matches in generic `token=` fields. The default does this
-    since spec 0.93.0. To add a credential word, copy the default and extend its
-    word list.
+  - Bearer token: keep the rule broad, and release known benign keys
+    (redirect or pagination parameters) with `security.secret_allow_patterns`.
+    A rule that lists credential key names misses every provider that the list
+    does not name.
   - AWS secret heuristic: keep assignment/credential context anchors and avoid
     broad prose matching.
 
@@ -136,22 +150,30 @@ deletion/tombstone semantics are in bs-008.
     - `GITHUB_TOKEN=<40 chars>`
     - `token: <24 chars>`
     - `PASSWORD_RESET_TOKEN=<24 chars>`
+    - `VERCEL_TOKEN=<24 chars>`
+    - `id_token: <30 chars>`
     - `OPENAI_API_KEY=sk-proj-<40 chars>`
-  - Must not hit (no default matches the sample):
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=<24 chars> GITHUB_TOKEN=<40 chars>`
+      (a redirect link and a credential in one text: the allow match covers
+      only the first)
+  - Must not hit (with the default allow list, no secret match is left
+    uncancelled):
     - `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org`
       (a redirect link pasted into a document)
     - `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve`
       (a transliterated URL slug)
+    - `https://www.googleapis.com/youtube/v3/search?part=snippet&pageToken=<24 chars>`
+      (a pagination cursor)
 
   **A change of the effective pattern set (normative).** A document withheld as
   `secret_excluded` (bs-007) was judged against one pattern set. The effective
   set changes when a spec version changes a default (0.93.0 did) or when an
-  operator edits `security.secret_patterns`. On the first scan after such a
+  operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a
   change, the implementation MUST evaluate each withheld document again against
   the new set, also when its `content_hash` is unchanged (§7.6). A document that
   the new set does not match is no longer withheld: the scan indexes it. To
   detect the change, an implementation SHOULD persist a fingerprint of the
-  effective set (for example a hash of the ordered pattern list) and compare it
+  effective set (for example a hash of the ordered secret and allow lists) and compare it
   at each scan. A document already indexed that the new set matches MUST be
   withheld, and its representations and chunks retired, so a credential that a
   new pattern finds does not stay searchable. That direction reads every indexed
@@ -562,7 +584,7 @@ re-indexes it.
 
 ## Changelog
 
-- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: the generic bearer-token default is key-anchored (a bare `token` key or a credential word before `token`; `redir_token`, `next_page_token` and `csrf_token` no longer match). The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
+- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases the redirect and pagination URL parameters (`redir_token`, `page_token`, `next_page_token`, `pageToken`, `nextPageToken`), so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript
