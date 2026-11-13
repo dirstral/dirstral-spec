@@ -178,12 +178,18 @@ deletion/tombstone semantics are in bs-008.
   withheld, and its representations and chunks retired, so a credential that a
   new pattern finds does not stay searchable. That direction reads every indexed
   document once, so an implementation MAY run it as a background pass after the
-  scan. Until that pass has evaluated a document against the new set, every tool
-  that returns indexed content (`search`, `ask`, `open_file` and any other) MUST
-  screen the text it is about to return against the new set: a hit, snippet or
-  context passage that matches is left out of the result, and `open_file`
-  returns `FORBIDDEN` for matching text. So a credential that the new set finds
-  is never served while it waits for the pass.
+  scan. Until that pass has evaluated a document against the new set, no tool
+  returns any part of that document: `search` leaves out its hits, `ask` leaves
+  out its passages before it builds the prompt (so they never reach a
+  generation provider), and `open_file` returns `FORBIDDEN`. Screening only the
+  excerpt is not enough, because a credential can cross a chunk boundary and no
+  single excerpt then matches. The pass is needed only when the new set can
+  match more than the old one (a new or wider secret pattern, or a removed or
+  narrower allow pattern). A change that can only match less (an added allow
+  pattern, a narrower secret pattern) needs no pass for indexed documents, so
+  it hides nothing. In addition, every tool MUST screen the text it is about to
+  return against the effective set, and `ask` MUST do so before it builds the
+  prompt.
 
 - Exclude large binaries by default:
   - configurable max file size per `doc_type`.
