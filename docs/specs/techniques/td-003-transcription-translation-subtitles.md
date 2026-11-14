@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.13.0
+- **Version:** 0.14.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -288,6 +288,13 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   * Under `media.stt.language_scope: window` (SPEC.md §8.2.2) the checks MAY run
     per decoded window; a failing window is a refused range
     (`reason: quality_gate`) and the document fails only when every window fails.
+  * A no-speech result (SPEC.md §8.2, td-001 §8.2) is not **empty** output. The
+    gate MUST NOT reject it, and it is not a refused range. §8.6.13 sets its
+    outcome. The empty check applies to OCR and translation output, and to STT
+    output that is not a no-speech result.
+  * The **low density** check MUST NOT count the length of a no-speech window
+    (§8.6.13) in the duration it compares the text with. A recording with one
+    window of speech and long windows of music is not degenerate output.
 * A failed gate is a **non-fatal per-document error** (bs-002 §7.7): the document
   is marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (df-008 §14.4) — and indexing
@@ -621,7 +628,9 @@ transcript exactly as it applies to an unreadable format.
   **two or more** windows, the implementation **MUST** record a `coverage` object
   on the `transcript` representation's `meta_json` (df-003 §5.2):
   * `windows_attempted`: integer ≥ 2, the scheduled windows.
-  * `windows_decoded`: integer ≥ 0, those that yielded transcript content.
+  * `windows_decoded`: integer ≥ 0, those that decoded: a window that yielded
+    transcript content, or a window whose decode is a no-speech result (SPEC.md
+    §8.2).
   * `ranges`: the decoded time ranges as `{start_ms, end_ms}` objects in
     **absolute** recording time. They MUST be **coalesced** (adjacent or
     overlapping windows merge into one range), **non-overlapping**, and in
@@ -671,12 +680,54 @@ transcript exactly as it applies to an unreadable format.
   decoded at all. Text that never existed cannot be screened, so one cannot
   substitute for the other.
 
+* **A window with no speech is decoded (normative).** A window whose decode is
+  a no-speech result (SPEC.md §8.2) counts in `windows_decoded`, and its time
+  range joins `ranges` and `decoded_ms`. It is not a shortfall under
+  `media.stt.min_coverage`, so a recording with long stretches of music or
+  ambient sound does not trip the partial-transcript floor
+  (`transcript_partial`). It is not a failed window and not a refused range.
+  It reports no language, so the SPEC.md §8.2.2 continuity rule and the
+  low-confidence re-decode rule below do not use it.
+
 * **All windows failed is still an error.** When **no** window decodes, the
   recording produced no transcript and the existing per-document rules apply
   unchanged (bs-002 §7.7): it is a transcription failure recorded as
   `documents.status=error`, not a coverage record. The distinction is the point: a
   failure is retried on the next run, a `skip` is a decision the daemon already
-  made.
+  made. When at least one window failed and every other window is a no-speech
+  result, the outcome is also this error, because a failed window can hold
+  speech.
+
+* **A recording with no speech is skipped, not failed (normative).** When the
+  decode of a recording is a no-speech result as a whole (the single request,
+  or every window of a windowed decode, with no failed window), the recording
+  produced no transcript, and that is the correct answer for it. Then:
+  * No transcript representation is produced for that track.
+  * When at least one selected track (SPEC.md §8.6.12) failed and every other
+    selected track is a no-speech result, the document is `error`, as when
+    every track failed: the failed track can hold speech, so the failure is
+    retried on the next run.
+  * When every selected track (SPEC.md §8.6.12) is a no-speech result and the
+    document has no other searchable representation (for example a direct
+    media embedding, td-002), the implementation MUST record the document as
+    `status=skipped` with `skip_reason="no_speech"` (df-007). It is not an
+    error. When the document keeps another searchable representation, it stays
+    `status=ok`, as td-004 §B.2 rules for an absent extraction.
+  * The implementation MUST NOT decode a no-speech track again while both the
+    `content_hash` (bs-002 §7.6) and the STT derivation identity (§8.6.7) are
+    unchanged. When the derivation identity changes and the content does not,
+    the no-speech outcome is stale, as any derived transcript is (§8.6.7): the
+    implementation MUST decode the track again on the next run, because another
+    model can find speech that this one did not. A change of `content_hash`
+    decodes it again as for any changed file. This guard covers only a track
+    whose decode was a no-speech result. A failed track is retried on the next
+    run, as §8.6.12 and the rule above require.
+  * When an earlier run indexed a transcript for the same track (for example
+    under another model), the implementation MUST retire it, its chunks and the
+    translations derived from it, as the refusal rule below retires a refused
+    transcript.
+  * A sidecar (§8.6.4) replaces STT, so this outcome never applies to a
+    document whose transcript comes from a sidecar.
 
 * **Coverage survives the transcript cache.** An implementation that caches
   transcripts (bs-002 §7.6; §8.6.7) MUST persist the coverage alongside the
@@ -742,6 +793,7 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.14.0**: spec 0.93.0: §8.6.6: a no-speech result (td-001 §8.2) is not empty output for the quality gate, and the low-density check does not count no-speech windows in the duration. §8.6.13: a no-speech window counts as decoded (it joins `windows_decoded`, `ranges` and `decoded_ms`, so it is no shortfall under `min_coverage`). A recording whose decode is a no-speech result as a whole is `status=skipped` with the new `skip_reason=no_speech` when it has no other searchable representation. It is not an error and is not decoded again while its `content_hash` and the STT derivation identity are unchanged; an identity change makes it stale. A failed window or track with the rest no-speech is still an error.
 - **0.13.0**: spec 0.91.0: §8.6.10 adds the **TTML layout**:
   `media.subtitles.ttml.layout` (`spans` default, or `divs`: one
   `<div xml:lang>` per language) and `media.subtitles.ttml.language_codes`

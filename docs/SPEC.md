@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.92.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.93.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -305,7 +305,7 @@ file, right now". `file_skip.data` MUST include:
 * `doc_type`
 * `reason` — a value from the `skip_reasons` enum (§15.2): `unsupported_format`,
   `binary_ignored`, `archive`, `ignore_rule`, `secret_excluded`, `path_excluded`,
-  `size_cap`, `language_uncovered`, `transcript_partial`, `symlink_ignored`. New reasons are added only by a minor version
+  `size_cap`, `language_uncovered`, `transcript_partial`, `symlink_ignored`, `no_speech`. New reasons are added only by a minor version
   bump; a client MAY receive an unrecognized value from a newer server and SHOULD
   render it verbatim rather than error.
 
@@ -1090,18 +1090,26 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * AWS Access Key ID: `AKIA[0-9A-Z]{16}`
   * AWS/Secret assignment heuristic: `(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`
   * JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
-  * Generic bearer token: `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`
-  * Common API key formats (e.g. `sk_[a-z0-9]{32}`, `api_[A-Za-z0-9]{32}`)
+  * Generic bearer token: `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (broad; the allow list below releases known benign keys)
+  * Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
+  * Common API key formats: `(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
   These patterns are the **defaults**; they live in configuration under `security.secret_patterns` and can be extended or overridden by users.
+
+  **Allowed matches (normative).** `security.secret_allow_patterns` lists regular expressions for text that looks like a credential but is not one. The default list holds one pattern, for the `redir_token` parameter of a YouTube redirect link (`youtube.com/redirect`). Video descriptions paste such links in large numbers, and the parameter holds a short-lived redirect nonce, not a credential. The pattern names the host and the path, not only the parameter: a parameter name alone does not show that its value is not a credential, so the default trusts no name outside that one link. An operator adds other benign parameters (for example a pagination cursor of an API they use, anchored to its host):
+
+  * `(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*`
+
+  The implementation finds every match of every secret pattern in the text. An allow pattern can cancel only a match of the **generic bearer-token default** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled, also when an allow match covers it. A generic bearer-token match is **cancelled** when a match of an allow pattern in the same text covers it: the allow match starts at or before the start of the secret match and ends at or after its end. The text matches the secret set when at least one secret match is not cancelled. An allow pattern therefore releases only the text it covers: a document that holds a redirect link and a real credential is still withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`, `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the next parameter or covers a second assignment (`redir_token=abc?GITHUB_TOKEN=...`). A generic bearer-token match that starts inside a cancelled match is still found and judged on its own: the implementation MUST consider every start position, not only the next position after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` releases the second assignment, because the first match (`token=<20 chars>GITHUB_TOKEN`) is cancelled and a search for non-overlapping matches resumes after it. The allow list applies wherever the secret patterns apply: source bytes, derived text, and the text a tool returns. It has the list semantics of §7.1, and an empty list cancels nothing. Every allow pattern is valid RE2.
 
   Expected false positives and tuning notes (map each note to its default rule):
 
   * **AWS Access Key ID** (`AKIA[0-9A-Z]{16}`): may match synthetic examples in docs/tests or random uppercase identifiers of the same shape.
   * **AWS/Secret assignment heuristic** (`(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`): reduces prose false positives (for example “AWS Secrets Manager”) by requiring assignment-like context.
   * **JWTs** (`(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`): reduced false positives via auth/key context and minimum segment lengths; can still match synthetic token-like test strings with those contexts.
-  * **Generic bearer token** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): can match innocuous config values named `token` (feature tokens, cache tokens) that are not credentials.
-  * **Common API key formats** (`sk_[a-z0-9]{32}`, `api_[A-Za-z0-9]{32}`): can match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
+  * **Generic bearer token** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule matches any key that ends in `token` with a value of 20 or more key characters, so it catches the credential keys of any provider (`GITHUB_TOKEN`, `VERCEL_TOKEN`, `DOCKER_TOKEN`, `id_token`). It can match innocuous values named `token` (feature tokens, cache tokens, pagination cursors). Release a known benign key with `security.secret_allow_patterns`, not by a narrower rule: a rule that lists credential key names misses every provider that the list does not name. The default allow list releases only the `redir_token` parameter of a YouTube redirect link.
+  * **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the left boundary requires `sk-` to start a word. Without it, the rule matched inside a transliterated URL slug (`.../krasnoyarsk-podpisanie-dogovorov-...`, where `sk-` closes a place name) and withheld the whole document. It can still match a slug segment that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page) when 20 or more letters, digits or hyphens follow.
+  * **Common API key formats** (`(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left boundary requires the prefix to follow a character that is not a letter, a digit or `_`, so a prefix inside a longer identifier (`task_...`, `task_sk_...`) does not match. The rule can still match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
 
   Refinement guidance via `security.secret_patterns`:
 
@@ -1113,7 +1121,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   Example tuning directions:
 
   * JWT: anchor to `Authorization: Bearer` or token key names and enforce minimum segment lengths.
-  * Bearer token: constrain key names (`access_token`, `bearer_token`) and reduce accidental matches in generic `token=` fields.
+  * Bearer token: keep the rule broad, and release known benign keys with `security.secret_allow_patterns`, anchored to the host and path that make them benign (a parameter name alone does not). A rule that lists credential key names misses every provider that the list does not name.
   * AWS secret heuristic: keep assignment/credential context anchors and avoid broad prose matching.
 
   Testing approach for pattern updates:
@@ -1122,6 +1130,29 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * Run scanner tests in CI on both corpora and assert precision/recall thresholds appropriate for your risk posture.
   * Add regression fixtures for every incident-driven rule change (new false positive or false negative).
   * Review CI diffs of matched files/lines before merging pattern changes; iterate by tightening context anchors or path excludes.
+
+  **Regression fixtures for the defaults (normative).** An implementation MUST test its default set against these samples. `<n chars>` stands for that many characters from `[A-Za-z0-9]`.
+
+  * Must hit (each sample matches at least one default):
+    * `GITHUB_TOKEN=<40 chars>`
+    * `token: <24 chars>`
+    * `PASSWORD_RESET_TOKEN=<24 chars>`
+    * `VERCEL_TOKEN=<24 chars>`
+    * `id_token: <30 chars>`
+    * `OPENAI_API_KEY=sk-proj-<40 chars>`
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=<24 chars> GITHUB_TOKEN=<40 chars>` (a redirect link and a credential in one text: the allow match covers only the first)
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=abc;GITHUB_TOKEN=<40 chars>` (the allow value stops at `;`)
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=abc?GITHUB_TOKEN=<40 chars>` and `https://www.youtube.com/redirect?event=video_description&redir_token=abc,GITHUB_TOKEN:<40 chars>` (the allow value stops at `?`, `=` and `:`)
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` (a match that starts inside a cancelled match is judged on its own)
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=AKIA<16 chars from [0-9A-Z]>` (an allow match never cancels an AWS key match)
+    * `https://example.org/list?page_token=<24 chars>` (a parameter name alone is not trusted)
+  * Must not hit (with the default allow list, no secret match is left uncancelled):
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org` (a redirect link pasted into a document)
+    * `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve` (a transliterated URL slug)
+
+  **Media and other binary sources.** For a source whose searchable text is derived (audio, video, a PDF, an image), the check of the source bytes MAY cover only a leading sample of them (the reference implementation reads 64 KiB), and the derived text (transcript, sidecar, translation, extracted text) MUST be screened in full before it is indexed. The re-evaluation after a pattern change applies the same rule: for an audio or video document it checks the same leading sample and screens the stored derived text. So it never needs bytes outside that sample, and `ingest.media_identity: sampled` (§7.6) needs no extra read for it.
+
+  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.93.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
 
 * Exclude large binaries by default:
 
@@ -1142,6 +1173,26 @@ Use extension + MIME sniff + binary heuristics to classify:
 * `pdf`, `image`, `audio`, `video`
 * `archive` (zip/tar/tar.gz) optionally deep extracts members
 * `binary_ignored`
+
+**Video containers and shared extensions.** This is a clarification of the rule above: it
+states what "extension + MIME sniff" above means for video. Video containers include
+`.mp4 .mov .mkv .m4v .webm .avi .flv .wmv .mpg .mpeg .mxf .vob .3gp .m2ts`. An
+implementation SHOULD classify each of these as `video`. Some extensions are
+shared by code and media: `.ts` is TypeScript or an MPEG transport stream, and
+`.mts` is a TypeScript module or an AVCHD transport stream. The extension
+cannot decide such a file, so the implementation MUST decide it by content. A
+file is an MPEG transport stream when it holds the sync byte `0x47` at a fixed
+interval of 188 bytes, of 192 bytes for the BDAV variant (a 4-byte timestamp
+before each 188-byte packet, so the sync byte is at offset 4 of each packet), or
+of 204 bytes for the variant with 16 bytes of error correction after each
+packet. Such a file is `video`. Other content is `code`. An implementation
+SHOULD check several consecutive packets (for example the first five) before it
+decides `video`, so one `0x47` byte in a text file does not decide it. The sync
+byte is the ASCII letter `G`, so sync spacing alone is not enough: a text file
+can hold a `G` at every 188th byte (lines of 188 bytes that start with `//G`).
+The checked bytes MUST also hold a byte that text never holds (a NUL byte, or a
+sequence that is not valid UTF-8). A real transport stream always holds one in
+its packet headers; a source file does not.
 
 ### 7.4 Representation generation rules
 
@@ -1198,7 +1249,8 @@ It is the defect this rule fixes, not pending work.
     highest-fidelity *active* engine that supports it (§7.4.B.1), falling
     through the fidelity order; a format no active engine supports degrades per
     the strict/lenient contract (§7.4.B.2).
-  * `docling` / `docling-serve` / `mistral` / `pandoc`: **pin** a single engine.
+  * `docling` / `docling-serve` / `mistral` / `pandoc` / `libreoffice`: **pin** a
+    single engine.
     A format the pinned engine cannot read does not silently produce an empty
     representation — it degrades honestly per §7.4.B.2.
   * `off`: skip the extracted representation.
@@ -1216,9 +1268,9 @@ schema-level difference.
 
 **Extraction is a §7.4-owned routing decision, not a §8 provider-capability
 cell.** Per-format engine selection lives here (§7.4.B.1), *not* in the §8.1.2
-capability matrix: extraction fidelity is per-format and ordered, and two of the
-engines (`docling`, `pandoc` #393) are local tools with no §8.1.1
-provider profile. Where an engine *is* an §8 surface — the `mistral` engine — it
+capability matrix: extraction fidelity is per-format and ordered, and three of
+the engines (`docling`, `pandoc` #393, `libreoffice`) are local tools with no
+§8.1.1 provider profile. Where an engine *is* an §8 surface (the `mistral` engine), it
 resolves through that capability's binding: the `mistral` extraction engine is
 the active `ocr` provider (§8.1.2/§8.1.3), so the OCR-tier engine follows the
 `ocr` binding rather than being pinned to a vendor name. The audio path (§7.4.C)
@@ -1246,6 +1298,7 @@ tiebreak):
 |---|---|---|---|
 | T1 | `docling` / `docling-serve` | structured document model | reading-order, `region` (page+bbox), section breadcrumb, labels, atomic tables (§7.4.B "Structured extraction") |
 | T2 | `pandoc` (#393) | born-digital markup/office/ebook → Markdown | structure without page/bbox: section breadcrumb + `label`; no `page`/`bbox` spans |
+| T2 | `libreoffice` | legacy binary Word → `.docx` (headless LibreOffice), then the pandoc `docx` reader → Markdown | the same as `pandoc`: section breadcrumb + `label`; no `page`/`bbox` spans |
 | T3 | `mistral` (= §8 `ocr` provider) | page-separated OCR | `page` spans (§7.4.B "Page-separated extraction") |
 | T4 | `raw_text` (§7.4.A) | flat text | none |
 
@@ -1253,28 +1306,41 @@ tiebreak):
 above). The `pandoc` engine (#393) is **optional and capability-activated**: its
 cells participate in selection whenever a `pandoc` binary is available (see
 *Extractor availability*) and are inactive otherwise, exactly as a missing
-`docling` binary deactivates the T1 cells:
+`docling` binary deactivates the T1 cells. The `libreoffice` engine is optional
+and capability-activated in the same way (‡):
 
-| Format class | Examples | docling(-serve) | mistral (ocr) | pandoc† | raw_text |
-|---|---|:--:|:--:|:--:|:--:|
-| pdf | `.pdf` | ✅ T1 | ✅ T3 | ❌ | ❌ |
-| raster-image (OCR-native) | `.png .jpg .jpeg .webp` | ✅ T1 | ✅ T3 | ❌ | ❌ |
-| raster-image (extended) | `.tiff .bmp .gif` | ✅ T1 | ❌ | ❌ | ❌ |
-| vector-image | `.svg` | ✅ T1 | ❌ | ❌ | ❌ |
-| office (Word, OOXML) | `.docx` | ✅ T1 | ❌ | ✅ T2 | ❌ |
-| office (slides/sheets, OOXML) | `.pptx .xlsx` | ✅ T1 | ❌ | ❌ | ❌ |
-| office/ebook (ODF/RTF/EPUB) | `.odt .rtf .epub` | ❌ | ❌ | ✅ T2 | ❌ |
-| legacy office (binary) | `.doc` | ❌ | ❌ | ❌ | ❌ |
-| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§7.4.A, fallback tier) |
+| Format class | Examples | docling(-serve) | mistral (ocr) | pandoc† | libreoffice‡ | raw_text |
+|---|---|:--:|:--:|:--:|:--:|:--:|
+| pdf | `.pdf` | ✅ T1 | ✅ T3 | ❌ | ❌ | ❌ |
+| raster-image (OCR-native) | `.png .jpg .jpeg .webp` | ✅ T1 | ✅ T3 | ❌ | ❌ | ❌ |
+| raster-image (extended) | `.tiff .bmp .gif` | ✅ T1 | ❌ | ❌ | ❌ | ❌ |
+| vector-image | `.svg` | ✅ T1 | ❌ | ❌ | ❌ | ❌ |
+| office (Word, OOXML) | `.docx` | ✅ T1 | ❌ | ✅ T2 | ❌ | ❌ |
+| office (slides/sheets, OOXML) | `.pptx .xlsx` | ✅ T1 | ❌ | ❌ | ❌ | ❌ |
+| office/ebook (ODF/RTF/EPUB) | `.odt .rtf .epub` | ❌ | ❌ | ✅ T2 | ❌ | ❌ |
+| legacy office (binary Word) | `.doc` | ❌ | ❌ | ❌ | ✅ T2 | ❌ |
+| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ❌ | ✅ T4 (§7.4.A, fallback tier) |
 
 † `pandoc` (T2, #393) is a born-digital markup/office/ebook converter with a
 **reader-only** support set: it ingests `.docx`, `.odt`, `.rtf`, `.epub`, and
 `.html`, but **not** `.pptx`/`.xlsx` (pandoc has no PowerPoint/Excel reader —
-those are docling-only) nor legacy binary `.doc` (docx-only), and no raster/PDF
+those are docling-only) nor legacy binary `.doc` (docx-only; the `libreoffice` engine ‡ reads it), and no raster/PDF
 input — so those cells are permanently `❌`. Its readable cells are active only
 when a `pandoc` binary is available; an implementation or deployment without
 `pandoc` treats them as inactive, exactly as a missing `docling` binary
 deactivates T1.
+
+‡ `libreoffice` (T2) covers one format class: legacy binary Word (`.doc`). Its
+only `✅` cell is `.doc`; every other cell is `❌`, also where LibreOffice itself
+could open the format, so the engine never competes with `pandoc` or `docling`
+for a format they read. It converts the `.doc` to `.docx` with a headless
+LibreOffice, then reads that `.docx` with the pandoc `docx` reader, so its output
+and provenance are those of `pandoc` (*Legacy Word extraction (libreoffice)*
+below). Its cell is active only when both a LibreOffice binary and a `pandoc`
+binary are available (*Extractor availability*); without either, the `.doc` cell
+is inactive, exactly as an absent `pandoc` deactivates the T2 cells of `pandoc`.
+`pandoc` and `libreoffice` share tier T2, but no format has a `✅` cell for both,
+so the tier never has to break a tie between them.
 
 **Best-available selection (`extractor: auto`).** For each classified document,
 select the **active** engine of lowest fidelity tier whose cell for that
@@ -1286,12 +1352,16 @@ engine that cannot read it, and a higher-fidelity active engine is never
 bypassed (fixing the "html→raw_text while docling is active" and
 "tiff→mistral-rejected" defects, dir2mcp #394/#556).
 
-**Pinned selection (`extractor: docling|docling-serve|mistral|pandoc`).** Only
+**Pinned selection (`extractor: docling|docling-serve|mistral|pandoc|libreoffice`).**
+Only
 the named engine is eligible; formats outside its `✅` set degrade per §7.4.B.2.
 Pinning is honored exactly (no cross-engine fallback), matching the existing
 explicit-`docling` / explicit-`docling-serve` no-silent-fallback rule. Pinning
 `pandoc` when no `pandoc` binary is available disables extraction, exactly as
-pinning an unavailable `docling`.
+pinning an unavailable `docling`. A pin of `libreoffice` behaves like a pin of
+`pandoc`: only `.doc` is eligible, every other format degrades per §7.4.B.2,
+and when the engine is unavailable extraction is disabled, with no
+cross-engine fallback.
 
 ##### 7.4.B.2 Degradation contract (strict / lenient)
 
@@ -1342,8 +1412,8 @@ present-but-non-functional extractor as unavailable (never as available), and
 SHOULD cache the result for the run rather than probing per document.
 
 * Under `extractor: auto`, an unavailable `docling` CLI is skipped and the
-  per-format tier order continues (docling-serve, then `pandoc` for the formats
-  it covers, then Mistral OCR, then `raw_text` for HTML (§7.4.A), then disabled),
+  per-format tier order continues (docling-serve, then `pandoc` or `libreoffice`
+  for the formats each covers, then Mistral OCR, then `raw_text` for HTML (§7.4.A), then disabled),
   so a broken docling install degrades gracefully instead of failing every
   document.
 * Under `extractor: docling` (explicit), an unavailable command disables
@@ -1365,6 +1435,27 @@ tier order continues; under `extractor: pandoc` (explicit) an unavailable binary
 disables extraction and MUST NOT silently fall back to another engine, mirroring
 explicit `docling`. The decision and its reason MUST be surfaced in startup
 diagnostics and by `dir2mcp doctor` (§7.7).
+
+**libreoffice availability.** The `libreoffice` engine (T2) is *available* only when
+both of these are true:
+
+* A LibreOffice binary **resolves**: `ingest.libreoffice.command` when it is set,
+  else `soffice` on `PATH`, else `libreoffice` on `PATH`. The binary passes a
+  lightweight functional check (a successful `--version` call).
+* The `pandoc` engine is available (*pandoc availability*). The `libreoffice`
+  engine reads its `.docx` output with the pandoc `docx` reader, so it cannot run
+  without `pandoc`.
+
+A binary that resolves but fails the probe is **unavailable**. The engine is
+**capability-activated**: no enable flag is required, and the opt-out is to pin
+another engine or to leave the binaries off the host. Under `extractor: auto` an
+unavailable `libreoffice` is skipped; no other engine reads `.doc`, so a `.doc`
+is then a coverage gap under §7.4.B.2. Under `extractor: libreoffice` (explicit) an
+unavailable engine disables extraction and MUST NOT silently fall back to
+another engine, as explicit `pandoc` does. The decision and its reason (which
+binary is absent or failed its probe) MUST be surfaced in startup
+diagnostics and by `dir2mcp doctor` (§7.7). The coverage report names the
+remediation for `.doc`: install LibreOffice and `pandoc`.
 
 **Per-document docling timeout.** One call of the local `docling` CLI on one
 document MUST have a time limit, so that one slow document cannot stop
@@ -1452,6 +1543,61 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   re-extracted through it on re-index per the best-available rule; until then the
   pandoc representation stands.
 
+**Legacy Word extraction (libreoffice).** When the active engine for a `.doc` is
+`libreoffice` (T2), the pipeline converts the document in two steps:
+
+* **Convert.** It runs LibreOffice headless to convert the `.doc` to `.docx`
+  (`soffice --headless --convert-to docx --outdir <dir> <file>`). Each conversion
+  MUST use its own LibreOffice user profile in a new temporary directory
+  (for example `-env:UserInstallation=file:///<tmp>/profile`). A shared profile
+  holds a lock, so a second concurrent conversion fails or waits. Each
+  conversion MUST also use its own new temporary output directory: two
+  documents with the same name (`a/report.doc`, `b/report.doc`) then never
+  write the same `report.docx`. The profile directory and the output directory
+  MUST both be outside the corpus root, so the engine never writes into the
+  corpus; when the system temporary directory is inside the root, the
+  implementation MUST use another location or treat the engine as
+  unavailable. Both directories MUST be readable and writable only by the
+  owner of the dir2mcp process (mode `0700` on POSIX systems), because the
+  output holds the converted document text.
+* **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
+  `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
+  representation is `extracted_markdown`, `rep_hash` is computed over the
+  rendered Markdown, and the spans carry the section breadcrumb and `label` and
+  no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
+  implementation MAY cache it, as an implementation-private artifact.
+* **Clean-up.** After the read step ends, and also after a failure or a
+  timeout in either step, the implementation removes the temporary profile and
+  the temporary output directory with the `.docx` in it. A cached copy of the
+  `.docx` (above) is a separate file and is not removed.
+* **Time limit.** One extraction of one document (the conversion and the
+  read step together) MUST have a time limit, so
+  one document cannot stop the index run. `ingest.libreoffice.timeout_sec` sets the
+  limit in seconds (env `DIR2MCP_LIBREOFFICE_TIMEOUT_SEC`). The default is
+  `300`. The value MUST be an integer greater than `0`; `0` or a negative
+  value is `CONFIG_INVALID` at load (§16.2). When the limit expires, the
+  implementation MUST stop every process the engine started for the
+  document: the LibreOffice process with the processes it started, and the
+  `pandoc` process.
+* **Failure.** A conversion that fails (a non-zero exit, no `.docx` output, or
+  a `.docx` that pandoc cannot read) or that reaches the time limit is a
+  non-fatal per-document error (§7.7). The error MUST name the document by its
+  `rel_path`, and on a timeout it MUST name the limit that applied. A binary
+  that is absent or not functional is not a per-document error: it makes the engine
+  unavailable, and each `.doc` is a coverage gap under §7.4.B.2.
+* Re-indexing semantics are unchanged (§7.6): under `auto`, a `.doc` later
+  covered by a higher-fidelity active engine is extracted again through it on
+  an explicit re-index (`dir2mcp reindex`). An incremental scan keeps the
+  existing representation of a `.doc` at `status=ok` while its `content_hash`
+  is unchanged, so a new engine never re-reads a corpus silently. Only a `.doc`
+  that no engine could extract is extracted on its own (next item).
+* **An engine that becomes available.** A `.doc` that an earlier scan recorded
+  as an unsupported-format skip or error (§7.4.B.2) because no active engine
+  covered it MUST be extracted on the first scan in which `libreoffice` is
+  available and eligible, also when its `content_hash` is unchanged (§7.6).
+  Otherwise the operator who follows the remediation (install LibreOffice and
+  `pandoc`) sees no change.
+
 See [Design 0002](design/0002-structured-extraction.md) for rationale and the
 structure-to-provenance mapping.
 
@@ -1525,7 +1671,11 @@ is bound to the corpus via the embed identity (§8.1.4).
 
 * Document-level:
 
-  * compute `content_hash`; if unchanged and not deleted → skip rep generation
+  * compute `content_hash`; if unchanged and not deleted → skip rep generation,
+    unless the type that the current version assigns to the file (§7.3) differs
+    from the stored `doc_type`. A classification change (for example a `.ts`
+    stored as `code` that §7.3 now decides is `video`) makes the next scan
+    process the document again, also with an unchanged `content_hash`.
 * Representation-level:
 
   * compute `rep_hash`; if unchanged → skip chunk rebuild
@@ -1620,7 +1770,8 @@ that a present-but-broken extractor be visible rather than reported as healthy
   engine (per the §7.4.B.1 matrix) — e.g. "`.odt`, `.tiff` present, no active
   engine covers them";
 * for each uncovered class, name a **remediation** — the engine/config to add
-  (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393); or
+  (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393);
+  install LibreOffice and `pandoc` for `.doc`; or
   set `ingest.on_unsupported: strict` to fail instead of skip").
 
 **Basis of "present" and of the engine list.** Two readings of the report have
@@ -1642,7 +1793,7 @@ proven wrong in practice and are ruled out here:
   and by `doctor`, not only by the run that found it.
 * The **engine list** covers every engine the `ingest.extractor` policy makes
   eligible (§7.4.B.1), including a capability-activated secondary engine such as
-  `pandoc` under `auto`, and not only the primary engine of the cascade. An eligible
+  `pandoc` or `libreoffice` under `auto`, and not only the primary engine of the cascade. An eligible
   engine that is unavailable is listed with its reason, because its absence is
   what leaves a format class uncovered.
 
@@ -1930,11 +2081,11 @@ Built-in profiles ship for common providers so operators typically only supply a
 Binding a capability to a `kind` whose cell is `❌` MUST be rejected as `CONFIG_INVALID` (static validation). ³ = `kind: openai` audio (STT/TTS) is **endpoint-dependent** and cannot be statically validated (an arbitrary OpenAI-compatible `base_url` may omit `/v1/audio/*`). The adapter implements it; if the configured endpoint lacks it, the failure surfaces **at first use** as a provider error — a required STT path fails that ingest item, optional TTS fails open (8.3) — never as `CONFIG_INVALID`. All other `✅` cells are statically valid.
 
 **Extraction is not a cell in this matrix.** Document/image *extraction-engine*
-selection (docling / docling-serve / mistral-ocr / pandoc) is a per-format,
-fidelity-ordered routing decision owned by §7.4.B.1, not a `kind`-level
-capability here: extraction fidelity is per-format and two engines (`docling`,
-`pandoc`) have no §8.1.1 provider profile. Where an extraction engine *is* an §8
-surface, it binds through the corresponding capability — the `mistral`
+selection (docling / docling-serve / mistral-ocr / pandoc / libreoffice) is a
+per-format, fidelity-ordered routing decision owned by §7.4.B.1, not a
+`kind`-level capability here: extraction fidelity is per-format and three
+engines (`docling`, `pandoc`, `libreoffice`) have no §8.1.1 provider profile.
+Where an extraction engine *is* an §8 surface, it binds through the corresponding capability: the `mistral`
 extraction engine is the active `ocr` provider (selected per §8.1.3), and the
 audio extraction path binds `stt` (§7.4.C, §8.2). No `extract`/`CapExtract`
 capability cell is added.
@@ -2336,6 +2487,34 @@ worker reads the document text and rune spans from the shared store (8.7.4).
 
 * STT provider is selected per 8.1.3 among STT-capable profiles (8.1.2): **Mistral** (Voxtral), **ElevenLabs** (Scribe), **OpenAI** (Whisper / `gpt-4o-transcribe`), **Gemini**. Default profile: **Mistral**.
 * Outputs MUST be normalized to the same `transcript` representation format regardless of provider.
+* **A response with no speech is a result, not an error (normative).** An STT
+  provider can return a well-formed response for audio that holds no speech. For
+  example, an OpenAI-compatible server returns `{"text":"","segments":[]}` for a
+  clip that holds only music or ambient sound. Such a response is a **no-speech
+  result**: a successful decode that found no speech. A response is a no-speech
+  result when all of these are true:
+  * it parses;
+  * it has a text field, a segments field, or both;
+  * its text is empty or holds only whitespace (an absent text field counts
+    as empty, so `{"segments":[]}` is a no-speech result);
+  * it holds no segment whose text holds more than whitespace (zero segments
+    is the usual case).
+
+  The implementation MUST NOT treat a no-speech result as a transport or
+  provider error. It is not a failed window (§8.6.13), it does not trigger
+  `media.stt.on_route_error` (§8.2.4), and it does not advance a candidate list
+  (§8.2.3). A response that does not parse, or that has neither a text field
+  nor a segments field, is malformed and stays a provider error. A response is
+  also malformed when its `text` is present and not a string, when its
+  `segments` is present and not an array, or when a segment is not an object or
+  has a `text` that is present and not a string. A response is
+  also malformed when it carries timed words (a top-level `words` array or a
+  `words` array inside a segment, with at least one entry) but no text: the
+  decoder reports speech that the text does not hold. A malformed response is never
+  a no-speech result, so it never becomes a durable `no_speech` skip. §8.6.6 and
+  §8.6.13 say what a no-speech result does to the transcript and to the
+  document (`no_speech`). A sidecar (§8.6.4) still replaces STT, so these rules
+  never apply to a document whose transcript comes from a sidecar.
 * **Gemini** transcribes via the native `models/{model}:generateContent` surface: the audio is sent as an inline-data part (base64, with its MIME type) alongside a transcription instruction, and the model's text output is the transcript. Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the native surface is required (a `kind: openai` Gemini profile is therefore not STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional `stt_language` apply as for other providers.
 
 #### 8.2.1 Language-coverage-aware selection (honest coverage)
@@ -2579,7 +2758,11 @@ no model is trained or adapted, and every model choice stays the operator's.
   * **Below the floor or empty.** An identifier report below the
     implementation's confidence floor, or with no language, is **no signal**:
     resolution continues down the precedence (decoder report, then text), and
-    under `window` the §8.2.2 continuity rule applies to what remains.
+    under `window` the §8.2.2 continuity rule applies to what remains. A
+    no-speech result (§8.2) from the identifier that reports no language is no
+    signal too. An identifier response that reports a language (at or above
+    the floor) is a signal even when its text is empty: an identifier's text is
+    discarded in any case, so an empty text does not void its language report.
   * **Failure.** An identifier request that fails (transport or provider error)
     is no signal for that item or window, exactly as a report below the floor.
     It MUST NOT fail the item: identification is advisory.
@@ -2662,6 +2845,11 @@ language list and no model ship, and every model choice stays the operator's.
     fails (transport or provider error) is no signal (§8.2.3), and the item is
     decoded exactly as it is today: the default profile decodes, and the
     language is resolved from the text afterwards. It MUST NOT fail the item.
+    A no-speech result (§8.2) from the identifier that reports no language is
+    no signal: the probe held no speech, and other parts of the item can still
+    hold speech. The default profile decodes the item. (An identifier response
+    with empty text that reports a language at or above the confidence floor is a signal, §8.2.3.) When that decode is also a no-speech result, the
+    outcome is `no_speech` (§8.6.13).
   * **Recording.** A transcript decoded with an identifier bound under `item`
     records `language_identifier` (the profile name), `language_scope: item`
     and `language_routes` (the resolved route table, shape below) on its
@@ -3256,6 +3444,13 @@ stable across re-indexing.
     decoded window; a failing window is recorded as a refused range
     (`reason: quality_gate`) and the document fails only when every window
     fails.
+  * A no-speech result (§8.2) is not **empty** output. The gate MUST NOT reject
+    it, and it is not a refused range. §8.6.13 sets its outcome. The empty check
+    applies to OCR and translation output, and to STT output that is not a
+    no-speech result.
+  * The **low density** check MUST NOT count the length of a no-speech window
+    (§8.6.13) in the duration it compares the text with. A recording with one
+    window of speech and long windows of music is not degenerate output.
 * A failed gate is a **non-fatal per-document error** (§7.7): the document is
   marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (§14.4) — and indexing continues.
@@ -3679,6 +3874,13 @@ languages in one document**.
   transcript. This preserves the zero-representation⇒`error` contract (§8.6.7 /
   dir2mcp #398/#413) while reading it as "zero *successful* tracks", so a single
   degenerate dubbed track never discards a good original.
+  A track whose decode is a no-speech result (§8.2) did not fail: it produces no
+  transcript representation and is not an error. The document outcome
+  `no_speech` (§8.6.13) applies only when every selected track is a no-speech
+  result. When at least one selected track failed and every other selected
+  track is a no-speech result, no track produced a transcript and the document
+  is `error`, as when every track failed: the failure is retried on the next
+  run, because the failed track can hold speech.
 
 * **Determinism.** Tracks are processed in **container stream order**, and the
   `@t<N>` index is the stream's 0-based audio index, so representation keys and
@@ -3711,7 +3913,8 @@ transcript exactly as it applies to an unreadable format.
   **two or more** windows, the implementation **MUST** record a `coverage` object
   on the `transcript` representation's `meta_json` (§5.2):
   * `windows_attempted`: integer ≥ 2, the scheduled windows.
-  * `windows_decoded`: integer ≥ 0, those that yielded transcript content.
+  * `windows_decoded`: integer ≥ 0, those that decoded: a window that yielded
+    transcript content, or a window whose decode is a no-speech result (§8.2).
   * `ranges`: the decoded time ranges as `{start_ms, end_ms}` objects in
     **absolute** recording time. They MUST be **coalesced** (adjacent or
     overlapping windows merge into one range), **non-overlapping**, and in
@@ -3761,12 +3964,50 @@ transcript exactly as it applies to an unreadable format.
   decoded at all. Text that never existed cannot be screened, so one cannot
   substitute for the other.
 
+* **A window with no speech is decoded (normative).** A window whose decode is
+  a no-speech result (§8.2) counts in `windows_decoded`, and its time range
+  joins `ranges` and `decoded_ms`. It is not a shortfall under
+  `media.stt.min_coverage`, so a recording with long stretches of music or
+  ambient sound does not trip the partial-transcript floor
+  (`transcript_partial`). It is not a failed window and not a refused range.
+  It reports no language, so the §8.2.2 continuity rule and the low-confidence
+  re-decode rule below do not use it.
+
 * **All windows failed is still an error.** When **no** window decodes, the
   recording produced no transcript and the existing per-document rules apply
   unchanged (§7.7, and §8.6.12 for the per-track scoping): it is a transcription
   failure recorded as `documents.status=error`, not a coverage record. The
   distinction is the point: a failure is retried on the next run, a `skip` is a
-  decision the daemon already made.
+  decision the daemon already made. When at least one window failed and every
+  other window is a no-speech result, the outcome is also this error, because
+  a failed window can hold speech.
+
+* **A recording with no speech is skipped, not failed (normative).** When the
+  decode of a recording is a no-speech result as a whole (the single request,
+  or every window of a windowed decode, with no failed window), the recording
+  produced no transcript, and that is the correct answer for it. Then:
+  * No transcript representation is produced for that track.
+  * When every selected track (§8.6.12) is a no-speech result and the
+    document has no other searchable representation (for example a direct
+    media embedding, §8.1.7), the implementation MUST record the document as
+    `status=skipped` with `skip_reason="no_speech"` (§15.6). It is not an
+    error. When the document keeps another searchable representation, it stays
+    `status=ok`, as §7.4.B.2 rules for an absent extraction.
+  * The implementation MUST NOT decode a no-speech track again while both the
+    `content_hash` (§7.6) and the STT derivation identity (§8.6.7) are
+    unchanged. When the derivation identity changes and the content does not,
+    the no-speech outcome is stale, as any derived transcript is (§8.6.7): the
+    implementation MUST decode the track again on the next run, because another
+    model can find speech that this one did not. A change of `content_hash`
+    decodes it again as for any changed file. This guard covers only a track
+    whose decode was a no-speech result. A failed track is retried on the next
+    run, as §8.6.12 and the rule above require.
+  * When an earlier run indexed a transcript for the same track (for example
+    under another model), the implementation MUST retire it, its chunks and the
+    translations derived from it, as the refusal rule below retires a refused
+    transcript.
+  * A sidecar (§8.6.4) replaces STT, so this outcome never applies to a
+    document whose transcript comes from a sidecar.
 
 * **Coverage survives the transcript cache.** An implementation that caches
   transcripts (§7.6/§8.6.7) MUST persist the coverage alongside the cached text
@@ -5738,6 +5979,14 @@ return the secret content; it should either return an error (e.g. `FORBIDDEN`)
 or an empty/plain-text placeholder.  This ensures tool-level bypass of ingestion
 filters is impossible.
 
+The content check covers the whole source text, not only the slice that the
+call returns (spec 0.93.0). A credential outside the requested lines or page
+still refuses the call, as ingestion withholds that document (§7.2). A slice
+check alone can miss a match that crosses the slice edge. A text source larger
+than `ingest.max_file_mb`, which ingestion never scans or indexes, returns
+`FILE_TOO_LARGE` (§14.4); the server reads at most that many bytes plus one to
+decide.
+
 **Input schema:**
 
 ```json
@@ -6031,8 +6280,8 @@ honestly as `ok`, `skipped` or `error`.
         "properties": {
           "reason": {
             "type": "string",
-            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "transcript_partial", "symlink_ignored"],
-            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "transcript_partial", "symlink_ignored", "no_speech"],
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. no_speech: media whose STT decode found no speech in the whole recording (\u00a78.2, \u00a78.6.13): every decode returned a well-formed response with empty text and no segment that holds text, for example a recording that holds only music or ambient sound, and the document has no other searchable representation. It is not an error, and the recording is not decoded again while both its content_hash and the STT derivation identity are unchanged (td-003 \u00a78.6.13); a change of either makes the next run decode it again. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
           },
           "count": {
             "type": "integer",
@@ -6720,14 +6969,16 @@ rag:
 
 ingest:
   gitignore: true
-  extractor: auto      # auto|docling|docling-serve|mistral|pandoc|off
+  extractor: auto      # auto|docling|docling-serve|mistral|pandoc|libreoffice|off
   # auto = best-available per format (§7.4.B.1): highest-fidelity ACTIVE engine
   # that supports each format; no format routed to an engine that can't read it,
   # no higher-fidelity engine bypassed. A pinned engine (docling|docling-serve|
-  # mistral|pandoc) is honored exactly; formats it can't read degrade per
-  # on_unsupported. pandoc (T2, #393) is capability-activated: a working binary
+  # mistral|pandoc|libreoffice) is honored exactly; formats it can't read degrade
+  # per on_unsupported. pandoc (T2, #393) is capability-activated: a working binary
   # (resolved via PATH or pandoc.command) => its docx/odt/rtf/epub/html cells are
-  # active; absent or non-functional => inactive.
+  # active; absent or non-functional => inactive. libreoffice (T2) is
+  # capability-activated too: a functional soffice/libreoffice binary AND a functional
+  # pandoc => its one cell (.doc) is active.
   on_unsupported: lenient   # lenient|strict (§7.4.B.2). lenient (default) =
     # skip-with-warning: a doc left with NO searchable representation is recorded
     # as a durable status=skipped (unsupported-format skip_reason) + file_skip, so
@@ -6749,6 +7000,15 @@ ingest:
     # from PATH. Capability-activated: a working binary activates the T2 matrix
     # cells; no enable flag. A resolved-but-non-functional binary is unavailable.
     command: ""        # e.g. /opt/homebrew/bin/pandoc
+  libreoffice:
+    # Optional override for the LibreOffice binary (§7.4.B). Empty = resolve
+    # `soffice`, then `libreoffice`, from PATH. Converts a legacy .doc to .docx
+    # for the pandoc docx reader; needs a functional pandoc too. No enable flag.
+    command: ""        # e.g. /usr/bin/soffice
+    # Time limit in seconds for one .doc extraction (conversion + read). MUST be
+    # greater than 0. A timeout records a per-document error that names the
+    # document and the limit. Env: DIR2MCP_LIBREOFFICE_TIMEOUT_SEC.
+    timeout_sec: 300
   pdf:
     mode: ocr          # off|ocr|auto
   images:
@@ -7083,7 +7343,12 @@ security:
     - '(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}'
     - '(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'
     - '(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}'
-    - 'sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32}'
+    - '(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}'
+    - '(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})'
+  # An allow match cancels only a generic bearer-token match that it covers;
+  # a match of any other secret pattern is never cancelled (§7.2).
+  secret_allow_patterns:
+    - '(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*'
 ```
 
 ---
@@ -7115,7 +7380,8 @@ security:
 * Sensitive file defaults:
 
   * default excludes include the secret regex patterns listed in §7.2, and
-    these patterns are configurable via `security.secret_patterns`.
+    these patterns are configurable via `security.secret_patterns`, with
+    benign matches released by `security.secret_allow_patterns`.
   * the exclusion engine is consulted on every file access, including
     `open_file`; tool handlers must reject or return an empty result for
     any path or content matching the configured patterns or path excludes.

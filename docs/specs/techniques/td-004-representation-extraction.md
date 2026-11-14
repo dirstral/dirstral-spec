@@ -1,7 +1,7 @@
 # td-004: Representation generation & structured extraction
 
 - **ID:** td-004
-- **Version:** 0.7.0
+- **Version:** 0.8.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -103,9 +103,9 @@ per-format** selection over the extraction-engine registry (§B.1).
   highest-fidelity *active* engine that supports it (§B.1), falling through the
   fidelity order; a format no active engine supports degrades per the
   strict/lenient contract (§B.2).
-- `docling` / `docling-serve` / `mistral` / `pandoc`: **pin** a single engine. A
-  format the pinned engine cannot read does not silently produce an empty
-  representation — it degrades honestly per §B.2.
+- `docling` / `docling-serve` / `mistral` / `pandoc` / `libreoffice`: **pin** a
+  single engine. A format the pinned engine cannot read does not silently
+  produce an empty representation: it degrades honestly per §B.2.
 - `off`: skip the extracted representation.
 
 Route the extracted representation to `index_kind=text`. Cache extracted output
@@ -125,8 +125,9 @@ carries no wire- or schema-level difference.
 **Extraction is a §B routing decision, not a
 [td-001](td-001-provider-model.md) §8.1.2 capability cell.** Per-format engine
 selection lives here (§B.1), *not* in the td-001 §8.1.2 capability matrix:
-extraction fidelity is per-format and ordered, and two of the engines
-(`docling`, `pandoc` #393) are local tools with no provider profile.
+extraction fidelity is per-format and ordered, and three of the engines
+(`docling`, `pandoc` #393, `libreoffice`) are local tools with no provider
+profile.
 Where an engine *is* a td-001 §8 surface — the `mistral` engine — it resolves
 through that capability's binding: the `mistral` extraction engine is the active
 `ocr` provider ([td-001](td-001-provider-model.md) §8.1.2/§8.1.3), so the
@@ -147,6 +148,7 @@ tiebreak):
 |---|---|---|---|
 | T1 | `docling` / `docling-serve` | structured document model | reading-order, `region` (page+bbox), section breadcrumb, labels, atomic tables (§B "Structured extraction") |
 | T2 | `pandoc` (#393) | born-digital markup/office/ebook → Markdown | structure without page/bbox: section breadcrumb + `label`; no `page`/`bbox` spans |
+| T2 | `libreoffice` | legacy binary Word → `.docx` (headless LibreOffice), then the pandoc `docx` reader → Markdown | the same as `pandoc`: section breadcrumb + `label`; no `page`/`bbox` spans |
 | T3 | `mistral` (= td-001 §8 `ocr` provider) | page-separated OCR | `page` spans (§B "Page-separated extraction") |
 | T4 | `raw_text` (§A) | flat text | none |
 
@@ -154,28 +156,41 @@ tiebreak):
 above). The `pandoc` engine (#393) is **optional and capability-activated**: its
 cells participate in selection whenever a `pandoc` binary is available (see
 *Extractor availability*) and are inactive otherwise, exactly as a missing
-`docling` binary deactivates the T1 cells:
+`docling` binary deactivates the T1 cells. The `libreoffice` engine is optional
+and capability-activated in the same way (‡):
 
-| Format class | Examples | docling(-serve) | mistral (ocr) | pandoc† | raw_text |
-|---|---|:--:|:--:|:--:|:--:|
-| pdf | `.pdf` | ✅ T1 | ✅ T3 | ❌ | ❌ |
-| raster-image (OCR-native) | `.png .jpg .jpeg .webp` | ✅ T1 | ✅ T3 | ❌ | ❌ |
-| raster-image (extended) | `.tiff .bmp .gif` | ✅ T1 | ❌ | ❌ | ❌ |
-| vector-image | `.svg` | ✅ T1 | ❌ | ❌ | ❌ |
-| office (Word, OOXML) | `.docx` | ✅ T1 | ❌ | ✅ T2 | ❌ |
-| office (slides/sheets, OOXML) | `.pptx .xlsx` | ✅ T1 | ❌ | ❌ | ❌ |
-| office/ebook (ODF/RTF/EPUB) | `.odt .rtf .epub` | ❌ | ❌ | ✅ T2 | ❌ |
-| legacy office (binary) | `.doc` | ❌ | ❌ | ❌ | ❌ |
-| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ✅ T4 (§A, fallback tier) |
+| Format class | Examples | docling(-serve) | mistral (ocr) | pandoc† | libreoffice‡ | raw_text |
+|---|---|:--:|:--:|:--:|:--:|:--:|
+| pdf | `.pdf` | ✅ T1 | ✅ T3 | ❌ | ❌ | ❌ |
+| raster-image (OCR-native) | `.png .jpg .jpeg .webp` | ✅ T1 | ✅ T3 | ❌ | ❌ | ❌ |
+| raster-image (extended) | `.tiff .bmp .gif` | ✅ T1 | ❌ | ❌ | ❌ | ❌ |
+| vector-image | `.svg` | ✅ T1 | ❌ | ❌ | ❌ | ❌ |
+| office (Word, OOXML) | `.docx` | ✅ T1 | ❌ | ✅ T2 | ❌ | ❌ |
+| office (slides/sheets, OOXML) | `.pptx .xlsx` | ✅ T1 | ❌ | ❌ | ❌ | ❌ |
+| office/ebook (ODF/RTF/EPUB) | `.odt .rtf .epub` | ❌ | ❌ | ✅ T2 | ❌ | ❌ |
+| legacy office (binary Word) | `.doc` | ❌ | ❌ | ❌ | ✅ T2 | ❌ |
+| markup | `.html .htm` | ✅ T1 | ❌ | ✅ T2 | ❌ | ✅ T4 (§A, fallback tier) |
 
 † `pandoc` (T2, #393) is a born-digital markup/office/ebook converter with a
 **reader-only** support set: it ingests `.docx`, `.odt`, `.rtf`, `.epub`, and
 `.html`, but **not** `.pptx`/`.xlsx` (pandoc has no PowerPoint/Excel reader —
-those are docling-only) nor legacy binary `.doc` (docx-only), and no raster/PDF
+those are docling-only) nor legacy binary `.doc` (docx-only; the `libreoffice` engine ‡ reads it), and no raster/PDF
 input — so those cells are permanently `❌`. Its readable cells are active only
 when a `pandoc` binary is available; an implementation or deployment without
 `pandoc` treats them as inactive, exactly as a missing `docling` binary
 deactivates T1.
+
+‡ `libreoffice` (T2) covers one format class: legacy binary Word (`.doc`). Its
+only `✅` cell is `.doc`; every other cell is `❌`, also where LibreOffice itself
+could open the format, so the engine never competes with `pandoc` or `docling`
+for a format they read. It converts the `.doc` to `.docx` with a headless
+LibreOffice, then reads that `.docx` with the pandoc `docx` reader, so its output
+and provenance are those of `pandoc` (*Legacy Word extraction (libreoffice)*
+below). Its cell is active only when both a LibreOffice binary and a `pandoc`
+binary are available (*Extractor availability*); without either, the `.doc` cell
+is inactive, exactly as an absent `pandoc` deactivates the T2 cells of `pandoc`.
+`pandoc` and `libreoffice` share tier T2, but no format has a `✅` cell for both,
+so the tier never has to break a tie between them.
 
 **Best-available selection (`extractor: auto`).** For each classified document,
 select the **active** engine of lowest fidelity tier whose cell for that format
@@ -187,12 +202,15 @@ engine that cannot read it, and a higher-fidelity active engine is never
 bypassed (fixing the "html→raw_text while docling is active" and
 "tiff→mistral-rejected" defects, dir2mcp #394/#556).
 
-**Pinned selection (`extractor: docling|docling-serve|mistral|pandoc`).** Only
-the named engine is eligible; formats outside its `✅` set degrade per §B.2.
+**Pinned selection (`extractor: docling|docling-serve|mistral|pandoc|libreoffice`).**
+Only the named engine is eligible; formats outside its `✅` set degrade per §B.2.
 Pinning is honored exactly (no cross-engine fallback), matching the existing
 explicit-`docling` / explicit-`docling-serve` no-silent-fallback rule. Pinning
 `pandoc` when no `pandoc` binary is available disables extraction, exactly as
-pinning an unavailable `docling`.
+pinning an unavailable `docling`. A pin of `libreoffice` behaves like a pin of
+`pandoc`: only `.doc` is eligible, every other format degrades per §B.2,
+and when the engine is unavailable extraction is disabled, with no
+cross-engine fallback.
 
 #### B.2) Degradation contract (strict / lenient)
 
@@ -255,10 +273,10 @@ extractor as unavailable (never as available), and **SHOULD** cache the result
 for the run rather than probing per document.
 
 - Under `extractor: auto`, an unavailable `docling` CLI is skipped and the
-  per-format tier order continues (docling-serve, then `pandoc` for the formats
-  it covers, then Mistral OCR, then `raw_text` for HTML (§A), then disabled), so
-  a broken docling install
-  degrades gracefully instead of failing every document.
+  per-format tier order continues (docling-serve, then `pandoc` or `libreoffice`
+  for the formats each covers, then Mistral OCR, then `raw_text` for HTML (§A),
+  then disabled), so a broken docling install degrades gracefully instead of
+  failing every document.
 - Under `extractor: docling` (explicit), an unavailable command disables
   extraction — PDF/image/document contribute no `extracted_markdown` — and
   **MUST NOT** silently fall back to another engine, mirroring explicit
@@ -277,6 +295,29 @@ matrix cells and its absence deactivates them (opt-out only). Under
 order continues; under `extractor: pandoc` (explicit) an unavailable binary
 disables extraction and **MUST NOT** silently fall back, mirroring explicit
 `docling`.
+
+#### libreoffice availability
+
+The `libreoffice` engine (T2) is *available* only when both of these are true:
+
+- A LibreOffice binary **resolves**: `ingest.libreoffice.command` when it is set,
+  else `soffice` on `PATH`, else `libreoffice` on `PATH`. The binary passes a
+  lightweight functional check (a successful `--version` call).
+- The `pandoc` engine is available (the `pandoc` rule above). The `libreoffice`
+  engine reads its `.docx` output with the pandoc `docx` reader, so it cannot run
+  without `pandoc`.
+
+A binary that resolves but fails the probe is **unavailable**. The engine is
+**capability-activated**: no enable flag is required, and the opt-out is to pin
+another engine or to leave the binaries off the host. Under `extractor: auto` an
+unavailable `libreoffice` is skipped; no other engine reads `.doc`, so a `.doc`
+is then a coverage gap under §B.2. Under `extractor: libreoffice` (explicit) an
+unavailable engine disables extraction and **MUST NOT** silently fall back to
+another engine, as explicit `pandoc` does. The decision and its reason (which
+binary is absent or failed its probe) **MUST** be surfaced in startup
+diagnostics and by `dir2mcp doctor`
+([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.7). The coverage report
+names the remediation for `.doc`: install LibreOffice and `pandoc`.
 
 #### Per-document docling timeout
 
@@ -395,6 +436,67 @@ page/`bbox` provenance it does not have:
   re-extracted through it on re-index per the best-available rule; until then the
   pandoc representation stands.
 
+#### Legacy Word extraction (libreoffice)
+
+When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts the document in two steps:
+
+- **Convert.** It runs LibreOffice headless to convert the `.doc` to `.docx`
+  (`soffice --headless --convert-to docx --outdir <dir> <file>`). Each conversion
+  **MUST** use its own LibreOffice user profile in a new temporary directory
+  (for example `-env:UserInstallation=file:///<tmp>/profile`). A shared profile
+  holds a lock, so a second concurrent conversion fails or waits. Each
+  conversion **MUST** also use its own new temporary output directory: two
+  documents with the same name (`a/report.doc`, `b/report.doc`) then never
+  write the same `report.docx`. The profile directory and the output directory
+  **MUST** both be outside the corpus root, so the engine never writes into the
+  corpus; when the system temporary directory is inside the root, the
+  implementation **MUST** use another location or treat the engine as
+  unavailable. Both directories **MUST** be readable and writable only by the
+  owner of the dir2mcp process (mode `0700` on POSIX systems), because the
+  output holds the converted document text.
+- **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
+  `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
+  representation is `extracted_markdown`, `rep_hash` is computed over the
+  rendered Markdown, and the spans carry the section breadcrumb and `label` and
+  no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
+  implementation **MAY** cache it, as an implementation-private artifact.
+- **Clean-up.** After the read step ends, and also after a failure or a
+  timeout in either step, the implementation removes the temporary profile and
+  the temporary output directory with the `.docx` in it. A cached copy of the
+  `.docx` (above) is a separate file and is not removed.
+- **Time limit.** One extraction of one document (the conversion and the
+  read step together) **MUST** have a time limit, so
+  one document cannot stop the index run. `ingest.libreoffice.timeout_sec` sets the
+  limit in seconds (env `DIR2MCP_LIBREOFFICE_TIMEOUT_SEC`). The default is
+  `300`. The value **MUST** be an integer greater than `0`; `0` or a negative
+  value is `CONFIG_INVALID` at load
+  ([bs-011](../behavior/bs-011-configuration.md)). When the limit expires, the
+  implementation **MUST** stop every process the engine started for the
+  document: the LibreOffice process with the processes it started, and the
+  `pandoc` process.
+- **Failure.** A conversion that fails (a non-zero exit, no `.docx` output, or
+  a `.docx` that pandoc cannot read) or that reaches the time limit is a
+  non-fatal per-document error
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.7). The error **MUST**
+  name the document by its `rel_path`, and on a timeout it **MUST** name the limit that applied. A binary
+  that is absent or not functional is not a per-document error: it makes the engine
+  unavailable, and each `.doc` is a coverage gap under §B.2.
+- Re-indexing semantics are unchanged
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.6): under `auto`, a
+  `.doc` later covered by a higher-fidelity active engine is extracted again
+  through it on an explicit re-index (`dir2mcp reindex`). An incremental scan
+  keeps the existing representation of a `.doc` at `status=ok` while its
+  `content_hash` is unchanged, so a new engine never re-reads a corpus
+  silently. Only a `.doc` that no engine could extract is extracted on its own
+  (next item).
+- **An engine that becomes available.** A `.doc` that an earlier scan recorded
+  as an unsupported-format skip or error (§B.2) because no active engine
+  covered it **MUST** be extracted on the first scan in which `libreoffice` is
+  available and eligible, also when its `content_hash` is unchanged
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.6). Otherwise the
+  operator who follows the remediation (install LibreOffice and `pandoc`) sees
+  no change.
+
 ### C) Audio (STT provider is configurable)
 
 Generate a `transcript` representation via the STT provider. The transcription
@@ -449,6 +551,7 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
+- **0.8.0**: mirrors spec 0.93.0 (SPEC.md §7.4.B): a capability-activated T2 engine `libreoffice` reads legacy binary Word `.doc`. It converts the `.doc` to `.docx` with a headless LibreOffice (an isolated user profile per conversion, a temporary output directory outside the corpus, `ingest.libreoffice.timeout_sec`, default `300`) and reads the result with the pandoc `docx` reader, so its provenance equals pandoc's. It is active only when a LibreOffice binary and `pandoc` both pass a probe. Its only `✅` cell is `.doc`. `ingest.extractor: libreoffice` pins it with no cross-engine fallback. A conversion failure or timeout is a per-document error; an absent binary is a coverage gap. A `.doc` skipped for want of an engine is extracted on the first scan in which the engine is available.
 - **0.7.0**: mirrors spec 0.77.0 (SPEC.md §7.4.B): the default of
   `ingest.docling.timeout_sec` is `3600` (was `900`). docling on CPU needed
   about 20 minutes for one 195-page PDF on a loaded host.

@@ -1,7 +1,7 @@
 # df-009: CLI output contract
 
 - **ID:** df-009
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -80,7 +80,8 @@ set to `status="skipped"` during ingest — the streaming counterpart of the
 `skip_reasons` honest-coverage aggregate. `file_skip.data` **MUST** include
 `rel_path`, `doc_type`, and `reason` (a value from the `skip_reasons` enum:
 `unsupported_format`, `binary_ignored`, `archive`, `ignore_rule`,
-`secret_excluded`, `path_excluded`, `size_cap`). New reasons are additive under
+`secret_excluded`, `path_excluded`, `size_cap`, `language_uncovered`,
+`transcript_partial`, `symlink_ignored`, `no_speech`). New reasons are additive under
 a minor version bump; a client **MAY** receive an unrecognized value from a
 newer server and **SHOULD** render it verbatim rather than error.
 
@@ -146,6 +147,7 @@ Expected pass conditions:
 
 ## Changelog
 
+- **0.3.0**: the `file_skip` reason list names `no_speech` (spec 0.93.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have.
 - **0.1.0** — Migrated from SPEC.md §3. Cross-referenced the on-disk artifacts to
   df-001/df-002 and `CONFIG_INVALID` to df-008.
 - **0.2.0** — Added the `file_skip` event and pinned `file_error` as strictly

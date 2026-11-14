@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -48,11 +48,49 @@ deletion/tombstone semantics are in bs-008.
   - AWS Access Key ID: `AKIA[0-9A-Z]{16}`
   - AWS/Secret assignment heuristic: `(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`
   - JWTs: `(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}` (context-anchored)
-  - Generic bearer token: `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`
-  - Common API key formats (e.g. `sk_[a-z0-9]{32}`, `api_[A-Za-z0-9]{32}`)
+  - Generic bearer token: `(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}` (broad; the allow list below releases known benign keys)
+  - Hyphenated secret keys (`sk-...`, `sk-proj-...`): `(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`
+  - Common API key formats: `(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`
 
   These patterns are the **defaults**; they live in configuration under
   `security.secret_patterns` (bs-011) and can be extended or overridden by users.
+
+  **Allowed matches (normative).** `security.secret_allow_patterns` (bs-011)
+  lists regular expressions for text that looks like a credential but is not
+  one. The default list holds one pattern, for the `redir_token` parameter of a
+  YouTube redirect link (`youtube.com/redirect`). Video descriptions paste such
+  links in large numbers, and the parameter holds a short-lived redirect nonce,
+  not a credential. The pattern names the host and the path, not only the
+  parameter: a parameter name alone does not show that its value is not a
+  credential, so the default trusts no name outside that one link. An operator
+  adds other benign parameters (for example a pagination cursor of an API they
+  use, anchored to its host):
+
+  - `(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*`
+
+  The implementation finds every match of every secret pattern in the text. An
+  allow pattern can cancel only a match of the **generic bearer-token default**
+  (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret
+  pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled,
+  also when an allow match covers it. A generic bearer-token match is
+  **cancelled** when a match of an allow pattern in the same text covers it:
+  the allow match starts at or before the start of the secret match and ends at
+  or after its end. The text matches the secret set when at least one secret
+  match is not cancelled. An allow pattern therefore releases only the text it
+  covers: a document that holds a redirect link and a real credential is still
+  withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`,
+  `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the
+  next parameter or covers a second assignment
+  (`redir_token=abc?GITHUB_TOKEN=...`). A generic bearer-token match that starts
+  inside a cancelled match is still found and judged on its own: the
+  implementation MUST consider every start position, not only the next position
+  after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20
+  chars>` releases the second assignment, because the first match
+  (`token=<20 chars>GITHUB_TOKEN`) is cancelled and a search for non-overlapping
+  matches resumes after it. The allow list applies wherever the secret
+  patterns apply: source bytes, derived text, and the text a tool returns. It
+  has the list semantics of §7.1, and an empty list cancels nothing. Every allow
+  pattern is valid RE2.
 
   Expected false positives and tuning notes (each note maps to its default rule):
 
@@ -64,11 +102,29 @@ deletion/tombstone semantics are in bs-008.
   - **JWTs** (`(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`):
     reduced false positives via auth/key context and minimum segment lengths; can
     still match synthetic token-like test strings with those contexts.
-  - **Generic bearer token** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): can match
-    innocuous config values named `token` (feature tokens, cache tokens) that are
-    not credentials.
-  - **Common API key formats** (`sk_[a-z0-9]{32}`, `api_[A-Za-z0-9]{32}`): can
-    match placeholders, test fixtures, or generated IDs that happen to share the
+  - **Generic bearer token**
+    (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule matches any key
+    that ends in `token` with a value of 20 or more key characters, so it
+    catches the credential keys of any provider (`GITHUB_TOKEN`,
+    `VERCEL_TOKEN`, `DOCKER_TOKEN`, `id_token`). It can match innocuous values
+    named `token` (feature tokens, cache tokens, pagination cursors). Release a
+    known benign key with `security.secret_allow_patterns`, not by a narrower
+    rule: a rule that lists credential key names misses every provider that
+    the list does not name. The default allow list releases only the
+    `redir_token` parameter of a YouTube redirect link.
+  - **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the
+    left boundary requires `sk-` to start a word. Without it, the rule matched
+    inside a transliterated URL slug
+    (`.../krasnoyarsk-podpisanie-dogovorov-...`, where `sk-` closes a place
+    name) and withheld the whole document. It can still match a slug segment
+    that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page)
+    when 20 or more letters, digits or hyphens follow.
+  - **Common API key formats**
+    (`(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left
+    boundary requires the prefix to follow a character that is not a letter,
+    a digit or `_`, so a prefix inside a longer identifier (`task_...`,
+    `task_sk_...`) does not match. The rule can still match
+    placeholders, test fixtures, or generated IDs that happen to share the
     prefix/length.
 
   Refinement guidance via `security.secret_patterns`:
@@ -86,8 +142,11 @@ deletion/tombstone semantics are in bs-008.
 
   - JWT: anchor to `Authorization: Bearer` or token key names and enforce minimum
     segment lengths.
-  - Bearer token: constrain key names (`access_token`, `bearer_token`) and reduce
-    accidental matches in generic `token=` fields.
+  - Bearer token: keep the rule broad, and release known benign keys with
+    `security.secret_allow_patterns`, anchored to the host and path that make
+    them benign (a parameter name alone does not).
+    A rule that lists credential key names misses every provider that the list
+    does not name.
   - AWS secret heuristic: keep assignment/credential context anchors and avoid
     broad prose matching.
 
@@ -101,6 +160,77 @@ deletion/tombstone semantics are in bs-008.
     positive or false negative).
   - Review CI diffs of matched files/lines before merging pattern changes;
     iterate by tightening context anchors or path excludes.
+
+  **Regression fixtures for the defaults (normative).** An implementation MUST
+  test its default set against these samples. `<n chars>` stands for that many
+  characters from `[A-Za-z0-9]`.
+
+  - Must hit (each sample matches at least one default):
+    - `GITHUB_TOKEN=<40 chars>`
+    - `token: <24 chars>`
+    - `PASSWORD_RESET_TOKEN=<24 chars>`
+    - `VERCEL_TOKEN=<24 chars>`
+    - `id_token: <30 chars>`
+    - `OPENAI_API_KEY=sk-proj-<40 chars>`
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=<24 chars> GITHUB_TOKEN=<40 chars>`
+      (a redirect link and a credential in one text: the allow match covers
+      only the first)
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=abc;GITHUB_TOKEN=<40 chars>`
+      (the allow value stops at `;`)
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=abc?GITHUB_TOKEN=<40 chars>` and
+      `https://www.youtube.com/redirect?event=video_description&redir_token=abc,GITHUB_TOKEN:<40 chars>`
+      (the allow value stops at `?`, `=` and `:`)
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=<20 chars>GITHUB_TOKEN=<20 chars>`
+      (a match that starts inside a cancelled match is judged on its own)
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=AKIA<16 chars from [0-9A-Z]>`
+      (an allow match never cancels an AWS key match)
+    - `https://example.org/list?page_token=<24 chars>` (a parameter name alone
+      is not trusted)
+  - Must not hit (with the default allow list, no secret match is left
+    uncancelled):
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org`
+      (a redirect link pasted into a document)
+    - `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve`
+      (a transliterated URL slug)
+
+  **Media and other binary sources.** For a source whose searchable text is
+  derived (audio, video, a PDF, an image), the check of the source bytes MAY
+  cover only a leading sample of them (the reference implementation reads
+  64 KiB), and the derived text (transcript, sidecar, translation, extracted
+  text) MUST be screened in full before it is indexed. The re-evaluation after a
+  pattern change applies the same rule: for an audio or video document it
+  checks the same leading sample and screens the stored derived text. So it
+  never needs bytes outside that sample, and `ingest.media_identity: sampled`
+  (§7.6) needs no extra read for it.
+
+  **A change of the effective pattern set (normative).** A document withheld as
+  `secret_excluded` (bs-007) was judged against one pattern set. The effective
+  set changes when a spec version changes a default (0.93.0 did) or when an
+  operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a
+  change, the implementation MUST evaluate each withheld document again against
+  the new set, also when its `content_hash` is unchanged (§7.6). A document that
+  the new set does not match is no longer withheld for a secret: the scan
+  treats it as a new document, so every other §7.1 gate (path rules,
+  `.gitignore`, size and type limits) still applies, and only a document that
+  passes them is indexed. To
+  detect the change, an implementation SHOULD persist a fingerprint of the
+  effective set (for example a hash of the ordered secret and allow lists) and compare it
+  at each scan. A document already indexed that the new set matches MUST be
+  withheld, and its representations and chunks retired, so a credential that a
+  new pattern finds does not stay searchable. That direction reads every indexed
+  document once, so an implementation MAY run it as a background pass after the
+  scan. Until that pass has evaluated a document against the new set, no tool
+  returns any part of that document: `search` leaves out its hits, `ask` leaves
+  out its passages before it builds the prompt (so they never reach a
+  generation provider), and `open_file` returns `FORBIDDEN`. Screening only the
+  excerpt is not enough, because a credential can cross a chunk boundary and no
+  single excerpt then matches. The pass is needed only when the new set can
+  match more than the old one (a new or wider secret pattern, or a removed or
+  narrower allow pattern). A change that can only match less (an added allow
+  pattern, a narrower secret pattern) needs no pass for indexed documents, so
+  it hides nothing. In addition, every tool MUST screen the text it is about to
+  return against the effective set, and `ask` MUST do so before it builds the
+  prompt.
 
 - Exclude large binaries by default:
   - configurable max file size per `doc_type`.
@@ -120,6 +250,26 @@ Use extension + MIME sniff + binary heuristics to classify:
 - `pdf`, `image`, `audio`, `video`
 - `archive` (zip/tar/tar.gz) — optionally deep-extracts members
 - `binary_ignored`
+
+**Video containers and shared extensions.** This is a clarification of the rule above: it
+states what "extension + MIME sniff" above means for video. Video containers include
+`.mp4 .mov .mkv .m4v .webm .avi .flv .wmv .mpg .mpeg .mxf .vob .3gp .m2ts`. An
+implementation SHOULD classify each of these as `video`. Some extensions are
+shared by code and media: `.ts` is TypeScript or an MPEG transport stream, and
+`.mts` is a TypeScript module or an AVCHD transport stream. The extension
+cannot decide such a file, so the implementation MUST decide it by content. A
+file is an MPEG transport stream when it holds the sync byte `0x47` at a fixed
+interval of 188 bytes, of 192 bytes for the BDAV variant (a 4-byte timestamp
+before each 188-byte packet, so the sync byte is at offset 4 of each packet), or
+of 204 bytes for the variant with 16 bytes of error correction after each
+packet. Such a file is `video`. Other content is `code`. An implementation
+SHOULD check several consecutive packets (for example the first five) before it
+decides `video`, so one `0x47` byte in a text file does not decide it. The sync
+byte is the ASCII letter `G`, so sync spacing alone is not enough: a text file
+can hold a `G` at every 188th byte (lines of 188 bytes that start with `//G`).
+The checked bytes MUST also hold a byte that text never holds (a NUL byte, or a
+sequence that is not valid UTF-8). A real transport stream always holds one in
+its packet headers; a source file does not.
 
 ### 7.4 Representation generation
 
@@ -156,7 +306,11 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
 
 - Document-level:
   - compute `content_hash`; if unchanged and not deleted → **skip** rep
-    generation
+    generation, unless the type that the current version assigns to the file
+    (§7.3) differs from the stored `doc_type`. A classification change (for
+    example a `.ts` stored as `code` that §7.3 now decides is `video`) makes
+    the next scan process the document again, also with an unchanged
+    `content_hash`.
 - Representation-level:
   - compute `rep_hash`; if unchanged → **skip** chunk rebuild
 - Chunk-level:
@@ -191,7 +345,8 @@ that a present-but-broken extractor be visible rather than reported as healthy
   engine (per the td-004 §B.1 matrix) — e.g. "`.odt`, `.tiff` present, no active
   engine covers them";
 - for each uncovered class, name a **remediation** — the engine/config to add
-  (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393); or
+  (e.g. "install docling for `.tiff`; install `pandoc` for `.odt` (#393);
+  install LibreOffice and `pandoc` for `.doc`; or
   set `ingest.on_unsupported: strict` to fail instead of skip").
 
 **Basis of "present" and of the engine list.** Two readings of the report have
@@ -213,7 +368,7 @@ proven wrong in practice and are ruled out here:
   and by `doctor`, not only by the run that found it.
 * The **engine list** covers every engine the `ingest.extractor` policy makes
   eligible (td-004 §B.1), including a capability-activated secondary engine such as
-  `pandoc` under `auto`, and not only the primary engine of the cascade. An eligible
+  `pandoc` or `libreoffice` under `auto`, and not only the primary engine of the cascade. An eligible
   engine that is unavailable is listed with its reason, because its absence is
   what leaves a format class uncovered.
 
@@ -485,6 +640,7 @@ re-indexes it.
 
 ## Changelog
 
+- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript
