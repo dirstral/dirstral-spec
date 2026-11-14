@@ -422,7 +422,7 @@ security:
   # An allow match cancels only a generic bearer-token match that it covers;
   # a match of any other secret pattern is never cancelled (bs-002 §7.2).
   secret_allow_patterns:
-    - '(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;?=:<>"]*'
+    - '(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*'
 ```
 
 > **Drift note:** the `media.clip` comment still cites `§15.11`
@@ -432,7 +432,7 @@ security:
 
 ## Changelog
 
-- **0.18.0**: mirrors spec 0.93.0 (SPEC.md §7.2, §7.4.B, §16.2): the `security.secret_patterns` defaults change (the `sk-` key format with a left boundary; a left boundary on `sk_`/`api_`), and the new `security.secret_allow_patterns` list releases redirect and pagination URL parameters. `ingest.extractor` lists `pandoc` (missing here since spec 0.31.0) and the new `libreoffice`; the template lists the `ingest.pandoc` block and the new `ingest.libreoffice.{command, timeout_sec}` block.
+- **0.18.0**: mirrors spec 0.93.0 (SPEC.md §7.2, §7.4.B, §16.2): the `security.secret_patterns` defaults change (the `sk-` key format with a left boundary; a left boundary on `sk_`/`api_`), and the new `security.secret_allow_patterns` list releases the `redir_token` parameter of a YouTube redirect link. `ingest.extractor` lists `pandoc` (missing here since spec 0.31.0) and the new `libreoffice`; the template lists the `ingest.pandoc` block and the new `ingest.libreoffice.{command, timeout_sec}` block.
 - **0.17.0**: mirrors spec 0.91.0 (SPEC.md §8.6.10, §16.2): the template lists `media.subtitles.ttml.layout` (`spans` default, or `divs`) and `media.subtitles.ttml.language_codes` (`bcp47` default, or `iso639_2`).
 - **0.16.0**: mirrors spec 0.86.0 (SPEC.md §8.6.14, §16.2): the template lists `media.subtitles.emit.{smil, smil_params, smil_language_codes, ttml_name}` and `media.subtitles.ttml.segmentation`, all off or unchanged by default.
 - **0.15.0**: mirrors spec 0.82.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.route_retry_after: 24h` (env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`), with a pointer to SPEC.md §8.2.4 and §16.2 for its rules.

@@ -57,10 +57,16 @@ deletion/tombstone semantics are in bs-008.
 
   **Allowed matches (normative).** `security.secret_allow_patterns` (bs-011)
   lists regular expressions for text that looks like a credential but is not
-  one. The default list holds one pattern, for URL query parameters that carry
-  no credential (a video-host redirect link, a pagination cursor):
+  one. The default list holds one pattern, for the `redir_token` parameter of a
+  YouTube redirect link (`youtube.com/redirect`). Video descriptions paste such
+  links in large numbers, and the parameter holds a short-lived redirect nonce,
+  not a credential. The pattern names the host and the path, not only the
+  parameter: a parameter name alone does not show that its value is not a
+  credential, so the default trusts no name outside that one link. An operator
+  adds other benign parameters (for example a pagination cursor of an API they
+  use, anchored to its host):
 
-  - `(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;?=:<>"]*`
+  - `(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*`
 
   The implementation finds every match of every secret pattern in the text. An
   allow pattern can cancel only a match of the **generic bearer-token default**
@@ -75,7 +81,13 @@ deletion/tombstone semantics are in bs-008.
   withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`,
   `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the
   next parameter or covers a second assignment
-  (`?page_token=abc?GITHUB_TOKEN=...`). The allow list applies wherever the secret
+  (`redir_token=abc?GITHUB_TOKEN=...`). A generic bearer-token match that starts
+  inside a cancelled match is still found and judged on its own: the
+  implementation MUST consider every start position, not only the next position
+  after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20
+  chars>` releases the second assignment, because the first match
+  (`token=<20 chars>GITHUB_TOKEN`) is cancelled and a search for non-overlapping
+  matches resumes after it. The allow list applies wherever the secret
   patterns apply: source bytes, derived text, and the text a tool returns. It
   has the list semantics of §7.1, and an empty list cancels nothing. Every allow
   pattern is valid RE2.
@@ -98,9 +110,8 @@ deletion/tombstone semantics are in bs-008.
     named `token` (feature tokens, cache tokens, pagination cursors). Release a
     known benign key with `security.secret_allow_patterns`, not by a narrower
     rule: a rule that lists credential key names misses every provider that
-    the list does not name. The default allow list releases the redirect and
-    pagination parameters (`redir_token`, `page_token`, `next_page_token`,
-    `pageToken`, `nextPageToken`) in a URL query string.
+    the list does not name. The default allow list releases only the
+    `redir_token` parameter of a YouTube redirect link.
   - **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the
     left boundary requires `sk-` to start a word. Without it, the rule matched
     inside a transliterated URL slug
@@ -131,8 +142,9 @@ deletion/tombstone semantics are in bs-008.
 
   - JWT: anchor to `Authorization: Bearer` or token key names and enforce minimum
     segment lengths.
-  - Bearer token: keep the rule broad, and release known benign keys
-    (redirect or pagination parameters) with `security.secret_allow_patterns`.
+  - Bearer token: keep the rule broad, and release known benign keys with
+    `security.secret_allow_patterns`, anchored to the host and path that make
+    them benign (a parameter name alone does not).
     A rule that lists credential key names misses every provider that the list
     does not name.
   - AWS secret heuristic: keep assignment/credential context anchors and avoid
@@ -163,21 +175,23 @@ deletion/tombstone semantics are in bs-008.
     - `https://www.youtube.com/redirect?event=video_description&redir_token=<24 chars> GITHUB_TOKEN=<40 chars>`
       (a redirect link and a credential in one text: the allow match covers
       only the first)
-    - `https://example.org/list?page_token=abc;GITHUB_TOKEN=<40 chars>` (the
-      allow value stops at `;`)
-    - `https://example.org/list?page_token=abc?GITHUB_TOKEN=<40 chars>` and
-      `https://example.org/list?page_token=abc,GITHUB_TOKEN:<40 chars>` (the
-      allow value stops at `?`, `=` and `:`)
-    - `https://example.org/list?page_token=AKIA<16 chars from [0-9A-Z]>` (an
-      allow match never cancels an AWS key match)
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=abc;GITHUB_TOKEN=<40 chars>`
+      (the allow value stops at `;`)
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=abc?GITHUB_TOKEN=<40 chars>` and
+      `https://www.youtube.com/redirect?event=video_description&redir_token=abc,GITHUB_TOKEN:<40 chars>`
+      (the allow value stops at `?`, `=` and `:`)
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=<20 chars>GITHUB_TOKEN=<20 chars>`
+      (a match that starts inside a cancelled match is judged on its own)
+    - `https://www.youtube.com/redirect?event=video_description&redir_token=AKIA<16 chars from [0-9A-Z]>`
+      (an allow match never cancels an AWS key match)
+    - `https://example.org/list?page_token=<24 chars>` (a parameter name alone
+      is not trusted)
   - Must not hit (with the default allow list, no secret match is left
     uncancelled):
     - `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org`
       (a redirect link pasted into a document)
     - `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve`
       (a transliterated URL slug)
-    - `https://www.googleapis.com/youtube/v3/search?part=snippet&pageToken=CAUQAQnextPageCursorAAA1`
-      (a pagination cursor)
 
   **Media and other binary sources.** For a source whose searchable text is
   derived (audio, video, a PDF, an image), the check of the source bytes MAY
@@ -626,7 +640,7 @@ re-indexes it.
 
 ## Changelog
 
-- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases the redirect and pagination URL parameters (`redir_token`, `page_token`, `next_page_token`, `pageToken`, `nextPageToken`), so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
+- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript

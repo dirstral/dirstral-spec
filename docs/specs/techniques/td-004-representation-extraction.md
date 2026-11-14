@@ -445,10 +445,15 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
   **MUST** use its own LibreOffice user profile in a new temporary directory
   (for example `-env:UserInstallation=file:///<tmp>/profile`). A shared profile
   holds a lock, so a second concurrent conversion fails or waits. Each
-  conversion **MUST** also use its own new temporary output directory, outside the
-  corpus root: two documents with the same name (`a/report.doc`,
-  `b/report.doc`) then never write the same `report.docx`, and the engine
-  never writes into the corpus.
+  conversion **MUST** also use its own new temporary output directory: two
+  documents with the same name (`a/report.doc`, `b/report.doc`) then never
+  write the same `report.docx`. The profile directory and the output directory
+  **MUST** both be outside the corpus root, so the engine never writes into the
+  corpus; when the system temporary directory is inside the root, the
+  implementation **MUST** use another location or treat the engine as
+  unavailable. Both directories **MUST** be readable and writable only by the
+  owner of the dir2mcp process (mode `0700` on POSIX systems), because the
+  output holds the converted document text.
 - **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
   `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
   representation is `extracted_markdown`, `rep_hash` is computed over the
@@ -479,7 +484,11 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
 - Re-indexing semantics are unchanged
   ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.6): under `auto`, a
   `.doc` later covered by a higher-fidelity active engine is extracted again
-  through it on re-index.
+  through it on an explicit re-index (`dir2mcp reindex`). An incremental scan
+  keeps the existing representation of a `.doc` at `status=ok` while its
+  `content_hash` is unchanged, so a new engine never re-reads a corpus
+  silently. Only a `.doc` that no engine could extract is extracted on its own
+  (next item).
 - **An engine that becomes available.** A `.doc` that an earlier scan recorded
   as an unsupported-format skip or error (§B.2) because no active engine
   covered it **MUST** be extracted on the first scan in which `libreoffice` is

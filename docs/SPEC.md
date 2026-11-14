@@ -1096,18 +1096,18 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   These patterns are the **defaults**; they live in configuration under `security.secret_patterns` and can be extended or overridden by users.
 
-  **Allowed matches (normative).** `security.secret_allow_patterns` lists regular expressions for text that looks like a credential but is not one. The default list holds one pattern, for URL query parameters that carry no credential (a video-host redirect link, a pagination cursor):
+  **Allowed matches (normative).** `security.secret_allow_patterns` lists regular expressions for text that looks like a credential but is not one. The default list holds one pattern, for the `redir_token` parameter of a YouTube redirect link (`youtube.com/redirect`). Video descriptions paste such links in large numbers, and the parameter holds a short-lived redirect nonce, not a credential. The pattern names the host and the path, not only the parameter: a parameter name alone does not show that its value is not a credential, so the default trusts no name outside that one link. An operator adds other benign parameters (for example a pagination cursor of an API they use, anchored to its host):
 
-  * `(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;?=:<>"]*`
+  * `(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*`
 
-  The implementation finds every match of every secret pattern in the text. An allow pattern can cancel only a match of the **generic bearer-token default** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled, also when an allow match covers it. A generic bearer-token match is **cancelled** when a match of an allow pattern in the same text covers it: the allow match starts at or before the start of the secret match and ends at or after its end. The text matches the secret set when at least one secret match is not cancelled. An allow pattern therefore releases only the text it covers: a document that holds a redirect link and a real credential is still withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`, `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the next parameter or covers a second assignment (`?page_token=abc?GITHUB_TOKEN=...`). The allow list applies wherever the secret patterns apply: source bytes, derived text, and the text a tool returns. It has the list semantics of §7.1, and an empty list cancels nothing. Every allow pattern is valid RE2.
+  The implementation finds every match of every secret pattern in the text. An allow pattern can cancel only a match of the **generic bearer-token default** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled, also when an allow match covers it. A generic bearer-token match is **cancelled** when a match of an allow pattern in the same text covers it: the allow match starts at or before the start of the secret match and ends at or after its end. The text matches the secret set when at least one secret match is not cancelled. An allow pattern therefore releases only the text it covers: a document that holds a redirect link and a real credential is still withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`, `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the next parameter or covers a second assignment (`redir_token=abc?GITHUB_TOKEN=...`). A generic bearer-token match that starts inside a cancelled match is still found and judged on its own: the implementation MUST consider every start position, not only the next position after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` releases the second assignment, because the first match (`token=<20 chars>GITHUB_TOKEN`) is cancelled and a search for non-overlapping matches resumes after it. The allow list applies wherever the secret patterns apply: source bytes, derived text, and the text a tool returns. It has the list semantics of §7.1, and an empty list cancels nothing. Every allow pattern is valid RE2.
 
   Expected false positives and tuning notes (map each note to its default rule):
 
   * **AWS Access Key ID** (`AKIA[0-9A-Z]{16}`): may match synthetic examples in docs/tests or random uppercase identifiers of the same shape.
   * **AWS/Secret assignment heuristic** (`(?i)(?:aws(?:[_\s.]{0,20})?secret(?:[_\s.]*(?:access[_\s.]*)?key)?|secret[_\s.]*access[_\s.]*key)\s*[:=]\s*[0-9A-Za-z/+=]{20,}`): reduces prose false positives (for example “AWS Secrets Manager”) by requiring assignment-like context.
   * **JWTs** (`(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`): reduced false positives via auth/key context and minimum segment lengths; can still match synthetic token-like test strings with those contexts.
-  * **Generic bearer token** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule matches any key that ends in `token` with a value of 20 or more key characters, so it catches the credential keys of any provider (`GITHUB_TOKEN`, `VERCEL_TOKEN`, `DOCKER_TOKEN`, `id_token`). It can match innocuous values named `token` (feature tokens, cache tokens, pagination cursors). Release a known benign key with `security.secret_allow_patterns`, not by a narrower rule: a rule that lists credential key names misses every provider that the list does not name. The default allow list releases the redirect and pagination parameters (`redir_token`, `page_token`, `next_page_token`, `pageToken`, `nextPageToken`) in a URL query string.
+  * **Generic bearer token** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule matches any key that ends in `token` with a value of 20 or more key characters, so it catches the credential keys of any provider (`GITHUB_TOKEN`, `VERCEL_TOKEN`, `DOCKER_TOKEN`, `id_token`). It can match innocuous values named `token` (feature tokens, cache tokens, pagination cursors). Release a known benign key with `security.secret_allow_patterns`, not by a narrower rule: a rule that lists credential key names misses every provider that the list does not name. The default allow list releases only the `redir_token` parameter of a YouTube redirect link.
   * **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the left boundary requires `sk-` to start a word. Without it, the rule matched inside a transliterated URL slug (`.../krasnoyarsk-podpisanie-dogovorov-...`, where `sk-` closes a place name) and withheld the whole document. It can still match a slug segment that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page) when 20 or more letters, digits or hyphens follow.
   * **Common API key formats** (`(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left boundary requires the prefix to follow a character that is not a letter, a digit or `_`, so a prefix inside a longer identifier (`task_...`, `task_sk_...`) does not match. The rule can still match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
 
@@ -1121,7 +1121,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   Example tuning directions:
 
   * JWT: anchor to `Authorization: Bearer` or token key names and enforce minimum segment lengths.
-  * Bearer token: keep the rule broad, and release known benign keys (redirect or pagination parameters) with `security.secret_allow_patterns`. A rule that lists credential key names misses every provider that the list does not name.
+  * Bearer token: keep the rule broad, and release known benign keys with `security.secret_allow_patterns`, anchored to the host and path that make them benign (a parameter name alone does not). A rule that lists credential key names misses every provider that the list does not name.
   * AWS secret heuristic: keep assignment/credential context anchors and avoid broad prose matching.
 
   Testing approach for pattern updates:
@@ -1141,13 +1141,14 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
     * `id_token: <30 chars>`
     * `OPENAI_API_KEY=sk-proj-<40 chars>`
     * `https://www.youtube.com/redirect?event=video_description&redir_token=<24 chars> GITHUB_TOKEN=<40 chars>` (a redirect link and a credential in one text: the allow match covers only the first)
-    * `https://example.org/list?page_token=abc;GITHUB_TOKEN=<40 chars>` (the allow value stops at `;`)
-    * `https://example.org/list?page_token=abc?GITHUB_TOKEN=<40 chars>` and `https://example.org/list?page_token=abc,GITHUB_TOKEN:<40 chars>` (the allow value stops at `?`, `=` and `:`)
-    * `https://example.org/list?page_token=AKIA<16 chars from [0-9A-Z]>` (an allow match never cancels an AWS key match)
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=abc;GITHUB_TOKEN=<40 chars>` (the allow value stops at `;`)
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=abc?GITHUB_TOKEN=<40 chars>` and `https://www.youtube.com/redirect?event=video_description&redir_token=abc,GITHUB_TOKEN:<40 chars>` (the allow value stops at `?`, `=` and `:`)
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` (a match that starts inside a cancelled match is judged on its own)
+    * `https://www.youtube.com/redirect?event=video_description&redir_token=AKIA<16 chars from [0-9A-Z]>` (an allow match never cancels an AWS key match)
+    * `https://example.org/list?page_token=<24 chars>` (a parameter name alone is not trusted)
   * Must not hit (with the default allow list, no secret match is left uncancelled):
     * `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org` (a redirect link pasted into a document)
     * `https://example.org/news/krasnoyarsk-podpisanie-dogovorov-o-sotrudnichestve` (a transliterated URL slug)
-    * `https://www.googleapis.com/youtube/v3/search?part=snippet&pageToken=CAUQAQnextPageCursorAAA1` (a pagination cursor)
 
   **Media and other binary sources.** For a source whose searchable text is derived (audio, video, a PDF, an image), the check of the source bytes MAY cover only a leading sample of them (the reference implementation reads 64 KiB), and the derived text (transcript, sidecar, translation, extracted text) MUST be screened in full before it is indexed. The re-evaluation after a pattern change applies the same rule: for an audio or video document it checks the same leading sample and screens the stored derived text. So it never needs bytes outside that sample, and `ingest.media_identity: sampled` (§7.6) needs no extra read for it.
 
@@ -1550,10 +1551,15 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   MUST use its own LibreOffice user profile in a new temporary directory
   (for example `-env:UserInstallation=file:///<tmp>/profile`). A shared profile
   holds a lock, so a second concurrent conversion fails or waits. Each
-  conversion MUST also use its own new temporary output directory, outside the
-  corpus root: two documents with the same name (`a/report.doc`,
-  `b/report.doc`) then never write the same `report.docx`, and the engine
-  never writes into the corpus.
+  conversion MUST also use its own new temporary output directory: two
+  documents with the same name (`a/report.doc`, `b/report.doc`) then never
+  write the same `report.docx`. The profile directory and the output directory
+  MUST both be outside the corpus root, so the engine never writes into the
+  corpus; when the system temporary directory is inside the root, the
+  implementation MUST use another location or treat the engine as
+  unavailable. Both directories MUST be readable and writable only by the
+  owner of the dir2mcp process (mode `0700` on POSIX systems), because the
+  output holds the converted document text.
 * **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
   `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
   representation is `extracted_markdown`, `rep_hash` is computed over the
@@ -1581,7 +1587,10 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   unavailable, and each `.doc` is a coverage gap under §7.4.B.2.
 * Re-indexing semantics are unchanged (§7.6): under `auto`, a `.doc` later
   covered by a higher-fidelity active engine is extracted again through it on
-  re-index.
+  an explicit re-index (`dir2mcp reindex`). An incremental scan keeps the
+  existing representation of a `.doc` at `status=ok` while its `content_hash`
+  is unchanged, so a new engine never re-reads a corpus silently. Only a `.doc`
+  that no engine could extract is extracted on its own (next item).
 * **An engine that becomes available.** A `.doc` that an earlier scan recorded
   as an unsupported-format skip or error (§7.4.B.2) because no active engine
   covered it MUST be extracted on the first scan in which `libreoffice` is
@@ -7339,7 +7348,7 @@ security:
   # An allow match cancels only a generic bearer-token match that it covers;
   # a match of any other secret pattern is never cancelled (§7.2).
   secret_allow_patterns:
-    - '(?i)[?&;](?:redir_token|page_token|next_page_token|pagetoken|nextpagetoken)=[^\s&#;?=:<>"]*'
+    - '(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*'
 ```
 
 ---
