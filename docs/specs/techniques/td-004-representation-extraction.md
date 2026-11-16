@@ -302,7 +302,9 @@ The `libreoffice` engine (T2) is *available* only when both of these are true:
 
 - A LibreOffice binary **resolves**: `ingest.libreoffice.command` when it is set,
   else `soffice` on `PATH`, else `libreoffice` on `PATH`. The binary passes a
-  lightweight functional check (a successful `--version` call).
+  lightweight functional check (a successful `--version` call). The check
+  **MUST** have a time limit (the reference implementation uses 10 seconds). A
+  check that reaches the limit counts as failed: the binary is unavailable.
 - The `pandoc` engine is available (the `pandoc` rule above). The `libreoffice`
   engine reads its `.docx` output with the pandoc `docx` reader, so it cannot run
   without `pandoc`.
@@ -459,7 +461,10 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
   representation is `extracted_markdown`, `rep_hash` is computed over the
   rendered Markdown, and the spans carry the section breadcrumb and `label` and
   no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
-  implementation **MAY** cache it, as an implementation-private artifact.
+  implementation **MAY** cache it, as an implementation-private artifact. A
+  cached copy **MUST** be readable and writable only by the owner of the
+  dir2mcp process (mode `0600` in an owner-only directory on POSIX systems),
+  because it holds the document text.
 - **Clean-up.** After the read step ends, and also after a failure or a
   timeout in either step, the implementation removes the temporary profile and
   the temporary output directory with the `.docx` in it. A cached copy of the

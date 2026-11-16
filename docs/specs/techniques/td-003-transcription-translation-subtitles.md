@@ -696,7 +696,15 @@ transcript exactly as it applies to an unreadable format.
   failure is retried on the next run, a `skip` is a decision the daemon already
   made. When at least one window failed and every other window is a no-speech
   result, the outcome is also this error, because a failed window can hold
-  speech.
+  speech. A window that the quality gate refused
+  (§8.2.2, `reason: quality_gate`) counts as a failed window in this rule: when
+  every window is a no-speech result or a quality-gate refusal, and at least
+  one is a refusal, the outcome is this error (`TRANSCRIBE_FAILED`) and the
+  recording is retried. When the refusals of such a recording are all
+  `language_uncovered`, or of both reasons, the mixed-reason rule of §8.2.2
+  applies unchanged (`status=skipped`, `skip_reason="language_uncovered"`). The
+  skip reason `no_speech` applies only when every window is a no-speech
+  result.
 
 * **A recording with no speech is skipped, not failed (normative).** When the
   decode of a recording is a no-speech result as a whole (the single request,
@@ -725,6 +733,16 @@ transcript exactly as it applies to an unreadable format.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused
+    transcript.
+  * Subtitle files that write-back (§8.6.14) wrote for that track in an
+    earlier run remain. The implementation MUST NOT delete them: a no-speech
+    result of one model is not proof that the earlier subtitles are wrong,
+    and the files are in the operator's media folder. Their
+    `emitted_artifacts` rows also remain, so the files stay owned and are
+    never read as authored sidecars. A later run that produces a transcript
+    for the track rewrites them under `refresh`. An operator who wants them
+    gone removes them. A file that the implementation does not own is not
+    touched. Otherwise a player keeps showing the speech of the earlier
     transcript.
   * A sidecar (§8.6.4) replaces STT, so this outcome never applies to a
     document whose transcript comes from a sidecar.

@@ -66,16 +66,25 @@ deletion/tombstone semantics are in bs-008.
   adds other benign parameters (for example a pagination cursor of an API they
   use, anchored to its host):
 
-  - `(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*`
+  - `(?i)(?:^|[\s"'<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?(redir_token=[^\s&#;?=:<>"]*)`
 
   The implementation finds every match of every secret pattern in the text. An
   allow pattern can cancel only a match of the **generic bearer-token default**
   (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret
   pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled,
   also when an allow match covers it. A generic bearer-token match is
-  **cancelled** when a match of an allow pattern in the same text covers it:
-  the allow match starts at or before the start of the secret match and ends at
-  or after its end. The text matches the secret set when at least one secret
+  **cancelled** when the **cover** of an allow match in the same text covers
+  it: the cover starts at or before the start of the secret match and ends at
+  or after its end. The cover of an allow match is the text of its first
+  capture group when the pattern has one, and the whole match when it has none.
+  The rest of the match is context: it must be present, but it cancels nothing.
+  The default pattern uses this. Its context is the start of a YouTube redirect
+  URL, which must begin the text or follow whitespace, a quote, an angle
+  bracket, `(` or `[` (so the link is not a part of the path of another URL),
+  and its cover is only the `redir_token` assignment. A credential in another
+  parameter of the same link
+  (`...redirect?GITHUB_TOKEN=<24 chars>&redir_token=x`) is therefore not
+  cancelled. The text matches the secret set when at least one secret
   match is not cancelled. An allow pattern therefore releases only the text it
   covers: a document that holds a redirect link and a real credential is still
   withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`,
@@ -184,6 +193,10 @@ deletion/tombstone semantics are in bs-008.
       (a match that starts inside a cancelled match is judged on its own)
     - `https://www.youtube.com/redirect?event=video_description&redir_token=AKIA<16 chars from [0-9A-Z]>`
       (an allow match never cancels an AWS key match)
+    - `https://www.youtube.com/redirect?GITHUB_TOKEN=<24 chars>&redir_token=short`
+      (only the `redir_token` assignment is covered)
+    - `https://evil.example/https://www.youtube.com/redirect?event=video_description&redir_token=<24 chars>`
+      (the link is inside the path of another URL)
     - `https://example.org/list?page_token=<24 chars>` (a parameter name alone
       is not trusted)
   - Must not hit (with the default allow list, no secret match is left
@@ -310,7 +323,9 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
     (§7.3) differs from the stored `doc_type`. A classification change (for
     example a `.ts` stored as `code` that §7.3 now decides is `video`) makes
     the next scan process the document again, also with an unchanged
-    `content_hash`.
+    `content_hash`. That scan MUST retire the representations and chunks of the
+    old type, so a file now classified as `video` keeps no searchable `code`
+    chunk.
 - Representation-level:
   - compute `rep_hash`; if unchanged → **skip** chunk rebuild
 - Chunk-level:

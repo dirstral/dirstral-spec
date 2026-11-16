@@ -422,7 +422,7 @@ security:
   # An allow match cancels only a generic bearer-token match that it covers;
   # a match of any other secret pattern is never cancelled (bs-002 §7.2).
   secret_allow_patterns:
-    - '(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*'
+    - '(?i)(?:^|[\s"''<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?(redir_token=[^\s&#;?=:<>"]*)'
 ```
 
 > **Drift note:** the `media.clip` comment still cites `§15.11`

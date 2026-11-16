@@ -1098,9 +1098,9 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   **Allowed matches (normative).** `security.secret_allow_patterns` lists regular expressions for text that looks like a credential but is not one. The default list holds one pattern, for the `redir_token` parameter of a YouTube redirect link (`youtube.com/redirect`). Video descriptions paste such links in large numbers, and the parameter holds a short-lived redirect nonce, not a credential. The pattern names the host and the path, not only the parameter: a parameter name alone does not show that its value is not a credential, so the default trusts no name outside that one link. An operator adds other benign parameters (for example a pagination cursor of an API they use, anchored to its host):
 
-  * `(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*`
+  * `(?i)(?:^|[\s"'<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?(redir_token=[^\s&#;?=:<>"]*)`
 
-  The implementation finds every match of every secret pattern in the text. An allow pattern can cancel only a match of the **generic bearer-token default** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled, also when an allow match covers it. A generic bearer-token match is **cancelled** when a match of an allow pattern in the same text covers it: the allow match starts at or before the start of the secret match and ends at or after its end. The text matches the secret set when at least one secret match is not cancelled. An allow pattern therefore releases only the text it covers: a document that holds a redirect link and a real credential is still withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`, `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the next parameter or covers a second assignment (`redir_token=abc?GITHUB_TOKEN=...`). A generic bearer-token match that starts inside a cancelled match is still found and judged on its own: the implementation MUST consider every start position, not only the next position after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` releases the second assignment, because the first match (`token=<20 chars>GITHUB_TOKEN`) is cancelled and a search for non-overlapping matches resumes after it. The allow list applies wherever the secret patterns apply: source bytes, derived text, and the text a tool returns. It has the list semantics of §7.1, and an empty list cancels nothing. Every allow pattern is valid RE2.
+  The implementation finds every match of every secret pattern in the text. An allow pattern can cancel only a match of the **generic bearer-token default** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled, also when an allow match covers it. A generic bearer-token match is **cancelled** when the **cover** of an allow match in the same text covers it: the cover starts at or before the start of the secret match and ends at or after its end. The cover of an allow match is the text of its first capture group when the pattern has one, and the whole match when it has none. The rest of the match is context: it must be present, but it cancels nothing. The default pattern uses this. Its context is the start of a YouTube redirect URL, which must begin the text or follow whitespace, a quote, an angle bracket, `(` or `[` (so the link is not a part of the path of another URL), and its cover is only the `redir_token` assignment. A credential in another parameter of the same link (`...redirect?GITHUB_TOKEN=<24 chars>&redir_token=x`) is therefore not cancelled. The text matches the secret set when at least one secret match is not cancelled. An allow pattern therefore releases only the text it covers: a document that holds a redirect link and a real credential is still withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`, `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the next parameter or covers a second assignment (`redir_token=abc?GITHUB_TOKEN=...`). A generic bearer-token match that starts inside a cancelled match is still found and judged on its own: the implementation MUST consider every start position, not only the next position after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` releases the second assignment, because the first match (`token=<20 chars>GITHUB_TOKEN`) is cancelled and a search for non-overlapping matches resumes after it. The allow list applies wherever the secret patterns apply: source bytes, derived text, and the text a tool returns. It has the list semantics of §7.1, and an empty list cancels nothing. Every allow pattern is valid RE2.
 
   Expected false positives and tuning notes (map each note to its default rule):
 
@@ -1145,6 +1145,8 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
     * `https://www.youtube.com/redirect?event=video_description&redir_token=abc?GITHUB_TOKEN=<40 chars>` and `https://www.youtube.com/redirect?event=video_description&redir_token=abc,GITHUB_TOKEN:<40 chars>` (the allow value stops at `?`, `=` and `:`)
     * `https://www.youtube.com/redirect?event=video_description&redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` (a match that starts inside a cancelled match is judged on its own)
     * `https://www.youtube.com/redirect?event=video_description&redir_token=AKIA<16 chars from [0-9A-Z]>` (an allow match never cancels an AWS key match)
+    * `https://www.youtube.com/redirect?GITHUB_TOKEN=<24 chars>&redir_token=short` (only the `redir_token` assignment is covered)
+    * `https://evil.example/https://www.youtube.com/redirect?event=video_description&redir_token=<24 chars>` (the link is inside the path of another URL)
     * `https://example.org/list?page_token=<24 chars>` (a parameter name alone is not trusted)
   * Must not hit (with the default allow list, no secret match is left uncancelled):
     * `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbkJ3T2xYbE5fZ3lQdmZ4&q=https%3A%2F%2Fexample.org` (a redirect link pasted into a document)
@@ -1441,7 +1443,9 @@ both of these are true:
 
 * A LibreOffice binary **resolves**: `ingest.libreoffice.command` when it is set,
   else `soffice` on `PATH`, else `libreoffice` on `PATH`. The binary passes a
-  lightweight functional check (a successful `--version` call).
+  lightweight functional check (a successful `--version` call). The check
+  MUST have a time limit (the reference implementation uses 10 seconds). A
+  check that reaches the limit counts as failed: the binary is unavailable.
 * The `pandoc` engine is available (*pandoc availability*). The `libreoffice`
   engine reads its `.docx` output with the pandoc `docx` reader, so it cannot run
   without `pandoc`.
@@ -1565,7 +1569,10 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   representation is `extracted_markdown`, `rep_hash` is computed over the
   rendered Markdown, and the spans carry the section breadcrumb and `label` and
   no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
-  implementation MAY cache it, as an implementation-private artifact.
+  implementation MAY cache it, as an implementation-private artifact. A cached
+  copy MUST be readable and writable only by the owner of the dir2mcp process
+  (mode `0600` in an owner-only directory on POSIX systems), because it holds
+  the document text.
 * **Clean-up.** After the read step ends, and also after a failure or a
   timeout in either step, the implementation removes the temporary profile and
   the temporary output directory with the `.docx` in it. A cached copy of the
@@ -1675,7 +1682,9 @@ is bound to the corpus via the embed identity (§8.1.4).
     unless the type that the current version assigns to the file (§7.3) differs
     from the stored `doc_type`. A classification change (for example a `.ts`
     stored as `code` that §7.3 now decides is `video`) makes the next scan
-    process the document again, also with an unchanged `content_hash`.
+    process the document again, also with an unchanged `content_hash`. That
+    scan MUST retire the representations and chunks of the old type, so a file
+    now classified as `video` keeps no searchable `code` chunk.
 * Representation-level:
 
   * compute `rep_hash`; if unchanged → skip chunk rebuild
@@ -3980,7 +3989,15 @@ transcript exactly as it applies to an unreadable format.
   distinction is the point: a failure is retried on the next run, a `skip` is a
   decision the daemon already made. When at least one window failed and every
   other window is a no-speech result, the outcome is also this error, because
-  a failed window can hold speech.
+  a failed window can hold speech. A window that the quality gate refused
+  (§8.2.2, `reason: quality_gate`) counts as a failed window in this rule: when
+  every window is a no-speech result or a quality-gate refusal, and at least
+  one is a refusal, the outcome is this error (`TRANSCRIBE_FAILED`) and the
+  recording is retried. When the refusals of such a recording are all
+  `language_uncovered`, or of both reasons, the mixed-reason rule of §8.2.2
+  applies unchanged (`status=skipped`, `skip_reason="language_uncovered"`). The
+  skip reason `no_speech` applies only when every window is a no-speech
+  result.
 
 * **A recording with no speech is skipped, not failed (normative).** When the
   decode of a recording is a no-speech result as a whole (the single request,
@@ -4005,6 +4022,16 @@ transcript exactly as it applies to an unreadable format.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused
+    transcript.
+  * Subtitle files that write-back (§8.6.14) wrote for that track in an
+    earlier run remain. The implementation MUST NOT delete them: a no-speech
+    result of one model is not proof that the earlier subtitles are wrong,
+    and the files are in the operator's media folder. Their
+    `emitted_artifacts` rows also remain, so the files stay owned and are
+    never read as authored sidecars. A later run that produces a transcript
+    for the track rewrites them under `refresh`. An operator who wants them
+    gone removes them. A file that the implementation does not own is not
+    touched. Otherwise a player keeps showing the speech of the earlier
     transcript.
   * A sidecar (§8.6.4) replaces STT, so this outcome never applies to a
     document whose transcript comes from a sidecar.
@@ -7348,7 +7375,7 @@ security:
   # An allow match cancels only a generic bearer-token match that it covers;
   # a match of any other secret pattern is never cancelled (§7.2).
   secret_allow_patterns:
-    - '(?i)https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?redir_token=[^\s&#;?=:<>"]*'
+    - '(?i)(?:^|[\s"''<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?(redir_token=[^\s&#;?=:<>"]*)'
 ```
 
 ---
