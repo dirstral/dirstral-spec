@@ -285,7 +285,9 @@ and `evidence` are optional.
   `transcript_partial`, `symlink_ignored`, `no_speech` (media whose STT decode
   found no speech in any selected audio track (`media.stt.tracks`; a track
   that is not selected is not decoded), with no other searchable
-  representation; td-003 §8.6.13). New reasons are added only by a
+  representation; td-003 §8.6.13; a no-speech result of a route fallback
+  decode with no transcript text in the recording is an error, not this
+  skip). New reasons are added only by a
   minor version bump (additive); a client MAY receive an unrecognized value from
   a newer server and SHOULD render it verbatim rather than error. `count` is
   always **>= 1** (zero-count reasons are omitted). Implementations MAY omit the

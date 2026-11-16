@@ -303,8 +303,12 @@ decides `video`, so one `0x47` byte in a text file does not decide it. The sync
 byte is the ASCII letter `G`, so sync spacing alone is not enough: a text file
 can hold a `G` at every 188th byte (lines of 188 bytes that start with `//G`).
 The checked bytes MUST also hold a byte that text never holds (a NUL byte, or a
-sequence that is not valid UTF-8). A real transport stream always holds one in
-its packet headers; a source file does not.
+sequence that is not valid UTF-8). The check covers the whole of each checked packet, header and payload. A packet
+header alone can be plain ASCII (`47 01 41 10`), so the header does not decide.
+A real transport stream holds such a byte in the payload of its first packets
+(the zero pointer field and the `0xFF` stuffing of its program tables, and
+compressed audio or video); a source file does not. A file whose checked
+packets hold only valid UTF-8 with no NUL byte is `code`.
 
 ### 7.4 Representation generation
 

@@ -287,7 +287,9 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
     language** mismatch.
   * Under `media.stt.language_scope: window` (SPEC.md §8.2.2) the checks MAY run
     per decoded window; a failing window is a refused range
-    (`reason: quality_gate`) and the document fails only when every window fails.
+    (`reason: quality_gate`) and the document fails only when every gated
+    window fails. A no-speech window is not gated (§8.6.13): a recording whose windows
+    are all refusals or no-speech results, with at least one refusal, fails.
   * A no-speech result (SPEC.md §8.2, td-001 §8.2) is not **empty** output. The
     gate MUST NOT reject it, and it is not a refused range. §8.6.13 sets its
     outcome. The empty check applies to OCR and translation output, and to STT
@@ -759,7 +761,11 @@ transcript exactly as it applies to an unreadable format.
     again. `media.stt.route_retry_after` does not delay that run, because no
     fallback transcript exists. A fallback window with no speech, in a
     recording that has transcript text, keeps its `fallback_from` entry and
-    follows the window retry of td-001 §8.2.3.
+    follows the window retry of td-001 §8.2.3. When no window produced transcript
+    text, a window whose route failed and whose fallback decode is a no-speech
+    result counts as a failed window: the outcome is an error
+    (`TRANSCRIBE_FAILED`) and the recording is retried, also when every other
+    window is a no-speech result.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused

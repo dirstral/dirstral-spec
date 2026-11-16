@@ -1211,8 +1211,12 @@ decides `video`, so one `0x47` byte in a text file does not decide it. The sync
 byte is the ASCII letter `G`, so sync spacing alone is not enough: a text file
 can hold a `G` at every 188th byte (lines of 188 bytes that start with `//G`).
 The checked bytes MUST also hold a byte that text never holds (a NUL byte, or a
-sequence that is not valid UTF-8). A real transport stream always holds one in
-its packet headers; a source file does not.
+sequence that is not valid UTF-8). The check covers the whole of each checked packet, header and payload. A packet
+header alone can be plain ASCII (`47 01 41 10`), so the header does not decide.
+A real transport stream holds such a byte in the payload of its first packets
+(the zero pointer field and the `0xFF` stuffing of its program tables, and
+compressed audio or video); a source file does not. A file whose checked
+packets hold only valid UTF-8 with no NUL byte is `code`.
 
 ### 7.4 Representation generation rules
 
@@ -2537,7 +2541,7 @@ worker reads the document text and rune spans from the shared store (8.7.4).
   clip that holds only music or ambient sound. Such a response is a **no-speech
   result**: a successful decode that found no speech. A response is a no-speech
   result when all of these are true:
-  * it parses;
+  * it parses and is not malformed (the rules below);
   * it has a text field, a segments field, or both;
   * its text is empty or holds only whitespace (an absent text field counts
     as empty, so `{"segments":[]}` is a no-speech result);
@@ -2764,8 +2768,10 @@ operator's declaration (`stt_languages`) and the operator's route
 * **Quality gate per window.** Under `window` the §8.6.6 degenerate-output
   checks MAY run per decoded window. A window that fails is a refused range with
   `reason: quality_gate`, and the item stays `status=ok` when at least one
-  window passed. When every window fails, the document is `status=error`,
-  `TRANSCRIBE_FAILED`, as today. The per-window checks MUST be deterministic and
+  window passed. A no-speech window (§8.6.13) is not gated: it does not pass and
+  it does not fail. When every gated window fails, the document is
+  `status=error`, `TRANSCRIBE_FAILED`, as today, also when the other windows
+  are no-speech results (§8.6.13). The per-window checks MUST be deterministic and
   MUST use the window's resolved language, not the representation's, for the
   language-mismatch check.
 * **Derivation identity.** `language_scope` and the `language_providers` map
@@ -3488,8 +3494,9 @@ stable across re-indexing.
     language** mismatch.
   * Under `media.stt.language_scope: window` (§8.2.2) the checks MAY run per
     decoded window; a failing window is recorded as a refused range
-    (`reason: quality_gate`) and the document fails only when every window
-    fails.
+    (`reason: quality_gate`) and the document fails only when every gated window
+    fails. A no-speech window is not gated (§8.6.13): a recording whose windows
+    are all refusals or no-speech results, with at least one refusal, fails.
   * A no-speech result (§8.2) is not **empty** output. The gate MUST NOT reject
     it, and it is not a refused range. §8.6.13 sets its outcome. The empty check
     applies to OCR and translation output, and to STT output that is not a
@@ -4085,7 +4092,11 @@ transcript exactly as it applies to an unreadable format.
     again. `media.stt.route_retry_after` does not delay that run, because no
     fallback transcript exists. A fallback window with no speech, in a
     recording that has transcript text, keeps its `fallback_from` entry and
-    follows the window retry of §8.2.3.
+    follows the window retry of §8.2.3. When no window produced transcript
+    text, a window whose route failed and whose fallback decode is a no-speech
+    result counts as a failed window: the outcome is an error
+    (`TRANSCRIBE_FAILED`) and the recording is retried, also when every other
+    window is a no-speech result.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused
@@ -6392,7 +6403,7 @@ honestly as `ok`, `skipped` or `error`.
           "reason": {
             "type": "string",
             "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "transcript_partial", "symlink_ignored", "no_speech"],
-            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. no_speech: media whose STT decode found no speech in any selected audio track (media.stt.tracks; a track that is not selected is not decoded) (\u00a78.2, \u00a78.6.13): every decode returned a well-formed response with empty text and no segment that holds text, for example a recording that holds only music or ambient sound, and the document has no other searchable representation. It is not an error, and a track whose decode was a no-speech result is not decoded again while both the content_hash and the STT derivation identity are unchanged (td-003 \u00a78.6.13); a change of either makes the next run decode it again when the track is still selected. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. no_speech: media whose STT decode found no speech in any selected audio track (media.stt.tracks; a track that is not selected is not decoded) (\u00a78.2, \u00a78.6.13): every decode returned a well-formed response with empty text and no segment that holds text, for example a recording that holds only music or ambient sound, and the document has no other searchable representation. A no-speech result of a route fallback decode with no transcript text in the recording is not this skip: it is an error and the recording is retried (§8.6.13). It is not an error, and a track whose decode was a no-speech result is not decoded again while both the content_hash and the STT derivation identity are unchanged (td-003 \u00a78.6.13); a change of either makes the next run decode it again when the track is still selected. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
           },
           "count": {
             "type": "integer",

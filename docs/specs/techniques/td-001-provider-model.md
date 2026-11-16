@@ -418,7 +418,7 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   clip that holds only music or ambient sound. Such a response is a **no-speech
   result**: a successful decode that found no speech. A response is a no-speech
   result when all of these are true:
-  * it parses;
+  * it parses and is not malformed (the rules below);
   * it has a text field, a segments field, or both;
   * its text is empty or holds only whitespace (an absent text field counts
     as empty, so `{"segments":[]}` is a no-speech result);
