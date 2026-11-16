@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.95.0`
+**Current spec version:** `0.96.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,16 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.96.0: a list of paths to process first
+
+One optional key (`MINOR` per the pre-1.0 policy). The default keeps relative-path order.
+
+- §7.1 (bs-002) **Processing order**: `ingest.priority_list` (a file path, default empty; relative to the corpus root) holds one corpus-relative file or directory path per line (`#` comments, blank lines ignored). Each pass processes the files an entry covers first, by the line of the first entry that covers them and then by relative path, then every other file by relative path. Discovery, the set of processed files and the outputs are unchanged. A missing or unreadable list, or an absolute or `..` entry, is a warning; the scan goes on without it.
+- §8.6.11 (td-003) **Determinism** names that order: the same corpus and the same list give the same order.
+- §16.2 (bs-011): the template lists the key.
+- Mirrors: bs-002 0.7.0, bs-011 0.19.0, td-003 0.14.0.
+- Motivation: the TV Rain archive (about 145,000 videos). Its paths are content hashes, so relative-path order is unrelated to age, and about 101,000 files carry the date of a July 2022 re-encode rather than of their arrival. The date each video's folder was created does track arrival, so a list of folders sorted by it lets a backlog run process the newest videos first.
 
 ## 0.95.0: the SMIL caption patch keeps entries for caption files it did not write
 
