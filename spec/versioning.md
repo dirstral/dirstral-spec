@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.92.0`
+**Current spec version:** `0.94.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,16 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.94.0: discovery can read directories in parallel
+
+One optional key (`MINOR` per the pre-1.0 policy). The default keeps the sequential walk.
+
+- §7.1 (bs-002) **Parallel walk**: `ingest.discovery_workers` (integer, default `1`, range `1`–`64`; `0` means `1`; a negative value or one above `64` is `CONFIG_INVALID`) bounds how many directories the walk reads at the same time. The result MUST NOT depend on the value: same files in the same sorted order, same skip reports (order MAY differ), same ignore/`.gitignore`/symlink rules, same loop protection, same scan-cache contents. With symlink following on, a sequential walk is allowed. Filesystem walks only; a remote source ignores it.
+- §16.2 (bs-011): the template lists the key.
+- Mirrors: bs-002 0.6.0, bs-011 0.18.0.
+- Motivation: the TV Rain archive (NFS, ~145,000 videos in a 20-level hash tree, ~2.6 million directories). The sequential walk reads about 85 directories a second there, so one discovery pass takes about 8.5 hours before ingest processes anything, and a new upload waits that long for a rescan. With 16 concurrent readers the same tree was listed in about 50 minutes.
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.92.0: dir2mcp_recheck_path, an optional tool to reconcile one path now
 

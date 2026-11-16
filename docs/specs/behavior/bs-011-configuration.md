@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.17.0
+- **Version:** 0.18.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -162,6 +162,7 @@ rag:
 
 ingest:
   gitignore: true
+  discovery_workers: 1   # directories the walk reads at once (bs-002 §7.1); raise on a network filesystem
   extractor: auto      # auto|docling|docling-serve|mistral|off
   # auto = best-available per format (td-004 §B.1): highest-fidelity ACTIVE
   # engine that supports each format; no format routed to an engine that can't
@@ -410,6 +411,7 @@ security:
 
 ## Changelog
 
+- **0.18.0**: mirrors spec 0.94.0 (SPEC.md §7.1, §16.2): the template lists `ingest.discovery_workers` (default `1`).
 - **0.17.0**: mirrors spec 0.91.0 (SPEC.md §8.6.10, §16.2): the template lists `media.subtitles.ttml.layout` (`spans` default, or `divs`) and `media.subtitles.ttml.language_codes` (`bcp47` default, or `iso639_2`).
 - **0.16.0**: mirrors spec 0.86.0 (SPEC.md §8.6.14, §16.2): the template lists `media.subtitles.emit.{smil, smil_params, smil_language_codes, ttml_name}` and `media.subtitles.ttml.segmentation`, all off or unchanged by default.
 - **0.15.0**: mirrors spec 0.82.0 (SPEC.md §8.2.4, §16.2): the template lists `media.stt.route_retry_after: 24h` (env `DIR2MCP_MEDIA_STT_ROUTE_RETRY_AFTER`), with a pointer to SPEC.md §8.2.4 and §16.2 for its rules.
