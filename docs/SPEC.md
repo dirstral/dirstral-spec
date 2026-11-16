@@ -6109,7 +6109,11 @@ check alone can miss a match that crosses the slice edge. The slice that the
 call returns MUST come from the same bytes that the check covered: the
 implementation reads the source once per call, or it checks again what it read
 for the slice. A file that changes between the check and the slice read must
-not return content that no check covered. A text source larger
+not return content that no check covered. For a slice that the server
+reads from the stored chunks of a derived representation (an OCR page, a
+transcript excerpt), ingestion checked the whole derived text before it
+indexed it (§7.2), and the check at the call covers the slice that the call
+returns. A text source larger
 than `ingest.max_file_mb`, which ingestion never scans or indexes, returns
 `FILE_TOO_LARGE` (§14.4); the server reads at most that many bytes plus one to
 decide.
