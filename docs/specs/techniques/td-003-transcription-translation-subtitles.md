@@ -687,7 +687,8 @@ transcript exactly as it applies to an unreadable format.
   range joins `ranges` and `decoded_ms`. It is not a shortfall under
   `media.stt.min_coverage`, so a recording with long stretches of music or
   ambient sound does not trip the partial-transcript floor
-  (`transcript_partial`). It is not a failed window and not a refused range.
+  (`transcript_partial`). It is not a failed window and not a refused range
+  (the fallback rule below in this section is the one exception).
   It reports no language, so the SPEC.md §8.2.2 continuity rule and the
   low-confidence re-decode rule below do not use it.
 
@@ -767,8 +768,8 @@ transcript exactly as it applies to an unreadable format.
     (`TRANSCRIBE_FAILED`) and the recording is retried, also when every other
     window is a no-speech result.
   * When an earlier run indexed a transcript for the same track (for example
-    under another model), the implementation MUST retire it, its chunks and the
-    translations derived from it, as the refusal rule below retires a refused
+    under another model), the implementation MUST retire it, its chunks, the
+    translations derived from it and the summaries derived from it (§8.6.7), as the refusal rule below retires a refused
     transcript.
   * Subtitle files that write-back (§8.6.14) wrote for that track in an
     earlier run remain. The implementation MUST NOT delete them: a no-speech

@@ -2549,7 +2549,8 @@ worker reads the document text and rune spans from the shared store (8.7.4).
     is the usual case).
 
   The implementation MUST NOT treat a no-speech result as a transport or
-  provider error. It is not a failed window (§8.6.13), it does not trigger
+  provider error. It is not a failed window (§8.6.13; the one exception there is a fallback
+  decode after a failed route, when no window produced transcript text), it does not trigger
   `media.stt.on_route_error` (§8.2.4), and it does not advance a candidate list
   (§8.2.3). A response that does not parse, or that has neither a text field
   nor a segments field, is malformed and stays a provider error. A response is
@@ -4022,7 +4023,8 @@ transcript exactly as it applies to an unreadable format.
   joins `ranges` and `decoded_ms`. It is not a shortfall under
   `media.stt.min_coverage`, so a recording with long stretches of music or
   ambient sound does not trip the partial-transcript floor
-  (`transcript_partial`). It is not a failed window and not a refused range.
+  (`transcript_partial`). It is not a failed window and not a refused range
+  (the fallback rule below in this section is the one exception).
   It reports no language, so the §8.2.2 continuity rule and the low-confidence
   re-decode rule below do not use it.
 
@@ -4098,8 +4100,8 @@ transcript exactly as it applies to an unreadable format.
     (`TRANSCRIBE_FAILED`) and the recording is retried, also when every other
     window is a no-speech result.
   * When an earlier run indexed a transcript for the same track (for example
-    under another model), the implementation MUST retire it, its chunks and the
-    translations derived from it, as the refusal rule below retires a refused
+    under another model), the implementation MUST retire it, its chunks, the
+    translations derived from it and the summaries derived from it (§8.6.7), as the refusal rule below retires a refused
     transcript.
   * Subtitle files that write-back (§8.6.14) wrote for that track in an
     earlier run remain. The implementation MUST NOT delete them: a no-speech
@@ -6103,7 +6105,11 @@ filters is impossible.
 The content check covers the whole source text, not only the slice that the
 call returns (spec 0.96.0). A credential outside the requested lines or page
 still refuses the call, as ingestion withholds that document (§7.2). A slice
-check alone can miss a match that crosses the slice edge. A text source larger
+check alone can miss a match that crosses the slice edge. The slice that the
+call returns MUST come from the same bytes that the check covered: the
+implementation reads the source once per call, or it checks again what it read
+for the slice. A file that changes between the check and the slice read must
+not return content that no check covered. A text source larger
 than `ingest.max_file_mb`, which ingestion never scans or indexes, returns
 `FILE_TOO_LARGE` (§14.4); the server reads at most that many bytes plus one to
 decide.
@@ -6129,6 +6135,7 @@ decide.
 
 **Selection rules:**
 
+* First, for a document skipped as `no_speech` (§8.6.13): return the **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty content. This rule applies before the rules below, for every span argument (`page`, `start_ms`/`end_ms`, `start_line`/`end_line`, or none).
 * If `page` provided → return OCR page text (if available; else error `DOC_TYPE_UNSUPPORTED`).
 * Else if `start_ms/end_ms` provided → return transcript excerpt (if available).
 * Else if `start_line/end_line` provided → return file lines.
@@ -6138,7 +6145,6 @@ decide.
   * for PDF: return the cached full-document OCR markdown with `span.kind="document"`; if the OCR cache hasn't been populated yet (e.g. ingest is still running) the tool MUST return error `OCR_NOT_READY` rather than the raw bytes,
   * for audio: return the cached full-document transcript with `span.kind="document"`; same `OCR_NOT_READY` semantics as PDF when no transcript exists yet.
   * for a `replace`-mode multimodal media chunk with no text representation (8.1.7): return the **non-retryable** `MEDIA_NO_TEXT` (the absence is permanent — distinct from `OCR_NOT_READY`), never the raw media bytes.
-  * for a document skipped as `no_speech` (§8.6.13): return the **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty content.
 
 The handler MUST NOT emit raw binary bytes through `content[].text` — that
 field is documented as text. PDFs and audio without a span argument resolve

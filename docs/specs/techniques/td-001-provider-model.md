@@ -427,7 +427,9 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
 
   The implementation MUST NOT treat a no-speech result as a transport or
   provider error. It is not a failed window
-  ([td-003](td-003-transcription-translation-subtitles.md) §8.6.13), it does not
+  ([td-003](td-003-transcription-translation-subtitles.md) §8.6.13; the one
+  exception there is a fallback decode after a failed route, when no window
+  produced transcript text), it does not
   trigger `media.stt.on_route_error` (§8.2.4), and it does not advance a
   candidate list (§8.2.3). A response that does not parse, or that has neither a
   text field nor a segments field, is malformed and stays a provider error. A response is

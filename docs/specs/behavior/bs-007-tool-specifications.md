@@ -156,6 +156,10 @@ makes tool-level bypass of ingestion filters impossible.
 
 **Selection rules (priority order).**
 
+Before these rules, for every span argument: a document skipped as `no_speech`
+(td-003 §8.6.13) → return the **non-retryable** `MEDIA_NO_TEXT`, never
+`OCR_NOT_READY` and never empty content.
+
 1. If `page` is provided → return OCR page text (if available; else
    `DOC_TYPE_UNSUPPORTED`).
 2. Else if `start_ms`/`end_ms` provided → return the transcript excerpt (if
@@ -174,10 +178,7 @@ makes tool-level bypass of ingestion filters impossible.
    - a `replace`-mode multimodal media chunk (td-002) with **no** text
      representation → return the **non-retryable** `MEDIA_NO_TEXT` (the absence
      is permanent — distinct from the retryable `OCR_NOT_READY`), never the raw
-     media bytes;
-   - a document skipped as `no_speech` (td-003 §8.6.13) → return the
-     **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty
-     content.
+     media bytes.
 
 **Behavior.** The handler MUST NOT emit raw binary bytes through
 `content[].text` — that field is documented as text. PDFs and audio without a
