@@ -66,8 +66,8 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 
 A behaviour fix to §8.6.14 (`MINOR` per the pre-1.0 policy: it changes which SMIL edits are made). No key, tool, schema or error code changes.
 
-- §8.6.14 **An entry for a caption file write-back did not write is kept**: a managed `<textstream>` whose source has no write-back ownership record (an authored file, e.g. another tool's TTML) MUST be kept exactly as it is: not rewritten, not removed, its `system-language` not recomputed. Such a file MAY be linked only when no entry references it yet.
-- §8.6.14 **A TTML entry lists the file's own languages**: `system-language` lists the languages the TTML file carries (its `xml:lang` values), primary first; only a file that carries none falls back to the document's transcript languages.
+- §8.6.14 **An entry for a caption file write-back did not write is kept**: a managed `<textstream>` whose source exists and has no write-back ownership record (an authored file, e.g. another tool's TTML) MUST be kept exactly as it is: not rewritten, not removed, its `system-language` not recomputed. This holds also for a name the patch would not write (`<stem>.ttml` beside a `<stem>_<N>p.ttml` the patch writes). Such a file MAY be linked only when no entry references it yet. An entry whose file is missing is still replaced or removed.
+- §8.6.14 **A TTML entry lists the file's own languages**: `system-language` lists the languages of the TTML file's caption text (the `xml:lang` in effect for it, inherited from the root `<tt>` when blocks carry none), primary first; only a file whose text has no language falls back to the document's transcript languages.
 - Motivation: the TV Rain archive run (dir2mcp, 2026-11-16). The patch recomputed livevtt-wired entries from dir2mcp's transcripts; where livevtt had left one of its VTTs empty, that narrowed `rus,eng` to `rus` or `eng` on 2,702 SMILs, and 1,833 of them lost an English track whose TTML had text. The SMILs were restored from the patch's own backups.
 - `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 

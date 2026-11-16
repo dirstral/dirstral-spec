@@ -3917,16 +3917,23 @@ beside the media.
       `<stem>.ttml`, `<stem>_<N>p.ttml` or the TTML name in use. Every other
       `<textstream>`, every `<video>` and every other element MUST be kept.
     * **An entry for a caption file write-back did not write is kept.** When the
-      SMIL already has a managed entry whose source is a caption file with no
-      write-back ownership record (an authored file, such as another tool's
-      TTML), that entry MUST be kept exactly as it is: it is neither rewritten
-      nor removed, and its `system-language` is not recomputed, even when the
-      document has fewer transcript languages than the entry lists. Such a file
-      MAY be linked only when no entry references it yet.
+      SMIL already has a managed entry whose source is a caption file that
+      exists and has no write-back ownership record (an authored file, such as
+      another tool's TTML), that entry MUST be kept exactly as it is: it is
+      neither rewritten nor removed, and its `system-language` is not
+      recomputed, even when the document has fewer transcript languages than
+      the entry lists. This holds also when the entry names a file the patch
+      would not write (e.g. `<stem>.ttml` while `ttml_name` selects
+      `<stem>_<N>p.ttml`); the patch's own entry is then added beside it. Such a
+      file MAY be linked only when no entry references it yet. A managed entry
+      whose file is missing is no one's captions: the patch still replaces or
+      removes it.
     * `ttml` wants one entry for the written (or already present) TTML, whose
-      `system-language` lists the languages the TTML file itself carries (its
-      `xml:lang` values), primary first, joined by `,`; only a file that carries
-      none falls back to the document's transcript languages. `vtt` wants one
+      `system-language` lists the languages of the TTML file's own caption
+      text (the `xml:lang` in effect for it, inherited from the nearest tagged
+      ancestor, the root `<tt>` included), primary first, joined by `,`; only a
+      file whose text has no language falls back to the document's transcript
+      languages. `vtt` wants one
       entry per VTT. An entry is wanted only for a file that exists. Each entry
       carries the configured `media.subtitles.emit.smil_params` as
       `<param name value valuetype="data"/>` children.
