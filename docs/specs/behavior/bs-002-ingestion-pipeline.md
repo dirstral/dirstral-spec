@@ -343,7 +343,10 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
     the next scan process the document again, also with an unchanged
     `content_hash`. That scan MUST retire the representations and chunks of the
     old type, so a file now classified as `video` keeps no searchable `code`
-    chunk.
+    chunk. Two other cases also process a document with an unchanged
+    `content_hash`: a document at `status=error` (§7.7), and a document
+    skipped as `no_speech` whose STT derivation identity changed (td-003
+    §8.6.13).
 - Representation-level:
   - compute `rep_hash`; if unchanged → **skip** chunk rebuild
 - Chunk-level:

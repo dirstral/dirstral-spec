@@ -280,7 +280,8 @@ and `evidence` are optional.
   `archive` (container or un-expanded nested member), `ignore_rule`,
   `secret_excluded`, `path_excluded`, `size_cap`, `language_uncovered`,
   `transcript_partial`, `symlink_ignored`, `no_speech` (media whose STT decode
-  found no speech in the whole recording, with no other searchable
+  found no speech in any selected audio track (`media.stt.tracks`; a track
+  that is not selected is not decoded), with no other searchable
   representation; td-003 §8.6.13). New reasons are added only by a
   minor version bump (additive); a client MAY receive an unrecognized value from
   a newer server and SHOULD render it verbatim rather than error. `count` is
