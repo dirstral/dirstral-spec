@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.93.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.95.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1023,6 +1023,24 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 ### 7.1 Discovery
 
 * Recursive walk from root.
+* **Parallel walk (optional).** `ingest.discovery_workers` (integer, default
+  `1`) bounds how many directories the walk reads at the same time. `1` is the
+  sequential walk. A larger value lets the walk read sibling subtrees
+  concurrently, which matters on a network filesystem, where each directory
+  read waits a round trip: a sequential walk of an NFS archive of 145,000
+  videos in a 20-level hash tree reads about 85 directories a second, so one
+  pass takes about 8.5 hours before any file is processed; with 16 concurrent
+  readers the same tree was listed in about 50 minutes. The result MUST NOT
+  depend on the value: the same files, in
+  the same order (sorted by relative path), the same skip reports (their
+  order MAY differ), the same ignore, `.gitignore` and symlink rules, the same
+  directory-loop protection, and the same scan-cache contents. `0` means the
+  default `1`; a negative value or one above `64` is `CONFIG_INVALID`. With
+  symlink following on, an implementation MAY walk sequentially whatever the
+  value: which path reaches a directory first decides the relative paths of
+  its files, and that must not depend on timing. The key applies to a filesystem walk
+  (`source.kind: local` or `nfs`); a remote source (§7.8) lists by its own
+  pagination and ignores it.
 * **Directory ignore list.** Discovery does not descend into a directory whose
   **name** matches an entry in the ignore list. The default list is: `.git/`,
   `.dir2mcp/`, `node_modules/`, `vendor/`, `__pycache__/`, `dist/`, `build/`,
@@ -1154,7 +1172,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   **Media and other binary sources.** For a source whose searchable text is derived (audio, video, a PDF, an image), the check of the source bytes MAY cover only a leading sample of them (the reference implementation reads 64 KiB), and the derived text (transcript, sidecar, translation, extracted text) MUST be screened in full before it is indexed. The re-evaluation after a pattern change applies the same rule: for an audio or video document it checks the same leading sample and screens the stored derived text. So it never needs bytes outside that sample, and `ingest.media_identity: sampled` (§7.6) needs no extra read for it.
 
-  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.93.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
+  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.95.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
 
 * Exclude large binaries by default:
 
@@ -1604,6 +1622,12 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   available and eligible, also when its `content_hash` is unchanged (§7.6).
   Otherwise the operator who follows the remediation (install LibreOffice and
   `pandoc`) sees no change.
+* **A conversion that failed.** A `.doc` at `status=error` after a conversion
+  failure or timeout is processed again on the next scan, also when its
+  `content_hash` is unchanged, as every document at `status=error` is (§7.7).
+  An explicit re-index is not necessary. Each scan makes one attempt for such
+  a document, and `ingest.libreoffice.timeout_sec` bounds that attempt, so a
+  document that always fails costs at most one time limit for each scan.
 
 See [Design 0002](design/0002-structured-extraction.md) for rationale and the
 structure-to-provenance mapping.
@@ -1761,6 +1785,8 @@ Non-fatal per-doc errors:
 
 * mark `documents.status=error`, record error
 * continue indexing
+* the next scan processes a document at `status=error` again, also when its
+  `content_hash` is unchanged (one attempt for each scan)
 
 Fatal errors:
 
@@ -2516,7 +2542,9 @@ worker reads the document text and rune spans from the shared store (8.7.4).
   nor a segments field, is malformed and stays a provider error. A response is
   also malformed when its `text` is present and not a string, when its
   `segments` is present and not an array, or when a segment is not an object or
-  has a `text` that is present and not a string. A response is
+  has a `text` that is present and not a string. A response is also malformed
+  when a segment has a `start` or an `end` but no `text`: the decoder reports a
+  timed range of speech that the text does not hold. A response is
   also malformed when it carries timed words (a top-level `words` array or a
   `words` array inside a segment, with at least one entry) but no text: the
   decoder reports speech that the text does not hold. A malformed response is never
@@ -2524,7 +2552,7 @@ worker reads the document text and rune spans from the shared store (8.7.4).
   §8.6.13 say what a no-speech result does to the transcript and to the
   document (`no_speech`). A sidecar (§8.6.4) still replaces STT, so these rules
   never apply to a document whose transcript comes from a sidecar.
-* **Gemini** transcribes via the native `models/{model}:generateContent` surface: the audio is sent as an inline-data part (base64, with its MIME type) alongside a transcription instruction, and the model's text output is the transcript. Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the native surface is required (a `kind: openai` Gemini profile is therefore not STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional `stt_language` apply as for other providers.
+* **Gemini** transcribes via the native `models/{model}:generateContent` surface: the audio is sent as an inline-data part (base64, with its MIME type) alongside a transcription instruction, and the model's text output is the transcript. That generated text is the text field of the normalized response, and normalization runs before the no-speech test above, so empty or whitespace-only generated text is a no-speech result, not a malformed response. Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the native surface is required (a `kind: openai` Gemini profile is therefore not STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional `stt_language` apply as for other providers.
 
 #### 8.2.1 Language-coverage-aware selection (honest coverage)
 
@@ -3995,8 +4023,13 @@ transcript exactly as it applies to an unreadable format.
   one is a refusal, the outcome is this error (`TRANSCRIBE_FAILED`) and the
   recording is retried. When the refusals of such a recording are all
   `language_uncovered`, or of both reasons, the mixed-reason rule of §8.2.2
-  applies unchanged (`status=skipped`, `skip_reason="language_uncovered"`). The
-  skip reason `no_speech` applies only when every window is a no-speech
+  applies unchanged (`status=skipped`, `skip_reason="language_uncovered"`). A
+  window that failed (a transport or provider failure, not a refusal) takes
+  precedence over that rule: when at least one window failed and no window
+  decoded to persisted text, the outcome is this error and the recording is
+  retried, also when other windows are `language_uncovered` refusals or
+  no-speech results. The failed window can hold speech in a covered language.
+  The skip reason `no_speech` applies only when every window is a no-speech
   result.
 
 * **A recording with no speech is skipped, not failed (normative).** When the
@@ -6007,7 +6040,7 @@ or an empty/plain-text placeholder.  This ensures tool-level bypass of ingestion
 filters is impossible.
 
 The content check covers the whole source text, not only the slice that the
-call returns (spec 0.93.0). A credential outside the requested lines or page
+call returns (spec 0.95.0). A credential outside the requested lines or page
 still refuses the call, as ingestion withholds that document (§7.2). A slice
 check alone can miss a match that crosses the slice edge. A text source larger
 than `ingest.max_file_mb`, which ingestion never scans or indexes, returns
@@ -6996,6 +7029,7 @@ rag:
 
 ingest:
   gitignore: true
+  discovery_workers: 1   # directories the walk reads at once (bs-002 §7.1); raise on a network filesystem
   extractor: auto      # auto|docling|docling-serve|mistral|pandoc|libreoffice|off
   # auto = best-available per format (§7.4.B.1): highest-fidelity ACTIVE engine
   # that supports each format; no format routed to an engine that can't read it,

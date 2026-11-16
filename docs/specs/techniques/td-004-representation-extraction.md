@@ -501,6 +501,13 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
   ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.6). Otherwise the
   operator who follows the remediation (install LibreOffice and `pandoc`) sees
   no change.
+- **A conversion that failed.** A `.doc` at `status=error` after a conversion
+  failure or timeout is processed again on the next scan, also when its
+  `content_hash` is unchanged, as every document at `status=error` is
+  ([bs-002](../behavior/bs-002-ingestion-pipeline.md) §7.6, §7.7). An explicit
+  re-index is not necessary. Each scan makes one attempt for such a document,
+  and `ingest.libreoffice.timeout_sec` bounds that attempt, so a document that
+  always fails costs at most one time limit for each scan.
 
 ### C) Audio (STT provider is configurable)
 
@@ -556,7 +563,7 @@ A page-separated OCR fallback span:
 
 ## Changelog
 
-- **0.8.0**: mirrors spec 0.93.0 (SPEC.md §7.4.B): a capability-activated T2 engine `libreoffice` reads legacy binary Word `.doc`. It converts the `.doc` to `.docx` with a headless LibreOffice (an isolated user profile per conversion, a temporary output directory outside the corpus, `ingest.libreoffice.timeout_sec`, default `300`) and reads the result with the pandoc `docx` reader, so its provenance equals pandoc's. It is active only when a LibreOffice binary and `pandoc` both pass a probe. Its only `✅` cell is `.doc`. `ingest.extractor: libreoffice` pins it with no cross-engine fallback. A conversion failure or timeout is a per-document error; an absent binary is a coverage gap. A `.doc` skipped for want of an engine is extracted on the first scan in which the engine is available.
+- **0.8.0**: mirrors spec 0.95.0 (SPEC.md §7.4.B): a capability-activated T2 engine `libreoffice` reads legacy binary Word `.doc`. It converts the `.doc` to `.docx` with a headless LibreOffice (an isolated user profile per conversion, a temporary output directory outside the corpus, `ingest.libreoffice.timeout_sec`, default `300`) and reads the result with the pandoc `docx` reader, so its provenance equals pandoc's. It is active only when a LibreOffice binary and `pandoc` both pass a probe. Its only `✅` cell is `.doc`. `ingest.extractor: libreoffice` pins it with no cross-engine fallback. A conversion failure or timeout is a per-document error; an absent binary is a coverage gap. A `.doc` skipped for want of an engine is extracted on the first scan in which the engine is available. A `.doc` at `status=error` after a failed conversion is processed again on the next scan.
 - **0.7.0**: mirrors spec 0.77.0 (SPEC.md §7.4.B): the default of
   `ingest.docling.timeout_sec` is `3600` (was `900`). docling on CPU needed
   about 20 minutes for one 195-page PDF on a loaded host.

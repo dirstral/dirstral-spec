@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -27,6 +27,24 @@ deletion/tombstone semantics are in bs-008.
 ### 7.1 Discovery
 
 - Recursive walk from the corpus root.
+- **Parallel walk (optional).** `ingest.discovery_workers` (integer, default
+  `1`) bounds how many directories the walk reads at the same time. `1` is the
+  sequential walk. A larger value lets the walk read sibling subtrees
+  concurrently, which matters on a network filesystem, where each directory
+  read waits a round trip: a sequential walk of an NFS archive of 145,000
+  videos in a 20-level hash tree reads about 85 directories a second, so one
+  pass takes about 8.5 hours before any file is processed; with 16 concurrent
+  readers the same tree was listed in about 50 minutes. The result MUST NOT
+  depend on the value: the same files, in
+  the same order (sorted by relative path), the same skip reports (their
+  order MAY differ), the same ignore, `.gitignore` and symlink rules, the same
+  directory-loop protection, and the same scan-cache contents. `0` means the
+  default `1`; a negative value or one above `64` is `CONFIG_INVALID`. With
+  symlink following on, an implementation MAY walk sequentially whatever the
+  value: which path reaches a directory first decides the relative paths of
+  its files, and that must not depend on timing. The key applies to a filesystem walk
+  (`source.kind: local` or `nfs`); a remote source (§7.8) lists by its own
+  pagination and ignores it.
 - Default ignore list includes: `.git/`, `node_modules/`, `dist/`, `build/`,
   `.venv/`, `.dir2mcp/`.
 - Optional `.gitignore` support.
@@ -218,7 +236,7 @@ deletion/tombstone semantics are in bs-008.
 
   **A change of the effective pattern set (normative).** A document withheld as
   `secret_excluded` (bs-007) was judged against one pattern set. The effective
-  set changes when a spec version changes a default (0.93.0 did) or when an
+  set changes when a spec version changes a default (0.95.0 did) or when an
   operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a
   change, the implementation MUST evaluate each withheld document again against
   the new set, also when its `content_hash` is unchanged (§7.6). A document that
@@ -342,6 +360,8 @@ Non-fatal per-doc errors:
 
 - mark `documents.status=error`, record the error
 - **continue** indexing
+- the next scan processes a document at `status=error` again, also when its
+  `content_hash` is unchanged (one attempt for each scan)
 
 Fatal errors:
 
@@ -655,7 +675,8 @@ re-indexes it.
 
 ## Changelog
 
-- **0.6.0** (§7.2, §7.3, §7.7): mirrors spec 0.93.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation.
+- **0.7.0** (§7.2, §7.3, §7.7): mirrors spec 0.95.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation. §7.7 also states that the next scan processes a document at `status=error` again.
+- **0.6.0** (§7.1): mirrors spec 0.94.0: `ingest.discovery_workers` (default `1`, range `1`–`64`) lets the walk read directories concurrently; the result MUST NOT depend on the value.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
 - **0.3.0** (§7.7): the honest-coverage report also reports transcript

@@ -433,7 +433,9 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   text field nor a segments field, is malformed and stays a provider error. A response is
   also malformed when its `text` is present and not a string, when its
   `segments` is present and not an array, or when a segment is not an object or
-  has a `text` that is present and not a string. A response is
+  has a `text` that is present and not a string. A response is also malformed
+  when a segment has a `start` or an `end` but no `text`: the decoder reports a
+  timed range of speech that the text does not hold. A response is
   also malformed when it carries timed words (a top-level `words` array or a
   `words` array inside a segment, with at least one entry) but no text: the
   decoder reports speech that the text does not hold. A malformed response is never
@@ -445,6 +447,10 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
 * **Gemini** transcribes via the native `models/{model}:generateContent` surface:
   the audio is sent as an inline-data part (base64, with its MIME type) alongside
   a transcription instruction, and the model's text output is the transcript.
+  That generated text is the text field of the normalized response, and
+  normalization runs before the no-speech test above, so empty or
+  whitespace-only generated text is a no-speech result, not a malformed
+  response.
   Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the
   native surface is required (a `kind: openai` Gemini profile is therefore not
   STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional
@@ -492,7 +498,7 @@ Spec 0.82.0 adds rules for when a route-fallback transcript is decoded again
 (`media.stt.route_retry_after`, `route_fallback_at`, `route_fallback_by`). See
 SPEC.md §8.2.4, the authoritative text.
 
-Spec 0.93.0: a no-speech result (§8.2) from the language identifier that
+Spec 0.95.0: a no-speech result (§8.2) from the language identifier that
 reports no language is no signal, under `item` and under `window` (SPEC.md
 §8.2.3, §8.2.4). An identifier response with empty text that reports a language
 at or above the implementation's confidence floor is still a signal (a report
@@ -632,8 +638,7 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
-- **0.12.0**: §8.2 (spec 0.93.0): a well-formed STT response with empty text and no segment that holds text is a **no-speech result**, a successful decode, not a provider error; a malformed response stays an error. §8.2.3/§8.2.4: a no-speech identifier response that reports no language is no signal. §8.1.2: the extraction-engine list names `libreoffice`.
-
+- **0.12.0**: §8.2 (spec 0.95.0): a well-formed STT response with empty text and no segment that holds text is a **no-speech result**, a successful decode, not a provider error; a malformed response stays an error. §8.2.3/§8.2.4: a no-speech identifier response that reports no language is no signal. §8.1.2: the extraction-engine list names `libreoffice`. A segment with a `start` or an `end` but no `text` is malformed. The Gemini generated text is the text field of the normalized response.
 - **0.11.0**: §8.8 (spec 0.85.0): pointers to the `media.language` pin rules and
   the sampled-detection rule for a long text.
 
