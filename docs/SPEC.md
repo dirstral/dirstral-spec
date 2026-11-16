@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.95.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.96.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1172,7 +1172,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   **Media and other binary sources.** For a source whose searchable text is derived (audio, video, a PDF, an image), the check of the source bytes MAY cover only a leading sample of them (the reference implementation reads 64 KiB), and the derived text (transcript, sidecar, translation, extracted text) MUST be screened in full before it is indexed. The re-evaluation after a pattern change applies the same rule: for an audio or video document it checks the same leading sample and screens the stored derived text. So it never needs bytes outside that sample, and `ingest.media_identity: sampled` (§7.6) needs no extra read for it.
 
-  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.95.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
+  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.96.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
 
 * Exclude large binaries by default:
 
@@ -4216,8 +4216,24 @@ beside the media.
       (ignoring a leading `mp4:`) is the document's `<stem>.<lang>.vtt`,
       `<stem>.ttml`, `<stem>_<N>p.ttml` or the TTML name in use. Every other
       `<textstream>`, every `<video>` and every other element MUST be kept.
+    * **An entry for a caption file write-back did not write is kept.** When the
+      SMIL already has a managed entry whose source is a caption file that
+      exists and has no write-back ownership record (an authored file, such as
+      another tool's TTML), that entry MUST be kept exactly as it is: it is
+      neither rewritten nor removed, and its `system-language` is not
+      recomputed, even when the document has fewer transcript languages than
+      the entry lists. This holds also when the entry names a file the patch
+      would not write (e.g. `<stem>.ttml` while `ttml_name` selects
+      `<stem>_<N>p.ttml`); the patch's own entry is then added beside it. Such a
+      file MAY be linked only when no entry references it yet. A managed entry
+      whose file is missing is no one's captions: the patch still replaces or
+      removes it.
     * `ttml` wants one entry for the written (or already present) TTML, whose
-      `system-language` lists the TTML's languages joined by `,`; `vtt` wants one
+      `system-language` lists the languages of the TTML file's own caption
+      text (the `xml:lang` in effect for it, inherited from the nearest tagged
+      ancestor, the root `<tt>` included), primary first, joined by `,`; only a
+      file whose text has no language falls back to the document's transcript
+      languages. `vtt` wants one
       entry per VTT. An entry is wanted only for a file that exists. Each entry
       carries the configured `media.subtitles.emit.smil_params` as
       `<param name value valuetype="data"/>` children.
@@ -6057,7 +6073,7 @@ or an empty/plain-text placeholder.  This ensures tool-level bypass of ingestion
 filters is impossible.
 
 The content check covers the whole source text, not only the slice that the
-call returns (spec 0.95.0). A credential outside the requested lines or page
+call returns (spec 0.96.0). A credential outside the requested lines or page
 still refuses the call, as ingestion withholds that document (§7.2). A slice
 check alone can miss a match that crosses the slice edge. A text source larger
 than `ingest.max_file_mb`, which ingestion never scans or indexes, returns

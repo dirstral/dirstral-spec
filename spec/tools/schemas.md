@@ -1,6 +1,6 @@
 # Tool Schemas
 
-**Last changed in spec version:** `0.95.0`  
+**Last changed in spec version:** `0.96.0`  
 **Current spec version:** see [`spec/versioning.md`](../versioning.md), the single source (this file does not track it).
 **MCP protocol target:** `2025-11-25`
 

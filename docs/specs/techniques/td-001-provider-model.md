@@ -506,7 +506,7 @@ Spec 0.82.0 adds rules for when a route-fallback transcript is decoded again
 (`media.stt.route_retry_after`, `route_fallback_at`, `route_fallback_by`). See
 SPEC.md §8.2.4, the authoritative text.
 
-Spec 0.95.0: a no-speech result (§8.2) from the language identifier that
+Spec 0.96.0: a no-speech result (§8.2) from the language identifier that
 reports no language is no signal, under `item` and under `window` (SPEC.md
 §8.2.3, §8.2.4). An identifier response with empty text that reports a language
 at or above the implementation's confidence floor is still a signal (a report
@@ -646,7 +646,7 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
-- **0.12.0**: §8.2 (spec 0.95.0): a well-formed STT response with empty text and no segment that holds text is a **no-speech result**, a successful decode, not a provider error; a malformed response stays an error. §8.2.3/§8.2.4: a no-speech identifier response that reports no language is no signal. §8.1.2: the extraction-engine list names `libreoffice`. A segment with a `start` or an `end` but no `text` is malformed. The Gemini generated text is the text field of the normalized response.
+- **0.12.0**: §8.2 (spec 0.96.0): a well-formed STT response with empty text and no segment that holds text is a **no-speech result**, a successful decode, not a provider error; a malformed response stays an error. §8.2.3/§8.2.4: a no-speech identifier response that reports no language is no signal. §8.1.2: the extraction-engine list names `libreoffice`. A segment with a `start` or an `end` but no `text` is malformed. The Gemini generated text is the text field of the normalized response.
 - **0.11.0**: §8.8 (spec 0.85.0): pointers to the `media.language` pin rules and
   the sampled-detection rule for a long text.
 
