@@ -705,9 +705,13 @@ transcript exactly as it applies to an unreadable format.
   applies unchanged (`status=skipped`, `skip_reason="language_uncovered"`). A
   window that failed (a transport or provider failure, not a refusal) takes
   precedence over that rule: when at least one window failed and no window
-  decoded to persisted text, the outcome is this error and the recording is
+  produced transcript text, the outcome is this error and the recording is
   retried, also when other windows are `language_uncovered` refusals or
   no-speech results. The failed window can hold speech in a covered language.
+  When at least one window produced transcript text, this precedence does not
+  apply: the coverage rules of this section (`media.stt.min_coverage`,
+  `on_partial_transcript`) decide the outcome as before, so a
+  `transcript_partial` skip stays a skip.
   The skip reason `no_speech` applies only when every window is a no-speech
   result.
 

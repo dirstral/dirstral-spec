@@ -2552,7 +2552,7 @@ worker reads the document text and rune spans from the shared store (8.7.4).
   §8.6.13 say what a no-speech result does to the transcript and to the
   document (`no_speech`). A sidecar (§8.6.4) still replaces STT, so these rules
   never apply to a document whose transcript comes from a sidecar.
-* **Gemini** transcribes via the native `models/{model}:generateContent` surface: the audio is sent as an inline-data part (base64, with its MIME type) alongside a transcription instruction, and the model's text output is the transcript. That generated text is the text field of the normalized response, and normalization runs before the no-speech test above, so empty or whitespace-only generated text is a no-speech result, not a malformed response. A response with no candidate has no text field and is malformed. A candidate with no text that did not finish normally (a `finishReason` other than `STOP`, for example a safety block or a token limit) is a provider error, not a no-speech result: the model did not complete the transcription. Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the native surface is required (a `kind: openai` Gemini profile is therefore not STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional `stt_language` apply as for other providers.
+* **Gemini** transcribes via the native `models/{model}:generateContent` surface: the audio is sent as an inline-data part (base64, with its MIME type) alongside a transcription instruction, and the model's text output is the transcript. That generated text is the text field of the normalized response, and normalization runs before the no-speech test above, so empty or whitespace-only generated text is a no-speech result, not a malformed response. A response with no candidate has no text field and is malformed. A candidate with no text that did not finish normally (a `finishReason` other than `STOP`, for example a safety block or a token limit) is a provider error, not a no-speech result: the model did not complete the transcription. This rule covers only a candidate with no text; the handling of a candidate that holds text and did not finish normally is unchanged by this version. Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the native surface is required (a `kind: openai` Gemini profile is therefore not STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional `stt_language` apply as for other providers.
 
 #### 8.2.1 Language-coverage-aware selection (honest coverage)
 
@@ -4026,9 +4026,13 @@ transcript exactly as it applies to an unreadable format.
   applies unchanged (`status=skipped`, `skip_reason="language_uncovered"`). A
   window that failed (a transport or provider failure, not a refusal) takes
   precedence over that rule: when at least one window failed and no window
-  decoded to persisted text, the outcome is this error and the recording is
+  produced transcript text, the outcome is this error and the recording is
   retried, also when other windows are `language_uncovered` refusals or
   no-speech results. The failed window can hold speech in a covered language.
+  When at least one window produced transcript text, this precedence does not
+  apply: the coverage rules of this section (`media.stt.min_coverage`,
+  `on_partial_transcript`) decide the outcome as before, so a
+  `transcript_partial` skip stays a skip.
   The skip reason `no_speech` applies only when every window is a no-speech
   result.
 

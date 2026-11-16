@@ -454,7 +454,9 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   A candidate with no text that did not finish normally (a `finishReason`
   other than `STOP`, for example a safety block or a token limit) is a
   provider error, not a no-speech result: the model did not complete the
-  transcription.
+  transcription. This rule covers only a candidate with no text; the handling
+  of a candidate that holds text and did not finish normally is unchanged by
+  this version.
   Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the
   native surface is required (a `kind: openai` Gemini profile is therefore not
   STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional
