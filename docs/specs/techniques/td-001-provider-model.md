@@ -450,7 +450,11 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   That generated text is the text field of the normalized response, and
   normalization runs before the no-speech test above, so empty or
   whitespace-only generated text is a no-speech result, not a malformed
-  response.
+  response. A response with no candidate has no text field and is malformed.
+  A candidate with no text that did not finish normally (a `finishReason`
+  other than `STOP`, for example a safety block or a token limit) is a
+  provider error, not a no-speech result: the model did not complete the
+  transcription.
   Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the
   native surface is required (a `kind: openai` Gemini profile is therefore not
   STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional
