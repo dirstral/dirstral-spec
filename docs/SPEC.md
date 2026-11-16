@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.94.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.95.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3916,8 +3916,17 @@ beside the media.
       (ignoring a leading `mp4:`) is the document's `<stem>.<lang>.vtt`,
       `<stem>.ttml`, `<stem>_<N>p.ttml` or the TTML name in use. Every other
       `<textstream>`, every `<video>` and every other element MUST be kept.
+    * **An entry for a caption file write-back did not write is kept.** When the
+      SMIL already has a managed entry whose source is a caption file with no
+      write-back ownership record (an authored file, such as another tool's
+      TTML), that entry MUST be kept exactly as it is: it is neither rewritten
+      nor removed, and its `system-language` is not recomputed, even when the
+      document has fewer transcript languages than the entry lists. Such a file
+      MAY be linked only when no entry references it yet.
     * `ttml` wants one entry for the written (or already present) TTML, whose
-      `system-language` lists the TTML's languages joined by `,`; `vtt` wants one
+      `system-language` lists the languages the TTML file itself carries (its
+      `xml:lang` values), primary first, joined by `,`; only a file that carries
+      none falls back to the document's transcript languages. `vtt` wants one
       entry per VTT. An entry is wanted only for a file that exists. Each entry
       carries the configured `media.subtitles.emit.smil_params` as
       `<param name value valuetype="data"/>` children.

@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.94.0`
+**Current spec version:** `0.95.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,15 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.95.0: the SMIL caption patch keeps entries for caption files it did not write
+
+A behaviour fix to §8.6.14 (`MINOR` per the pre-1.0 policy: it changes which SMIL edits are made). No key, tool, schema or error code changes.
+
+- §8.6.14 **An entry for a caption file write-back did not write is kept**: a managed `<textstream>` whose source has no write-back ownership record (an authored file, e.g. another tool's TTML) MUST be kept exactly as it is: not rewritten, not removed, its `system-language` not recomputed. Such a file MAY be linked only when no entry references it yet.
+- §8.6.14 **A TTML entry lists the file's own languages**: `system-language` lists the languages the TTML file carries (its `xml:lang` values), primary first; only a file that carries none falls back to the document's transcript languages.
+- Motivation: the TV Rain archive run (dir2mcp, 2026-11-16). The patch recomputed livevtt-wired entries from dir2mcp's transcripts; where livevtt had left one of its VTTs empty, that narrowed `rus,eng` to `rus` or `eng` on 2,702 SMILs, and 1,833 of them lost an English track whose TTML had text. The SMILs were restored from the patch's own backups.
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.94.0: discovery can read directories in parallel
 
