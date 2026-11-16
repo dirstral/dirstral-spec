@@ -1586,8 +1586,9 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
 * **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
   `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
   representation is `extracted_markdown`, `rep_hash` is computed over the
-  rendered Markdown, and the spans carry the section breadcrumb and `label` and
-  no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
+  rendered Markdown, and the spans have the provenance of the
+  `pandoc` engine: a section breadcrumb where the Markdown has headings, an
+  optional `label`, and no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
   implementation MAY cache it, as an implementation-private artifact. A cached
   copy MUST be readable and writable only by the owner of the dir2mcp process
   (mode `0600` in an owner-only directory on POSIX systems), because it holds
@@ -4064,11 +4065,27 @@ transcript exactly as it applies to an unreadable format.
     model can find speech that this one did not. A change of `content_hash`
     decodes it again as for any changed file. This guard covers only a track
     whose decode was a no-speech result. A failed track is not covered by it.
-    When no selected track produced a transcript, the document is `error` and
-    is processed again on the next run (§8.6.12). A failed track in a document
+    When no selected track produced a transcript and at least one selected
+    track failed, the document is `error` and is processed again on the next
+    run (§8.6.12). A failed track in a document
     that stays `ok` is decoded again when the document is processed again (a
     content change, a re-index or an identity change); this version does not
     change that.
+  * `dir2mcp_open_file` on a document that is `status=skipped` with
+    `skip_reason="no_speech"` MUST return the non-retryable `MEDIA_NO_TEXT`
+    (§14.2, §15.4), never the retryable `OCR_NOT_READY` and never empty
+    content. No later scan produces a transcript while the content and the
+    STT derivation identity are unchanged.
+  * A no-speech result of a fallback decode (§8.2.3: the route for the item
+    failed and the default profile decoded the recording) is not a no-speech
+    result under this section when it covers the whole recording. The provider
+    for the identified language did not decode the recording, so the outcome
+    is an error (`TRANSCRIBE_FAILED`). The implementation stores no no-speech
+    outcome and no fallback record for it, and the next run tries the route
+    again. `media.stt.route_retry_after` does not delay that run, because no
+    fallback transcript exists. A fallback window with no speech, in a
+    recording that has transcript text, keeps its `fallback_from` entry and
+    follows the window retry of §8.2.3.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused
@@ -5770,7 +5787,7 @@ Example tool execution error:
 * `FILE_NOT_FOUND`
 * `DOC_TYPE_UNSUPPORTED`
 * `OCR_NOT_READY` (returned by `dir2mcp_open_file` for binary doc types — PDF, audio — when no OCR/transcript representation is cached yet; retryable once ingestion completes)
-* `MEDIA_NO_TEXT` (returned by `dir2mcp_open_file` for a `replace`-mode multimodal media chunk (8.1.7) that has **no** text representation; **non-retryable** — the gap is permanent, unlike `OCR_NOT_READY`; the hit can still be cited)
+* `MEDIA_NO_TEXT` (returned by `dir2mcp_open_file` for a `replace`-mode multimodal media chunk (8.1.7) that has **no** text representation; **non-retryable** — the gap is permanent, unlike `OCR_NOT_READY`; the hit can still be cited. Also returned for a document skipped as `no_speech` (§8.6.13): it has no transcript, and no scan produces one while the content and the STT derivation identity are unchanged)
 
 ### 14.3 Index/state
 
@@ -6110,6 +6127,7 @@ decide.
   * for PDF: return the cached full-document OCR markdown with `span.kind="document"`; if the OCR cache hasn't been populated yet (e.g. ingest is still running) the tool MUST return error `OCR_NOT_READY` rather than the raw bytes,
   * for audio: return the cached full-document transcript with `span.kind="document"`; same `OCR_NOT_READY` semantics as PDF when no transcript exists yet.
   * for a `replace`-mode multimodal media chunk with no text representation (8.1.7): return the **non-retryable** `MEDIA_NO_TEXT` (the absence is permanent — distinct from `OCR_NOT_READY`), never the raw media bytes.
+  * for a document skipped as `no_speech` (§8.6.13): return the **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty content.
 
 The handler MUST NOT emit raw binary bytes through `content[].text` — that
 field is documented as text. PDFs and audio without a span argument resolve

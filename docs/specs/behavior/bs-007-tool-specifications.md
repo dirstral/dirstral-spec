@@ -174,7 +174,10 @@ makes tool-level bypass of ingestion filters impossible.
    - a `replace`-mode multimodal media chunk (td-002) with **no** text
      representation → return the **non-retryable** `MEDIA_NO_TEXT` (the absence
      is permanent — distinct from the retryable `OCR_NOT_READY`), never the raw
-     media bytes.
+     media bytes;
+   - a document skipped as `no_speech` (td-003 §8.6.13) → return the
+     **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty
+     content.
 
 **Behavior.** The handler MUST NOT emit raw binary bytes through
 `content[].text` — that field is documented as text. PDFs and audio without a
@@ -568,7 +571,7 @@ lifetime of the process.
 
 ## Changelog
 
-- **0.19.0**: the `skip_reasons` enum list names `no_speech` (spec 0.96.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
+- **0.19.0**: `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document skipped as `no_speech`; the `skip_reasons` enum list names `no_speech` (spec 0.96.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
 - **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
   spec 0.92.0): a client asks a server in watch mode to reconcile one path
   under the root now; the call validates, classifies, enqueues and returns,

@@ -739,11 +739,27 @@ transcript exactly as it applies to an unreadable format.
     model can find speech that this one did not. A change of `content_hash`
     decodes it again as for any changed file. This guard covers only a track
     whose decode was a no-speech result. A failed track is not covered by it.
-    When no selected track produced a transcript, the document is `error` and
-    is processed again on the next run (§8.6.12). A failed track in a document
+    When no selected track produced a transcript and at least one selected
+    track failed, the document is `error` and is processed again on the next
+    run (§8.6.12). A failed track in a document
     that stays `ok` is decoded again when the document is processed again (a
     content change, a re-index or an identity change); this version does not
     change that.
+  * `dir2mcp_open_file` on a document that is `status=skipped` with
+    `skip_reason="no_speech"` MUST return the non-retryable `MEDIA_NO_TEXT`
+    (df-008, bs-007 `dir2mcp_open_file`), never the retryable `OCR_NOT_READY` and never empty
+    content. No later scan produces a transcript while the content and the
+    STT derivation identity are unchanged.
+  * A no-speech result of a fallback decode (td-001 §8.2.3: the route for the item
+    failed and the default profile decoded the recording) is not a no-speech
+    result under this section when it covers the whole recording. The provider
+    for the identified language did not decode the recording, so the outcome
+    is an error (`TRANSCRIBE_FAILED`). The implementation stores no no-speech
+    outcome and no fallback record for it, and the next run tries the route
+    again. `media.stt.route_retry_after` does not delay that run, because no
+    fallback transcript exists. A fallback window with no speech, in a
+    recording that has transcript text, keeps its `fallback_from` entry and
+    follows the window retry of td-001 §8.2.3.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused

@@ -461,8 +461,9 @@ When the active engine for a `.doc` is `libreoffice` (T2), the pipeline converts
 - **Read.** It reads the `.docx` with the pandoc `docx` reader, exactly as the
   `pandoc` engine reads a `.docx` (*Markup/office extraction (pandoc)* above). The
   representation is `extracted_markdown`, `rep_hash` is computed over the
-  rendered Markdown, and the spans carry the section breadcrumb and `label` and
-  no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
+  rendered Markdown, and the spans have the provenance of the
+  `pandoc` engine: a section breadcrumb where the Markdown has headings, an
+  optional `label`, and no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
   implementation **MAY** cache it, as an implementation-private artifact. A
   cached copy **MUST** be readable and writable only by the owner of the
   dir2mcp process (mode `0600` in an owner-only directory on POSIX systems),
