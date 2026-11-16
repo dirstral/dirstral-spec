@@ -288,7 +288,9 @@ for the run rather than probing per document.
 
 The `pandoc` engine (T2, #393) follows the same availability rule: it is
 *available* only when a `pandoc` binary both **resolves** (on `PATH`, or via
-`ingest.pandoc.command`) **and** passes a `pandoc --version` functional check. It
+`ingest.pandoc.command`) **and** passes a `pandoc --version` functional check. The
+check **MUST** have a time limit (the reference implementation uses 10 seconds).
+A check that reaches the limit counts as failed: the binary is unavailable. It
 is **capability-activated** — no enable flag; a working binary activates the T2
 matrix cells and its absence deactivates them (opt-out only). Under
 `extractor: auto` an unavailable `pandoc` is skipped and the per-format tier

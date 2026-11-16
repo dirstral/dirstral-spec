@@ -1116,9 +1116,9 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   **Allowed matches (normative).** `security.secret_allow_patterns` lists regular expressions for text that looks like a credential but is not one. The default list holds one pattern, for the `redir_token` parameter of a YouTube redirect link (`youtube.com/redirect`). Video descriptions paste such links in large numbers, and the parameter holds a short-lived redirect nonce, not a credential. The pattern names the host and the path, not only the parameter: a parameter name alone does not show that its value is not a credential, so the default trusts no name outside that one link. An operator adds other benign parameters (for example a pagination cursor of an API they use, anchored to its host):
 
-  * `(?i)(?:^|[\s"'<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?(redir_token=[^\s&#;?=:<>"]*)`
+  * `(?i)(?:^|[\s"'<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"']*&)*?(redir_token=[^\s&#;?=:<>"']*)`
 
-  The implementation finds every match of every secret pattern in the text. An allow pattern can cancel only a match of the **generic bearer-token default** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled, also when an allow match covers it. A generic bearer-token match is **cancelled** when the **cover** of an allow match in the same text covers it: the cover starts at or before the start of the secret match and ends at or after its end. The cover of an allow match is the text of its first capture group when the pattern has one, and the whole match when it has none. The rest of the match is context: it must be present, but it cancels nothing. The default pattern uses this. Its context is the start of a YouTube redirect URL, which must begin the text or follow whitespace, a quote, an angle bracket, `(` or `[` (so the link is not a part of the path of another URL), and its cover is only the `redir_token` assignment. A credential in another parameter of the same link (`...redirect?GITHUB_TOKEN=<24 chars>&redir_token=x`) is therefore not cancelled. The text matches the secret set when at least one secret match is not cancelled. An allow pattern therefore releases only the text it covers: a document that holds a redirect link and a real credential is still withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`, `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the next parameter or covers a second assignment (`redir_token=abc?GITHUB_TOKEN=...`). A generic bearer-token match that starts inside a cancelled match is still found and judged on its own: the implementation MUST consider every start position, not only the next position after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` releases the second assignment, because the first match (`token=<20 chars>GITHUB_TOKEN`) is cancelled and a search for non-overlapping matches resumes after it. The allow list applies wherever the secret patterns apply: source bytes, derived text, and the text a tool returns. It has the list semantics of §7.1, and an empty list cancels nothing. Every allow pattern is valid RE2.
+  The implementation finds every match of every secret pattern in the text. An allow pattern can cancel only a match of the **generic bearer-token default** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`); a match of any other secret pattern (an AWS key, an `sk-` key, an operator pattern) is never cancelled, also when an allow match covers it. A generic bearer-token match is **cancelled** when the **cover** of an allow match in the same text covers it: the cover starts at or before the start of the secret match and ends at or after its end. The cover of an allow match is the text of its first capture group when the pattern has one, and the whole match when it has none. The rest of the match is context: it must be present, but it cancels nothing. The default pattern uses this. Its context is the start of a YouTube redirect URL, which must begin the text or follow whitespace, a quote, an angle bracket, `(` or `[` (so the link is not a part of the path of another URL), and its cover is only the `redir_token` assignment. A credential in another parameter of the same link (`...redirect?GITHUB_TOKEN=<24 chars>&redir_token=x`) is therefore not cancelled. The text matches the secret set when at least one secret match is not cancelled. An allow pattern therefore releases only the text it covers: a document that holds a redirect link and a real credential is still withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`, `=`, `:`, whitespace, a single or double quote and an angle bracket, so it never runs into the next parameter or covers a second assignment (`redir_token=abc?GITHUB_TOKEN=...`). The parameters before `redir_token` stop at the same quotes, so a link in quotes does not take in an assignment that follows its closing quote (`'https://youtube.com/redirect?x=1'&redir_token=<24 chars>` is not cancelled). A generic bearer-token match that starts inside a cancelled match is still found and judged on its own: the implementation MUST consider every start position, not only the next position after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20 chars>` releases the second assignment, because the first match (`token=<20 chars>GITHUB_TOKEN`) is cancelled and a search for non-overlapping matches resumes after it. The allow list applies wherever the secret patterns apply: source bytes, derived text, and the text a tool returns. It has the list semantics of §7.1, and an empty list cancels nothing. Every allow pattern is valid RE2.
 
   Expected false positives and tuning notes (map each note to its default rule):
 
@@ -1446,7 +1446,8 @@ SHOULD cache the result for the run rather than probing per document.
 **pandoc availability (#393).** The `pandoc` engine (T2) is *available* only when
 a `pandoc` binary both **resolves** (on `PATH`, or via `ingest.pandoc.command`)
 **and** passes a lightweight functional check (a successful `pandoc --version`),
-mirroring the docling CLI rule above; a resolved-but-non-functional binary is
+mirroring the docling CLI rule above. The check **MUST** have a time limit, and
+a check that reaches the limit counts as failed; a resolved-but-non-functional binary is
 **unavailable**. It is **capability-activated**: no enable flag is required — the
 presence of a working `pandoc` binary activates the matrix's T2 cells, and its
 absence deactivates them (the tri-state kill-switch shape, opt-out only). Under
@@ -1708,10 +1709,14 @@ is bound to the corpus via the embed identity (§8.1.4).
     stored as `code` that §7.3 now decides is `video`) makes the next scan
     process the document again, also with an unchanged `content_hash`. That
     scan MUST retire the representations and chunks of the old type, so a file
-    now classified as `video` keeps no searchable `code` chunk. Two other
-    cases also process a document with an unchanged `content_hash`: a
-    document at `status=error` (§7.7), and a document skipped as `no_speech`
-    whose STT derivation identity changed (§8.6.13).
+    now classified as `video` keeps no searchable `code` chunk. Other rules
+    of this specification also process a document with an unchanged
+    `content_hash`. Among them: a document at `status=error` (§7.7); a
+    document with a representation that is stale under its derivation
+    identity (§8.6.7), which includes a no-speech track result whose STT
+    derivation identity changed, also in a document at `status=ok` (§8.6.13);
+    and a `.doc` that no engine covered, on the first scan in which an engine
+    can extract it (§7.4).
 * Representation-level:
 
   * compute `rep_hash`; if unchanged → skip chunk rebuild
@@ -4054,11 +4059,16 @@ transcript exactly as it applies to an unreadable format.
     `content_hash` (§7.6) and the STT derivation identity (§8.6.7) are
     unchanged. When the derivation identity changes and the content does not,
     the no-speech outcome is stale, as any derived transcript is (§8.6.7): the
-    implementation MUST decode the track again on the next run, because another
+    implementation MUST decode the track again on the next run when the track is
+    still selected (§8.6.12), because another
     model can find speech that this one did not. A change of `content_hash`
     decodes it again as for any changed file. This guard covers only a track
-    whose decode was a no-speech result. A failed track is retried on the next
-    run, as §8.6.12 and the rule above require.
+    whose decode was a no-speech result. A failed track is not covered by it.
+    When no selected track produced a transcript, the document is `error` and
+    is processed again on the next run (§8.6.12). A failed track in a document
+    that stays `ok` is decoded again when the document is processed again (a
+    content change, a re-index or an identity change); this version does not
+    change that.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks and the
     translations derived from it, as the refusal rule below retires a refused
@@ -6348,7 +6358,7 @@ honestly as `ok`, `skipped` or `error`.
           "reason": {
             "type": "string",
             "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "transcript_partial", "symlink_ignored", "no_speech"],
-            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. no_speech: media whose STT decode found no speech in any selected audio track (media.stt.tracks; a track that is not selected is not decoded) (\u00a78.2, \u00a78.6.13): every decode returned a well-formed response with empty text and no segment that holds text, for example a recording that holds only music or ambient sound, and the document has no other searchable representation. It is not an error, and a track whose decode was a no-speech result is not decoded again while both the content_hash and the STT derivation identity are unchanged (td-003 \u00a78.6.13); a change of either makes the next run decode it again. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. no_speech: media whose STT decode found no speech in any selected audio track (media.stt.tracks; a track that is not selected is not decoded) (\u00a78.2, \u00a78.6.13): every decode returned a well-formed response with empty text and no segment that holds text, for example a recording that holds only music or ambient sound, and the document has no other searchable representation. It is not an error, and a track whose decode was a no-speech result is not decoded again while both the content_hash and the STT derivation identity are unchanged (td-003 \u00a78.6.13); a change of either makes the next run decode it again when the track is still selected. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
           },
           "count": {
             "type": "integer",
@@ -7416,7 +7426,7 @@ security:
   # An allow match cancels only a generic bearer-token match that it covers;
   # a match of any other secret pattern is never cancelled (§7.2).
   secret_allow_patterns:
-    - '(?i)(?:^|[\s"''<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?(redir_token=[^\s&#;?=:<>"]*)'
+    - '(?i)(?:^|[\s"''<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"'']*&)*?(redir_token=[^\s&#;?=:<>"'']*)'
 ```
 
 ---

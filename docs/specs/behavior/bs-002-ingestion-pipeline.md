@@ -84,7 +84,7 @@ deletion/tombstone semantics are in bs-008.
   adds other benign parameters (for example a pagination cursor of an API they
   use, anchored to its host):
 
-  - `(?i)(?:^|[\s"'<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"]*&)*?(redir_token=[^\s&#;?=:<>"]*)`
+  - `(?i)(?:^|[\s"'<>(\[])https?://(?:www\.|m\.)?youtube\.com/redirect\?(?:[^\s&#<>"']*&)*?(redir_token=[^\s&#;?=:<>"']*)`
 
   The implementation finds every match of every secret pattern in the text. An
   allow pattern can cancel only a match of the **generic bearer-token default**
@@ -106,9 +106,13 @@ deletion/tombstone semantics are in bs-008.
   match is not cancelled. An allow pattern therefore releases only the text it
   covers: a document that holds a redirect link and a real credential is still
   withheld. The value of a default allow pattern stops at `&`, `#`, `;`, `?`,
-  `=`, `:`, whitespace, a quote and an angle bracket, so it never runs into the
-  next parameter or covers a second assignment
-  (`redir_token=abc?GITHUB_TOKEN=...`). A generic bearer-token match that starts
+  `=`, `:`, whitespace, a single or double quote and an angle bracket, so it
+  never runs into the next parameter or covers a second assignment
+  (`redir_token=abc?GITHUB_TOKEN=...`). The parameters before `redir_token`
+  stop at the same quotes, so a link in quotes does not take in an assignment
+  that follows its closing quote
+  (`'https://youtube.com/redirect?x=1'&redir_token=<24 chars>` is not
+  cancelled). A generic bearer-token match that starts
   inside a cancelled match is still found and judged on its own: the
   implementation MUST consider every start position, not only the next position
   after a cancelled match. Otherwise `redir_token=<20 chars>GITHUB_TOKEN=<20
@@ -343,10 +347,13 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
     the next scan process the document again, also with an unchanged
     `content_hash`. That scan MUST retire the representations and chunks of the
     old type, so a file now classified as `video` keeps no searchable `code`
-    chunk. Two other cases also process a document with an unchanged
-    `content_hash`: a document at `status=error` (§7.7), and a document
-    skipped as `no_speech` whose STT derivation identity changed (td-003
-    §8.6.13).
+    chunk. Other rules also process a document with an unchanged
+    `content_hash`. Among them: a document at `status=error` (§7.7); a
+    document with a representation that is stale under its derivation
+    identity (td-003 §8.6.7), which includes a no-speech track result whose
+    STT derivation identity changed, also in a document at `status=ok`
+    (td-003 §8.6.13); and a `.doc` that no engine covered, on the first scan
+    in which an engine can extract it (td-004).
 - Representation-level:
   - compute `rep_hash`; if unchanged → **skip** chunk rebuild
 - Chunk-level:
