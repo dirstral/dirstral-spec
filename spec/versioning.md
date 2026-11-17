@@ -68,7 +68,7 @@ A new list entry (`MINOR` per the pre-1.0 policy: it changes the processing orde
 
 - §7.1 (bs-002) **Processing order**: in `ingest.priority_list`, a line that is exactly `*` stands for every file no other line covers, at that line's place, in relative-path order. Without one, those files come last, as before. A second `*` line is ignored.
 - Mirrors: bs-002 0.8.0.
-- Motivation: the TV Rain archive run (dir2mcp, 2026-11-17). The newest-first list is built from the folders known when it is made, so a video uploaded later is covered by no line and went last: behind about 2 million listed files, roughly 16 hours of a scan. A `*` line first in the list processes such new uploads first.
+- Motivation: the TV Rain archive run (dir2mcp, 2026-11-17). The newest-first list is built from the folders known when it is made, so a video uploaded later is covered by no line and went last: behind about 2 million listed files, roughly 16 hours of a scan. A `*` line first in the list processes such new uploads first, when no listed directory covers them (each archive video has its own listed folder, so a new upload is in a new one).
 - `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.96.0: a list of paths to process first

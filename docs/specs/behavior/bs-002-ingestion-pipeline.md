@@ -65,7 +65,9 @@ deletion/tombstone semantics are in bs-008.
   every file that no other line covers, at that line's place: those files
   follow in relative-path order where the `*` line is, instead of after all
   listed files. A `*` line first in the file puts files added since the list
-  was made (new uploads) ahead of every listed file. Without a `*` line, files
+  was made (new uploads) ahead of every listed file, when no line covers them:
+  a new file under a listed directory keeps that directory's place. Without a
+  `*` line, files
   no line covers come last, as before. A second `*` line is ignored. The key
   applies to every source kind.
 - Default ignore list includes: `.git/`, `node_modules/`, `dist/`, `build/`,
