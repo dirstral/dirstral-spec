@@ -2768,8 +2768,10 @@ operator's declaration (`stt_languages`) and the operator's route
     a transport or provider reason is a failed window (§8.6.13), not a refused
     one.
   * The representation-level `language` (§5.2, §8.8) is the language with the
-    largest summed duration among **covered** ranges; a tie breaks to the
-    earliest `start_ms`. Its `language_source` is the §8.8 signal that resolved
+    largest summed duration among **covered** ranges that hold transcript text;
+    a no-speech window (§8.6.13) does not join this sum, also when a pin or an
+    identifier gives it a language, so a long silent stretch cannot outweigh
+    the speech. A tie breaks to the earliest `start_ms`. Its `language_source` is the §8.8 signal that resolved
     that language (`configured`, `declared` or `detected`), never `inherited`;
     a pin or declaration applies to every window, so under either of those the
     representation language is the asserted one. When no range is covered, or
@@ -4072,8 +4074,9 @@ transcript exactly as it applies to an unreadable format.
   §8.2.2: that rule gives a language to a window that holds transcript
   text and has no confident language, and a no-speech window holds none, so it
   inherits nothing: its entry in `coverage.languages` carries its time range
-  and route and no `language`. It does not change the
-  continuity state: a following window with
+  and route and no `language`. A no-speech window never joins the
+  representation-language sum of §8.2.2, whatever its language. It does not
+  change the continuity state: a following window with
   no confident language inherits the last language resolved before the
   no-speech window. The low-confidence re-decode rule below does not use a
   no-speech window.

@@ -702,8 +702,9 @@ transcript exactly as it applies to an unreadable format.
   SPEC.md §8.2.2: that rule gives a language to a window that holds transcript
   text and has no confident language, and a no-speech window holds none, so it
   inherits nothing: its entry in `coverage.languages` carries its time range
-  and route and no `language`. It does not change the
-  continuity state: a following window with
+  and route and no `language`. A no-speech window never joins the
+  representation-language sum of SPEC.md §8.2.2, whatever its language. It does not
+  change the continuity state: a following window with
   no confident language inherits the last language resolved before the
   no-speech window. The low-confidence re-decode rule below does not use a
   no-speech window.
