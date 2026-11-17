@@ -758,10 +758,16 @@ transcript exactly as it applies to an unreadable format.
     whose decode was a no-speech result. A failed track is not covered by it.
     When no selected track produced a transcript and at least one selected
     track failed, the document is `error` and is processed again on the next
-    run (§8.6.12). A failed track in a document
-    that stays `ok` is decoded again when the document is processed again (a
-    content change, a re-index or an identity change); this version does not
-    change that.
+    run (§8.6.12). A track that failed with a
+    transport or provider error, in a document that stays `ok` because another
+    selected track produced a transcript, is retried on the next run: the
+    implementation MUST process the document again, also with an unchanged
+    `content_hash` (bs-002 §7.6), until the track produces a transcript or a
+    no-speech result. The tracks that succeeded are read from the stored
+    results and are not decoded again. A track that the quality gate refused
+    (§8.6.6) is not retried this way, because its decode is stored and a new
+    run reads the same result. It is decoded again when the document is
+    processed again (a content change, a re-index or an identity change).
   * `dir2mcp_transcribe` (bs-007) follows this guard. With `retranscribe=false` it
     sends no decode request for a recording whose stored result is a no-speech
     result for every selected track under the current STT derivation identity, and it returns a success result

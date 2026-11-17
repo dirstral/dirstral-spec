@@ -380,7 +380,9 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
     identity (td-003 §8.6.7), which includes a no-speech track result whose
     STT derivation identity changed, also in a document at `status=ok`
     (td-003 §8.6.13); and a `.doc` that no engine covered, on the first scan
-    in which an engine can extract it (td-004). A change of
+    in which an engine can extract it (td-004); and a document that stays
+    `ok` with a selected track that failed with a transport or provider error
+    (td-003 §8.6.13). A change of
     `media.stt.tracks` alone is not such a rule: a track that the new
     selection adds is decoded when the document is next processed (a content
     change, an identity change, or an explicit re-index with
