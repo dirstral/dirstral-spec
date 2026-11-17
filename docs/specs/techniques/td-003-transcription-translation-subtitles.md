@@ -691,7 +691,8 @@ transcript exactly as it applies to an unreadable format.
   (the fallback rule below in this section is the one exception).
   The no-speech decode adds no language. When SPEC.md §8.2.2 resolves a language
   for the window from another signal (a pin, or an identifier report at or
-  above the floor), that language is the language of the window, and the
+  above the floor when the implementation has one; it need not ask the
+  identifier about a window whose decode is a no-speech result), that language is the language of the window, and the
   continuity rule uses it as for any window. Otherwise the window has no
   language and does not change the continuity state: a following window with
   no confident language inherits the last language resolved before the
