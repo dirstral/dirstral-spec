@@ -2557,7 +2557,9 @@ worker reads the document text and rune spans from the shared store (8.7.4).
   also malformed when its `text` is present and not a string, when its
   `segments` is present and not an array, or when a segment is not an object or
   has a `text` that is present and not a string. A `words` field (top level
-  or inside a segment) that is present and not an array is also malformed. A
+  or inside a segment) that is present and not an array is also malformed; a JSON
+  `null` there counts as an absent field, because a server with an optional
+  word list sends it when word timing is off. A
   response is also malformed
   when a segment has a `start` or an `end` but no `text`: the decoder reports a
   timed range of speech that the text does not hold. A response is
