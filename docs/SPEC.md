@@ -1127,7 +1127,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   * **JWTs** (`(?i)(?:authorization\s*[:=]\s*bearer\s+|(?:access|id|refresh)_token\s*[:=]\s*)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`): reduced false positives via auth/key context and minimum segment lengths; can still match synthetic token-like test strings with those contexts.
   * **Generic bearer token** (`(?i)token\s*[:=]\s*[A-Za-z0-9_.-]{20,}`): the rule matches any key that ends in `token` with a value of 20 or more key characters, so it catches the credential keys of any provider (`GITHUB_TOKEN`, `VERCEL_TOKEN`, `DOCKER_TOKEN`, `id_token`). It can match innocuous values named `token` (feature tokens, cache tokens, pagination cursors). Release a known benign key with `security.secret_allow_patterns`, not by a narrower rule: a rule that lists credential key names misses every provider that the list does not name. The default allow list releases only the `redir_token` parameter of a YouTube redirect link.
   * **Hyphenated secret keys** (`(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9-]{20,}`): the left boundary requires `sk-` to start a word. Without it, the rule matched inside a transliterated URL slug (`.../krasnoyarsk-podpisanie-dogovorov-...`, where `sk-` closes a place name) and withheld the whole document. It can still match a slug segment that is exactly `sk` (for example a URL path `/sk-...` for a Slovak page) when 20 or more letters, digits or hyphens follow.
-  * **Common API key formats** (`(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left boundary requires the prefix to follow a character that is not a letter, a digit or `_`, so a prefix inside a longer identifier (`task_...`, `task_sk_...`) does not match. The rule can still match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
+  * **Common API key formats** (`(?:^|[^A-Za-z0-9_])(?:sk_[a-z0-9]{32}|api_[A-Za-z0-9]{32})`): the left boundary requires the prefix to follow a character that is not a letter, a digit or `_`, so a prefix inside a longer identifier (`task_...`, `task_sk_...`) does not match. The boundary has a cost, for this rule and for the hyphenated rule above: a key that directly follows an underscore (`backup_sk_<32 chars>`, `backup_sk-<20 chars>`) matches no default, because one left boundary cannot tell `task_sk_` from `backup_sk_`. This is a known miss. An operator who stores keys under such names adds a pattern for them to `security.secret_patterns`. The rule can still match placeholders, test fixtures, or generated IDs that happen to share the prefix/length.
 
   Refinement guidance via `security.secret_patterns`:
 
@@ -1216,7 +1216,14 @@ header alone can be plain ASCII (`47 01 41 10`), so the header does not decide.
 A real transport stream holds such a byte in the payload of its first packets
 (the zero pointer field and the `0xFF` stuffing of its program tables, and
 compressed audio or video); a source file does not. A file whose checked
-packets hold only valid UTF-8 with no NUL byte is `code`.
+packets hold only valid UTF-8 with no NUL byte is `code`. This is a limit that this version
+accepts. The packets of a real stream that carry program tables (a zero
+pointer field or `table_id`), a PES header (the `00 00 01` start code), a null
+packet (PID `0x1FFF`) or stuffing (`0xFF`) all hold such a byte, so a stream
+whose first checked packets hold none is not expected. An implementation MAY
+check more packets than five. It MUST NOT decide `video` on sync spacing
+alone: a `.ts` file is far more often TypeScript source, and source that the
+index treats as video is lost to search.
 
 ### 7.4 Representation generation rules
 
