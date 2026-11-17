@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.7.0
+- **Version:** 0.8.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -61,7 +61,13 @@ deletion/tombstone semantics are in bs-008.
   the scan goes on in relative-path order (for the bad entry: without it). Use
   it to put the files that matter most first in a large backlog: in an archive
   whose hash-tree paths carry no date, a list of folders sorted newest first
-  processes the newest videos first. The key applies to every source kind.
+  processes the newest videos first. A line that is exactly `*` stands for
+  every file that no other line covers, at that line's place: those files
+  follow in relative-path order where the `*` line is, instead of after all
+  listed files. A `*` line first in the file puts files added since the list
+  was made (new uploads) ahead of every listed file. Without a `*` line, files
+  no line covers come last, as before. A second `*` line is ignored. The key
+  applies to every source kind.
 - Default ignore list includes: `.git/`, `node_modules/`, `dist/`, `build/`,
   `.venv/`, `.dir2mcp/`.
 - Optional `.gitignore` support.
@@ -520,6 +526,7 @@ re-indexes it.
 
 ## Changelog
 
+- **0.8.0** (§7.1): mirrors spec 0.97.0: a `*` line in `ingest.priority_list` stands for every file no other line covers, at that line's place.
 - **0.7.0** (§7.1): mirrors spec 0.96.0: `ingest.priority_list` names files to process first, in the file's line order; every other file follows in relative-path order. Discovery is unchanged.
 - **0.6.0** (§7.1): mirrors spec 0.94.0: `ingest.discovery_workers` (default `1`, range `1`–`64`) lets the walk read directories concurrently; the result MUST NOT depend on the value.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
