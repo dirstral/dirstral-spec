@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.13.0
+- **Version:** 0.14.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -594,6 +594,8 @@ languages in one document**.
   re-derivation).
 * **Determinism.** Asset processing order within a pass MUST be deterministic so
   manifests and progress are reproducible across runs of an unchanged corpus.
+  The order is relative-path order, or the order `ingest.priority_list` sets
+  (bs-002 §7.1); the same corpus and the same list give the same order.
 
 ### 8.6.13 Windowed decode and partial-transcript coverage
 
@@ -742,6 +744,7 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.14.0**: spec 0.96.0: §8.6.11 **Determinism** names the order `ingest.priority_list` sets (bs-002 §7.1).
 - **0.13.0**: spec 0.91.0: §8.6.10 adds the **TTML layout**:
   `media.subtitles.ttml.layout` (`spans` default, or `divs`: one
   `<div xml:lang>` per language) and `media.subtitles.ttml.language_codes`
