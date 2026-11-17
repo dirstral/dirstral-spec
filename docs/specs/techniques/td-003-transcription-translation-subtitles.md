@@ -697,7 +697,8 @@ transcript exactly as it applies to an unreadable format.
   language. This rule takes precedence over the inheritance rule of
   SPEC.md §8.2.2: that rule gives a language to a window that holds transcript
   text and has no confident language, and a no-speech window holds none, so it
-  inherits nothing and records no language. It does not change the
+  inherits nothing: its entry in `coverage.languages` carries its time range
+  and route and no `language`. It does not change the
   continuity state: a following window with
   no confident language inherits the last language resolved before the
   no-speech window. The low-confidence re-decode rule below does not use a
