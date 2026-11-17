@@ -156,7 +156,8 @@ makes tool-level bypass of ingestion filters impossible.
 
 **Selection rules (priority order).**
 
-Before these rules, for every span argument: a document skipped as `no_speech`
+Before these rules, with or without span arguments: a document skipped as
+`no_speech`
 (td-003 §8.6.13) → return the **non-retryable** `MEDIA_NO_TEXT`, never
 `OCR_NOT_READY` and never empty content.
 
