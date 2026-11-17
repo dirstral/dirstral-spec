@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.19.0
+- **Version:** 0.20.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -433,7 +433,7 @@ security:
 
 ## Changelog
 
-- **0.19.0**: mirrors spec 0.96.0 (bs-002 §7.2, td-004, and the configuration template of SPEC.md §16.2): the `security.secret_patterns` defaults change (the `sk-` key format with a left boundary; a left boundary on `sk_`/`api_`), and the new `security.secret_allow_patterns` list releases the `redir_token` parameter of a YouTube redirect link. `ingest.extractor` lists `pandoc` (missing here since spec 0.31.0) and the new `libreoffice`; the template lists the `ingest.pandoc` block and the new `ingest.libreoffice.{command, timeout_sec}` block.
+- **0.20.0**: mirrors spec 0.97.0 (bs-002 §7.2, td-004, and the configuration template of SPEC.md §16.2): the `security.secret_patterns` defaults change (the `sk-` key format with a left boundary; a left boundary on `sk_`/`api_`), and the new `security.secret_allow_patterns` list releases the `redir_token` parameter of a YouTube redirect link. `ingest.extractor` lists `pandoc` (missing here since spec 0.31.0) and the new `libreoffice`; the template lists the `ingest.pandoc` block and the new `ingest.libreoffice.{command, timeout_sec}` block.
 - **0.18.0**: mirrors spec 0.94.0 (SPEC.md §7.1, §16.2): the template lists `ingest.discovery_workers` (default `1`).
 - **0.17.0**: mirrors spec 0.91.0 (SPEC.md §8.6.10, §16.2): the template lists `media.subtitles.ttml.layout` (`spans` default, or `divs`) and `media.subtitles.ttml.language_codes` (`bcp47` default, or `iso639_2`).
 - **0.16.0**: mirrors spec 0.86.0 (SPEC.md §8.6.14, §16.2): the template lists `media.subtitles.emit.{smil, smil_params, smil_language_codes, ttml_name}` and `media.subtitles.ttml.segmentation`, all off or unchanged by default.

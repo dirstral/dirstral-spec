@@ -136,7 +136,7 @@ every error.
 
 ## Changelog
 
-- **0.5.0**: spec 0.96.0: `MEDIA_NO_TEXT` is also the `dir2mcp_open_file`
+- **0.5.0**: spec 0.97.0: `MEDIA_NO_TEXT` is also the `dir2mcp_open_file`
   outcome for a document skipped as `no_speech` (td-003 §8.6.13). No new code.
 - **0.4.0**: added `TOOL_UNAVAILABLE` (index/state) for a tool the running
   server does not serve in its current mode, and `QUEUE_FULL` (retryable) for

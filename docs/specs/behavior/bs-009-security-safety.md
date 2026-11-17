@@ -94,7 +94,7 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
 
 ## Changelog
 
-- **0.3.0** (spec 0.96.0): tool handlers refuse content that matches the
+- **0.3.0** (spec 0.97.0): tool handlers refuse content that matches the
   secret set as bs-002 §7.2 defines it: a generic bearer-token match that a
   `security.secret_allow_patterns` match covers is cancelled. A document that
   ingestion releases is therefore not refused here. Before this version, any

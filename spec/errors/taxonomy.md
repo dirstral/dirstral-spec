@@ -1,6 +1,6 @@
 # Error Taxonomy
 
-**Last changed in spec version:** `0.96.0`  
+**Last changed in spec version:** `0.97.0`  
 **Current spec version:** see [`spec/versioning.md`](../versioning.md), the single source (this file does not track it).
 
 Canonical error codes for all dir2mcp MCP tools and session operations.

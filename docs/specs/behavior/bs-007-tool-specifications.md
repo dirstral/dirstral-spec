@@ -582,7 +582,7 @@ lifetime of the process.
 
 ## Changelog
 
-- **0.19.0**: `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document skipped as `no_speech`; the `skip_reasons` enum list names `no_speech` (spec 0.96.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
+- **0.19.0**: `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document skipped as `no_speech`; the `skip_reasons` enum list names `no_speech` (spec 0.97.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
 - **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
   spec 0.92.0): a client asks a server in watch mode to reconcile one path
   under the root now; the call validates, classifies, enqueues and returns,
