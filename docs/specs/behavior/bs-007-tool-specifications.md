@@ -314,8 +314,10 @@ representation, and (optionally) return segments.
 - `timestamps` — boolean, default **true**.
 - `retranscribe` — boolean, default **false** (when true, re-transcribe even if
   a transcript already exists, and also when the stored result is a no-speech
-  result; td-003 §8.6.13). A recording with no speech is a success result with
-  `indexed: false` and no segments, for both values.
+  result; td-003 §8.6.13). A recording with no speech in any selected track is a
+  success result with `indexed: false` and no segments, for both values. A
+  recording in which a selected track has a transcript returns that
+  transcript.
 
 **Behavior.** Output carries `rel_path`, `stt_provider`, `model`, `indexed`
 (required), and optional `segments[]` (`start_ms`, `end_ms`, `text` per

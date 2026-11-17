@@ -763,14 +763,18 @@ transcript exactly as it applies to an unreadable format.
     content change, a re-index or an identity change); this version does not
     change that.
   * `dir2mcp_transcribe` (bs-007) follows this guard. With `retranscribe=false` it
-    sends no decode request for a recording that has a stored no-speech result
-    under the current STT derivation identity, and it returns a success result
+    sends no decode request for a recording whose stored result is a no-speech
+    result for every selected track under the current STT derivation identity, and it returns a success result
     with `indexed: false` and no segments. `retranscribe=true` is an explicit
     request and is exempt from the guard: the implementation MUST decode the
-    recording again. When the new decode is again a no-speech result, the tool
-    returns the same success result, and an earlier transcript is retired as
+    recording again. When the new decode is again a no-speech result for every selected track,
+    the tool returns the same success result, and an earlier transcript is retired as
     the rule below requires. `dir2mcp_transcribe_and_ask` (bs-007) has no `retranscribe`
-    argument and behaves as `retranscribe=false`.
+    argument and behaves as `retranscribe=false`: it sends no decode request
+    and returns no error. Its result has the shape of its schema, with
+    `transcribed: false`: the question is answered with no transcript for the
+    file, so the answer is an abstention unless other indexed text of the
+    corpus answers it.
   * `dir2mcp_open_file` on a document that is `status=skipped` with
     `skip_reason="no_speech"` MUST return the non-retryable `MEDIA_NO_TEXT`
     (df-008, bs-007 `dir2mcp_open_file`), never the retryable `OCR_NOT_READY` and never empty
