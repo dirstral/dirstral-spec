@@ -1172,7 +1172,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   **Media and other binary sources.** For a source whose searchable text is derived (audio, video, a PDF, an image), the check of the source bytes MAY cover only a leading sample of them (the reference implementation reads 64 KiB), and the derived text (transcript, sidecar, translation, extracted text) MUST be screened in full before it is indexed. The re-evaluation after a pattern change applies the same rule: for an audio or video document it checks the same leading sample and screens the stored derived text. So it never needs bytes outside that sample, and `ingest.media_identity: sampled` (§7.6) needs no extra read for it.
 
-  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.96.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
+  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.96.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. A document that an unfinished pass has not evaluated stays withheld from every tool until a pass evaluates it against the current effective set. A later change does not release it, also when that change can only match less: the document was never judged against the wider set, and the screen of each returned excerpt does not find a credential that crosses a chunk boundary. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
 
 * Exclude large binaries by default:
 
@@ -2560,7 +2560,8 @@ worker reads the document text and rune spans from the shared store (8.7.4).
   when a segment has a `start` or an `end` but no `text`: the decoder reports a
   timed range of speech that the text does not hold. A response is
   also malformed when it carries timed words (a top-level `words` array or a
-  `words` array inside a segment, with at least one entry) but no text: the
+  `words` array inside a segment, with at least one entry) but no text (its
+  text is absent, empty or holds only whitespace): the
   decoder reports speech that the text does not hold. A malformed response is never
   a no-speech result, so it never becomes a durable `no_speech` skip. §8.6.6 and
   §8.6.13 say what a no-speech result does to the transcript and to the
@@ -4025,8 +4026,14 @@ transcript exactly as it applies to an unreadable format.
   ambient sound does not trip the partial-transcript floor
   (`transcript_partial`). It is not a failed window and not a refused range
   (the fallback rule below in this section is the one exception).
-  It reports no language, so the §8.2.2 continuity rule and the low-confidence
-  re-decode rule below do not use it.
+  The no-speech decode adds no language. When §8.2.2 resolves a language
+  for the window from another signal (a pin, or an identifier report at or
+  above the floor), that language is the language of the window, and the
+  continuity rule uses it as for any window. Otherwise the window has no
+  language and does not change the continuity state: a following window with
+  no confident language inherits the last language resolved before the
+  no-speech window. The low-confidence re-decode rule below does not use a
+  no-speech window.
 
 * **All windows failed is still an error.** When **no** window decodes, the
   recording produced no transcript and the existing per-document rules apply

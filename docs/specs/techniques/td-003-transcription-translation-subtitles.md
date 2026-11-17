@@ -689,8 +689,14 @@ transcript exactly as it applies to an unreadable format.
   ambient sound does not trip the partial-transcript floor
   (`transcript_partial`). It is not a failed window and not a refused range
   (the fallback rule below in this section is the one exception).
-  It reports no language, so the SPEC.md §8.2.2 continuity rule and the
-  low-confidence re-decode rule below do not use it.
+  The no-speech decode adds no language. When SPEC.md §8.2.2 resolves a language
+  for the window from another signal (a pin, or an identifier report at or
+  above the floor), that language is the language of the window, and the
+  continuity rule uses it as for any window. Otherwise the window has no
+  language and does not change the continuity state: a following window with
+  no confident language inherits the last language resolved before the
+  no-speech window. The low-confidence re-decode rule below does not use a
+  no-speech window.
 
 * **All windows failed is still an error.** When **no** window decodes, the
   recording produced no transcript and the existing per-document rules apply

@@ -263,7 +263,12 @@ deletion/tombstone semantics are in bs-008.
   match more than the old one (a new or wider secret pattern, or a removed or
   narrower allow pattern). A change that can only match less (an added allow
   pattern, a narrower secret pattern) needs no pass for indexed documents, so
-  it hides nothing. In addition, every tool MUST screen the text it is about to
+  it hides nothing. A document that an unfinished pass has not evaluated stays
+  withheld from every tool until a pass evaluates it against the current
+  effective set. A later change does not release it, also when that change can
+  only match less: the document was never judged against the wider set, and
+  the screen of each returned excerpt does not find a credential that crosses
+  a chunk boundary. In addition, every tool MUST screen the text it is about to
   return against the effective set, and `ask` MUST do so before it builds the
   prompt.
 

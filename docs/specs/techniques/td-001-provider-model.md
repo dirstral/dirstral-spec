@@ -439,7 +439,8 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   when a segment has a `start` or an `end` but no `text`: the decoder reports a
   timed range of speech that the text does not hold. A response is
   also malformed when it carries timed words (a top-level `words` array or a
-  `words` array inside a segment, with at least one entry) but no text: the
+  `words` array inside a segment, with at least one entry) but no text (its
+  text is absent, empty or holds only whitespace): the
   decoder reports speech that the text does not hold. A malformed response is never
   a no-speech result, so it never becomes a durable `no_speech` skip.
   td-003 §8.6.6 and §8.6.13 say what a no-speech result does to the transcript
