@@ -1041,6 +1041,23 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   its files, and that must not depend on timing. The key applies to a filesystem walk
   (`source.kind: local` or `nfs`); a remote source (§7.8) lists by its own
   pagination and ignores it.
+* **Processing order (optional).** `ingest.priority_list` (a file path,
+  default empty) names files to process first. A relative path resolves
+  against the corpus root. The file holds one entry per line: a path relative
+  to the corpus root with `/` separators, naming a file or a directory (a
+  directory entry covers every file under it). Blank lines and lines that
+  start with `#` are ignored. Each pass (§8.6.11) processes the files that an
+  entry covers first, ordered by the line of the first entry that covers them
+  and then by relative path, and then every other file by relative path. An
+  entry that covers no discovered file is ignored. Discovery itself is
+  unchanged: the key changes only the order in which files are processed,
+  never which files are processed or what is produced for them. The file is
+  read at the start of each scan; a missing or unreadable file, or an entry
+  that is absolute or contains a `..` segment, is reported as a warning, and
+  the scan goes on in relative-path order (for the bad entry: without it). Use
+  it to put the files that matter most first in a large backlog: in an archive
+  whose hash-tree paths carry no date, a list of folders sorted newest first
+  processes the newest videos first. The key applies to every source kind.
 * **Directory ignore list.** Discovery does not descend into a directory whose
   **name** matches an entry in the ignore list. The default list is: `.git/`,
   `.dir2mcp/`, `node_modules/`, `vendor/`, `__pycache__/`, `dist/`, `build/`,
@@ -3887,6 +3904,8 @@ languages in one document**.
   manifest can only avoid redundant work, never suppress required re-derivation).
 * **Determinism.** Asset processing order within a pass MUST be deterministic so
   manifests and progress are reproducible across runs of an unchanged corpus.
+  The order is relative-path order, or the order `ingest.priority_list` sets
+  (§7.1); the same corpus and the same list give the same order.
 
 #### 8.6.12 Multi-track audio (per-track transcription)
 
@@ -7159,6 +7178,7 @@ rag:
 ingest:
   gitignore: true
   discovery_workers: 1   # directories the walk reads at once (bs-002 §7.1); raise on a network filesystem
+  priority_list: ""     # file of paths to process first, in its line order (bs-002 §7.1); empty = relative-path order
   extractor: auto      # auto|docling|docling-serve|mistral|pandoc|libreoffice|off
   # auto = best-available per format (§7.4.B.1): highest-fidelity ACTIVE engine
   # that supports each format; no format routed to an engine that can't read it,

@@ -83,6 +83,16 @@ Three normative changes and one clarification (`MINOR` per the pre-1.0 policy: c
 - Motivation: an archive of about 4,250 videos and 4,450 Word descriptions. Pasted redirect links and transliterated URL slugs withheld descriptions as secrets; legacy `.doc` descriptions had no engine; and two OpenAI-compatible STT servers returned `{"text":"","segments":[]}` for clips with only music, which the implementation recorded as failed videos and failed windows.
 - `spec/errors/taxonomy.md`: `MEDIA_NO_TEXT` is also the `dir2mcp_open_file` outcome for a document skipped as `no_speech` (non-retryable, not `OCR_NOT_READY`, not empty content). No new code.
 
+## 0.96.0: a list of paths to process first
+
+One optional key (`MINOR` per the pre-1.0 policy). The default keeps relative-path order.
+
+- §7.1 (bs-002) **Processing order**: `ingest.priority_list` (a file path, default empty; relative to the corpus root) holds one corpus-relative file or directory path per line (`#` comments, blank lines ignored). Each pass processes the files an entry covers first, by the line of the first entry that covers them and then by relative path, then every other file by relative path. Discovery, the set of processed files and the outputs are unchanged. A missing or unreadable list, or an absolute or `..` entry, is a warning; the scan goes on without it.
+- §8.6.11 (td-003) **Determinism** names that order: the same corpus and the same list give the same order.
+- §16.2 (bs-011): the template lists the key.
+- Mirrors: bs-002 0.7.0, bs-011 0.19.0, td-003 0.14.0.
+- Motivation: the TV Rain archive (about 145,000 videos). Its paths are content hashes, so relative-path order is unrelated to age, and about 101,000 files carry the date of a July 2022 re-encode rather than of their arrival. The date each video's folder was created does track arrival, so a list of folders sorted by it lets a backlog run process the newest videos first.
+
 ## 0.95.0: the SMIL caption patch keeps entries for caption files it did not write
 
 A behaviour fix to §8.6.14 (td-003; `MINOR` per the pre-1.0 policy: it changes which SMIL edits are made). No key, tool, schema or error code changes.

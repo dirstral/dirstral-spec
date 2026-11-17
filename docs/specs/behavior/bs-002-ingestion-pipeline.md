@@ -45,6 +45,23 @@ deletion/tombstone semantics are in bs-008.
   its files, and that must not depend on timing. The key applies to a filesystem walk
   (`source.kind: local` or `nfs`); a remote source (§7.8) lists by its own
   pagination and ignores it.
+- **Processing order (optional).** `ingest.priority_list` (a file path,
+  default empty) names files to process first. A relative path resolves
+  against the corpus root. The file holds one entry per line: a path relative
+  to the corpus root with `/` separators, naming a file or a directory (a
+  directory entry covers every file under it). Blank lines and lines that
+  start with `#` are ignored. Each pass (SPEC.md §8.6.11, td-003) processes the files that an
+  entry covers first, ordered by the line of the first entry that covers them
+  and then by relative path, and then every other file by relative path. An
+  entry that covers no discovered file is ignored. Discovery itself is
+  unchanged: the key changes only the order in which files are processed,
+  never which files are processed or what is produced for them. The file is
+  read at the start of each scan; a missing or unreadable file, or an entry
+  that is absolute or contains a `..` segment, is reported as a warning, and
+  the scan goes on in relative-path order (for the bad entry: without it). Use
+  it to put the files that matter most first in a large backlog: in an archive
+  whose hash-tree paths carry no date, a list of folders sorted newest first
+  processes the newest videos first. The key applies to every source kind.
 - Default ignore list includes: `.git/`, `node_modules/`, `dist/`, `build/`,
   `.venv/`, `.dir2mcp/`.
 - Optional `.gitignore` support.
@@ -719,6 +736,7 @@ re-indexes it.
 ## Changelog
 
 - **0.8.0** (§7.2, §7.3, §7.7): mirrors spec 0.97.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation. §7.7 also states that the next scan processes a document at `status=error` again.
+- **0.7.0** (§7.1): mirrors spec 0.96.0: `ingest.priority_list` names files to process first, in the file's line order; every other file follows in relative-path order. Discovery is unchanged.
 - **0.6.0** (§7.1): mirrors spec 0.94.0: `ingest.discovery_workers` (default `1`, range `1`–`64`) lets the walk read directories concurrently; the result MUST NOT depend on the value.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).
 - **0.4.0** (§7.6): mirrors spec 0.81.0: cross-reference to the `ingest.media_identity` rule (`full` | `sampled`) in SPEC.md §7.6.
