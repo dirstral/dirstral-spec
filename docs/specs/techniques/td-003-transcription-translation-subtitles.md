@@ -694,7 +694,11 @@ transcript exactly as it applies to an unreadable format.
   above the floor when the implementation has one; it need not ask the
   identifier about a window whose decode is a no-speech result), that language is the language of the window, and the
   continuity rule uses it as for any window. Otherwise the window has no
-  language and does not change the continuity state: a following window with
+  language. This rule takes precedence over the inheritance rule of
+  SPEC.md §8.2.2: that rule gives a language to a window that holds transcript
+  text and has no confident language, and a no-speech window holds none, so it
+  inherits nothing and records no language. It does not change the
+  continuity state: a following window with
   no confident language inherits the last language resolved before the
   no-speech window. The low-confidence re-decode rule below does not use a
   no-speech window.
@@ -760,6 +764,13 @@ transcript exactly as it applies to an unreadable format.
     (df-008, bs-007 `dir2mcp_open_file`), never the retryable `OCR_NOT_READY` and never empty
     content. No later scan produces a transcript while the content and the
     STT derivation identity are unchanged.
+    The same holds for a document that stays `status=ok` through another
+    representation after every selected track was a no-speech result: its
+    transcript is absent, not pending. A call that would return the transcript
+    (the default call on audio, or a time span that no other representation
+    answers) MUST return `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never
+    empty content. A call that another representation answers (for example
+    recognition text for a time span) is answered from it.
   * A no-speech result of a fallback decode (td-001 §8.2.3: the route for the item
     failed and the default profile decoded the recording) is not a no-speech
     result under this section when it covers the whole recording. The provider

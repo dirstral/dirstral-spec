@@ -4036,7 +4036,11 @@ transcript exactly as it applies to an unreadable format.
   above the floor when the implementation has one; it need not ask the
   identifier about a window whose decode is a no-speech result), that language is the language of the window, and the
   continuity rule uses it as for any window. Otherwise the window has no
-  language and does not change the continuity state: a following window with
+  language. This rule takes precedence over the inheritance rule of
+  §8.2.2: that rule gives a language to a window that holds transcript
+  text and has no confident language, and a no-speech window holds none, so it
+  inherits nothing and records no language. It does not change the
+  continuity state: a following window with
   no confident language inherits the last language resolved before the
   no-speech window. The low-confidence re-decode rule below does not use a
   no-speech window.
@@ -4098,6 +4102,13 @@ transcript exactly as it applies to an unreadable format.
     (§14.2, §15.4), never the retryable `OCR_NOT_READY` and never empty
     content. No later scan produces a transcript while the content and the
     STT derivation identity are unchanged.
+    The same holds for a document that stays `status=ok` through another
+    representation after every selected track was a no-speech result: its
+    transcript is absent, not pending. A call that would return the transcript
+    (the default call on audio, or a time span that no other representation
+    answers) MUST return `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never
+    empty content. A call that another representation answers (for example
+    recognition text for a time span) is answered from it.
   * A no-speech result of a fallback decode (§8.2.3: the route for the item
     failed and the default profile decoded the recording) is not a no-speech
     result under this section when it covers the whole recording. The provider
@@ -6152,7 +6163,7 @@ decide.
 
 **Selection rules:**
 
-* First, for a document skipped as `no_speech` (§8.6.13): return the **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty content. This rule applies before the rules below, for every span argument (`page`, `start_ms`/`end_ms`, `start_line`/`end_line`, or none).
+* First, for a document skipped as `no_speech` (§8.6.13): return the **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty content. This rule applies before the rules below, for every span argument (`page`, `start_ms`/`end_ms`, `start_line`/`end_line`, or none). A document that stays `status=ok` after every selected track was a no-speech result returns `MEDIA_NO_TEXT` where a rule below would return its transcript or `OCR_NOT_READY` for it (§8.6.13).
 * If `page` provided → return OCR page text (if available; else error `DOC_TYPE_UNSUPPORTED`).
 * Else if `start_ms/end_ms` provided → return transcript excerpt (if available).
 * Else if `start_line/end_line` provided → return file lines.

@@ -159,7 +159,10 @@ makes tool-level bypass of ingestion filters impossible.
 Before these rules, with or without span arguments: a document skipped as
 `no_speech`
 (td-003 §8.6.13) → return the **non-retryable** `MEDIA_NO_TEXT`, never
-`OCR_NOT_READY` and never empty content.
+`OCR_NOT_READY` and never empty content. A document that stays `status=ok`
+after every selected track was a no-speech result returns `MEDIA_NO_TEXT`
+where a rule below would return its transcript or `OCR_NOT_READY` for it
+(td-003 §8.6.13).
 
 1. If `page` is provided → return OCR page text (if available; else
    `DOC_TYPE_UNSUPPORTED`).
