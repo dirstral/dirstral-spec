@@ -1172,7 +1172,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   **Media and other binary sources.** For a source whose searchable text is derived (audio, video, a PDF, an image), the check of the source bytes MAY cover only a leading sample of them (the reference implementation reads 64 KiB), and the derived text (transcript, sidecar, translation, extracted text) MUST be screened in full before it is indexed. The re-evaluation after a pattern change applies the same rule: for an audio or video document it checks the same leading sample and screens the stored derived text. So it never needs bytes outside that sample, and `ingest.media_identity: sampled` (§7.6) needs no extra read for it.
 
-  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.96.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. A document that an unfinished pass has not evaluated stays withheld from every tool until a pass evaluates it against the current effective set. A later change does not release it, also when that change can only match less: the document was never judged against the wider set, and the screen of each returned excerpt does not find a credential that crosses a chunk boundary. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt.
+  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.96.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. A document that an unfinished pass has not evaluated stays withheld from every tool until a pass evaluates it against the current effective set. A later change does not release it, also when that change can only match less: the document was never judged against the wider set, and the screen of each returned excerpt does not find a credential that crosses a chunk boundary. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt. The screen of an excerpt judges only the text of that excerpt. An allow pattern cancels a match there only when its context is in the same excerpt. A chunk that holds a `redir_token` assignment without the start of its link is therefore left out of the results, while its document stays indexed. This rule errs toward withholding; the implementation stores no allow spans.
 
 * Exclude large binaries by default:
 
@@ -1728,7 +1728,10 @@ is bound to the corpus via the embed identity (§8.1.4).
     identity (§8.6.7), which includes a no-speech track result whose STT
     derivation identity changed, also in a document at `status=ok` (§8.6.13);
     and a `.doc` that no engine covered, on the first scan in which an engine
-    can extract it (§7.4).
+    can extract it (§7.4). A change of `media.stt.tracks` alone is not such a
+    rule: a track that the new selection adds is decoded when the document is
+    next processed (a content change, an identity change, or an explicit
+    re-index with `dir2mcp reindex`).
 * Representation-level:
 
   * compute `rep_hash`; if unchanged → skip chunk rebuild
@@ -3510,7 +3513,9 @@ stable across re-indexing.
     decoded window; a failing window is recorded as a refused range
     (`reason: quality_gate`) and the document fails only when every gated window
     fails. A no-speech window is not gated (§8.6.13): a recording whose windows
-    are all refusals or no-speech results, with at least one refusal, fails.
+    are all `quality_gate` refusals or no-speech results, with at least one
+    refusal, fails. A `language_uncovered` refusal is not a gate failure; the
+    mixed-reason rule of §8.2.2 and §8.6.13 decides a recording that has one.
   * A no-speech result (§8.2) is not **empty** output. The gate MUST NOT reject
     it, and it is not a refused range. §8.6.13 sets its outcome. The empty check
     applies to OCR and translation output, and to STT output that is not a
@@ -4105,6 +4110,15 @@ transcript exactly as it applies to an unreadable format.
     that stays `ok` is decoded again when the document is processed again (a
     content change, a re-index or an identity change); this version does not
     change that.
+  * `dir2mcp_transcribe` (§15.7) follows this guard. With `retranscribe=false` it
+    sends no decode request for a recording that has a stored no-speech result
+    under the current STT derivation identity, and it returns a success result
+    with `indexed: false` and no segments. `retranscribe=true` is an explicit
+    request and is exempt from the guard: the implementation MUST decode the
+    recording again. When the new decode is again a no-speech result, the tool
+    returns the same success result, and an earlier transcript is retired as
+    the rule below requires. `dir2mcp_transcribe_and_ask` (§15.9) has no `retranscribe`
+    argument and behaves as `retranscribe=false`.
   * `dir2mcp_open_file` on a document that is `status=skipped` with
     `skip_reason="no_speech"` MUST return the non-retryable `MEDIA_NO_TEXT`
     (§14.2, §15.4), never the retryable `OCR_NOT_READY` and never empty

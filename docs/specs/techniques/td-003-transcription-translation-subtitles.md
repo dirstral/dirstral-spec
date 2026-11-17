@@ -289,7 +289,9 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
     per decoded window; a failing window is a refused range
     (`reason: quality_gate`) and the document fails only when every gated
     window fails. A no-speech window is not gated (§8.6.13): a recording whose windows
-    are all refusals or no-speech results, with at least one refusal, fails.
+    are all `quality_gate` refusals or no-speech results, with at least one
+    refusal, fails. A `language_uncovered` refusal is not a gate failure; the
+    mixed-reason rule of SPEC.md §8.2.2 and §8.6.13 decides a recording that has one.
   * A no-speech result (SPEC.md §8.2, td-001 §8.2) is not **empty** output. The
     gate MUST NOT reject it, and it is not a refused range. §8.6.13 sets its
     outcome. The empty check applies to OCR and translation output, and to STT
@@ -760,6 +762,15 @@ transcript exactly as it applies to an unreadable format.
     that stays `ok` is decoded again when the document is processed again (a
     content change, a re-index or an identity change); this version does not
     change that.
+  * `dir2mcp_transcribe` (bs-007) follows this guard. With `retranscribe=false` it
+    sends no decode request for a recording that has a stored no-speech result
+    under the current STT derivation identity, and it returns a success result
+    with `indexed: false` and no segments. `retranscribe=true` is an explicit
+    request and is exempt from the guard: the implementation MUST decode the
+    recording again. When the new decode is again a no-speech result, the tool
+    returns the same success result, and an earlier transcript is retired as
+    the rule below requires. `dir2mcp_transcribe_and_ask` (bs-007) has no `retranscribe`
+    argument and behaves as `retranscribe=false`.
   * `dir2mcp_open_file` on a document that is `status=skipped` with
     `skip_reason="no_speech"` MUST return the non-retryable `MEDIA_NO_TEXT`
     (df-008, bs-007 `dir2mcp_open_file`), never the retryable `OCR_NOT_READY` and never empty

@@ -270,7 +270,12 @@ deletion/tombstone semantics are in bs-008.
   the screen of each returned excerpt does not find a credential that crosses
   a chunk boundary. In addition, every tool MUST screen the text it is about to
   return against the effective set, and `ask` MUST do so before it builds the
-  prompt.
+  prompt. The screen of an excerpt judges only the text of that excerpt. An
+  allow pattern cancels a match there only when its context is in the same
+  excerpt. A chunk that holds a `redir_token` assignment without the start of
+  its link is therefore left out of the results, while its document stays
+  indexed. This rule errs toward withholding; the implementation stores no
+  allow spans.
 
 - Exclude large binaries by default:
   - configurable max file size per `doc_type`.
@@ -369,7 +374,11 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
     identity (td-003 §8.6.7), which includes a no-speech track result whose
     STT derivation identity changed, also in a document at `status=ok`
     (td-003 §8.6.13); and a `.doc` that no engine covered, on the first scan
-    in which an engine can extract it (td-004).
+    in which an engine can extract it (td-004). A change of
+    `media.stt.tracks` alone is not such a rule: a track that the new
+    selection adds is decoded when the document is next processed (a content
+    change, an identity change, or an explicit re-index with
+    `dir2mcp reindex`).
 - Representation-level:
   - compute `rep_hash`; if unchanged → **skip** chunk rebuild
 - Chunk-level:

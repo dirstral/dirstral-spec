@@ -313,7 +313,9 @@ representation, and (optionally) return segments.
 - `language` — optional source-language hint.
 - `timestamps` — boolean, default **true**.
 - `retranscribe` — boolean, default **false** (when true, re-transcribe even if
-  a transcript already exists).
+  a transcript already exists, and also when the stored result is a no-speech
+  result; td-003 §8.6.13). A recording with no speech is a success result with
+  `indexed: false` and no segments, for both values.
 
 **Behavior.** Output carries `rel_path`, `stt_provider`, `model`, `indexed`
 (required), and optional `segments[]` (`start_ms`, `end_ms`, `text` per
