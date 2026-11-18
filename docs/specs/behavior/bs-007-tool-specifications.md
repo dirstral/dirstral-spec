@@ -315,7 +315,9 @@ representation, and (optionally) return segments.
 - `retranscribe` — boolean, default **false** (when true, re-transcribe even if
   a transcript already exists, and also when the stored result is a no-speech
   result; td-003 §8.6.13). A recording with no speech in any selected track is a
-  success result with `indexed: false` and no segments, for both values. A
+  success result with `indexed: false` and no segments, for both values. One
+  exception: a whole-recording no-speech result of a route fallback decode
+  (td-001 §8.2.3) is an error, not a success (td-003 §8.6.13). A
   recording in which a selected track has a transcript returns that
   transcript.
 

@@ -81,7 +81,10 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
   excludes. "Matches the secret set" has the meaning of
   [bs-002](bs-002-ingestion-pipeline.md) §7.2: a generic bearer-token match
   that a `security.secret_allow_patterns` match covers is cancelled, so a
-  document that ingestion releases is not refused here. One narrow exception: `dir2mcp_recheck_path`
+  document that ingestion releases is not refused here as a whole. A released
+  document can still have an excerpt refused: bs-002 §7.2 screens each excerpt
+  on its own text, so an excerpt that holds a `redir_token` assignment without
+  the start of its link has no allow context and is withheld. One narrow exception: `dir2mcp_recheck_path`
   ([bs-007](bs-007-tool-specifications.md)) accepts a path that the path rules
   exclude, so the reconcile can retire what was indexed there. It checks those
   rules before any filesystem access, does not stat, resolve or read the path,
