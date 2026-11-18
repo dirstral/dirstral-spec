@@ -400,10 +400,12 @@ their at-rest form is [df-003](../data-formats/df-003-sqlite-schema.md) §5.4.
     in which an engine can extract it (td-004); and a document that stays
     `ok` with a selected track that failed with a transport or provider error
     (td-003 §8.6.13). A change of
-    `media.stt.tracks` alone is not such a rule: a track that the new
-    selection adds is decoded when the document is next processed (a content
-    change, an identity change, or an explicit re-index with
-    `dir2mcp reindex`).
+    `media.stt.tracks` alone is not such a rule. When the document is next
+    processed (a content change, an identity change, or an explicit re-index
+    with `dir2mcp reindex`), a track that the new selection adds is decoded,
+    and the transcripts and chunks of a track that the new selection drops
+    are retired (SPEC.md §8.6.12). Until then, the transcripts of a dropped
+    track stay searchable.
 - Representation-level:
   - compute `rep_hash`; if unchanged → **skip** chunk rebuild
 - Chunk-level:
@@ -735,7 +737,7 @@ re-indexes it.
 
 ## Changelog
 
-- **0.8.0** (§7.2, §7.3, §7.7): mirrors spec 0.97.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation. §7.7 also states that the next scan processes a document at `status=error` again.
+- **0.8.0** (§7.2, §7.3, §7.6, §7.7): mirrors spec 0.97.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation. §7.7 also states that the next scan processes a document at `status=error` again. §7.6: when a document is next processed, the transcripts and chunks of a track that `media.stt.tracks` no longer selects are retired.
 - **0.7.0** (§7.1): mirrors spec 0.96.0: `ingest.priority_list` names files to process first, in the file's line order; every other file follows in relative-path order. Discovery is unchanged.
 - **0.6.0** (§7.1): mirrors spec 0.94.0: `ingest.discovery_workers` (default `1`, range `1`–`64`) lets the walk read directories concurrently; the result MUST NOT depend on the value.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).

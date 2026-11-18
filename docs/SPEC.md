@@ -1617,8 +1617,9 @@ to Markdown, and MUST NOT fabricate page/`bbox` provenance it does not have:
   rendered Markdown, and the spans have the provenance of the
   `pandoc` engine: a section breadcrumb where the Markdown has headings, an
   optional `label`, and no `page` or `bbox` span. The intermediate `.docx` is not a representation. An
-  implementation MAY cache it, as an implementation-private artifact. A cached
-  copy MUST be readable and writable only by the owner of the dir2mcp process
+  implementation MAY cache it, as an implementation-private artifact, in the
+  state directory or outside the corpus root, so that discovery never indexes
+  the copy. A cached copy MUST be readable and writable only by the owner of the dir2mcp process
   (mode `0600` in an owner-only directory on POSIX systems), because it holds
   the document text.
 * **Clean-up.** After the read step ends, and also after a failure or a
@@ -1747,9 +1748,11 @@ is bound to the corpus via the embed identity (§8.1.4).
     and a `.doc` that no engine covered, on the first scan in which an engine
     can extract it (§7.4); and a document that stays `ok` with a selected
     track that failed with a transport or provider error (§8.6.13). A change of `media.stt.tracks` alone is not such a
-    rule: a track that the new selection adds is decoded when the document is
-    next processed (a content change, an identity change, or an explicit
-    re-index with `dir2mcp reindex`).
+    rule. When the document is next processed (a content change, an
+    identity change, or an explicit re-index with `dir2mcp reindex`), a
+    track that the new selection adds is decoded, and the transcripts and
+    chunks of a track that the new selection drops are retired (§8.6.12).
+    Until then, the transcripts of a dropped track stay searchable.
 * Representation-level:
 
   * compute `rep_hash`; if unchanged → skip chunk rebuild
@@ -3931,6 +3934,15 @@ languages in one document**.
   Default `first` keeps single-track corpora (the overwhelming majority) unchanged
   in behavior **and cost**; multi-track transcription is opt-in.
 
+* **Deselected tracks.** When a document is processed, the implementation
+  MUST retire the stored results of each audio track that the current
+  `media.stt.tracks` does not select: the track's transcript representation,
+  its translations, their chunks, and a stored no-speech result of the track.
+  A deselected track then keeps no searchable chunk. A change of
+  `media.stt.tracks` alone does not process a document (§7.6), so the
+  transcripts of a deselected track stay searchable until the next processing
+  of the document.
+
 * **Per-track representation keying.** Track **0** (the first audio stream) keeps
   the **bare** `transcript` rep_type (and `transcript-<lang>` translations, §8.6.2),
   so an existing single-track corpus is **byte-for-byte unchanged** and never
@@ -4075,8 +4087,9 @@ transcript exactly as it applies to an unreadable format.
   text and has no confident language, and a no-speech window holds none, so it
   inherits nothing: its entry in `coverage.languages` carries its time range
   and route and no `language`. A no-speech window never joins the
-  representation-language sum of §8.2.2, whatever its language. It does not
-  change the continuity state: a following window with
+  representation-language sum of §8.2.2, whatever its language. A no-speech
+  window with no resolved language does not change the continuity state: a
+  following window with
   no confident language inherits the last language resolved before the
   no-speech window. The low-confidence re-decode rule below does not use a
   no-speech window.
