@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.97.0`
+**Current spec version:** `0.98.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,15 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.98.0: silence is an outcome: `skip_reason="no_speech"`
+
+A behaviour change and one new `skip_reasons` value (`MINOR` per the pre-1.0 policy). No key, tool or error code changes.
+
+- §8.6.6 (td-003) **Silence is an outcome, not degenerate output**: when STT answers successfully and the item has no speech (an empty transcript for the whole item, or audio/video with no audio track) and the item therefore has no representation, it is `status=skipped` with `skip_reason="no_speech"`, not `status=error`. The empty transcript is cached like any other (content + STT identity, §8.6.7), so later runs do not call STT for it again; it is re-derived only when its content or the STT identity changes. A provider failure (no answer, timeout, non-success response) stays an error and is retried. A windowed decode with refused windows stays under §8.6.13 / §8.2.2.
+- §3.2 and §15.6 (df-007): the `skip_reasons` enum gains `no_speech` (the NDJSON `reason` list, the `dir2mcp_stats` schema, `spec/tools/schemas/stats.json`).
+- Mirrors: td-003, df-007 (`stats.json`).
+- Motivation: the TV Rain archive (dir2mcp#1182). About 2,587 speechless clips ended as `WHISPER_FAILED: transcription response had no text content` and 457 more as "produced no representation"; as errors they were read, hashed and sent to Whisper again on every scan (10-40 s each), adding hours to every pass.
 
 ## 0.97.0: a `*` line in the priority list places the files no other line covers
 
