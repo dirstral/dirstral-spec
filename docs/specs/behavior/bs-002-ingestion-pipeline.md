@@ -295,9 +295,11 @@ deletion/tombstone semantics are in bs-008.
   return against the effective set, and `ask` MUST do so before it builds the
   prompt. The screen of an excerpt judges only the text of that excerpt. An
   allow pattern cancels a match there only when its context is in the same
-  excerpt. A chunk that holds a `redir_token` assignment without the start of
-  its link is therefore left out of the results, while its document stays
-  indexed. This rule errs toward withholding; the implementation stores no
+  excerpt. A chunk that holds a `redir_token` assignment whose value matches
+  the generic bearer-token default (20 or more key characters), without the
+  start of its link, is therefore left out of the results, while its document
+  stays indexed. A shorter value is no secret match, so such a chunk is
+  returned. This rule errs toward withholding; the implementation stores no
   allow spans.
 
 - Exclude large binaries by default:
