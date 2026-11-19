@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.96.0`
+**Current spec version:** `0.97.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,15 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.97.0: a `*` line in the priority list places the files no other line covers
+
+A new list entry (`MINOR` per the pre-1.0 policy: it changes the processing order of a list that has the line). No key, tool, schema or error code changes.
+
+- §7.1 (bs-002) **Processing order**: in `ingest.priority_list`, a line that is exactly `*` stands for every file no other line covers, at that line's place, in relative-path order. Without one, those files come last, as before. A second `*` line is ignored.
+- Mirrors: bs-002 0.8.0.
+- Motivation: the TV Rain archive run (dir2mcp, 2026-11-17). The newest-first list is built from the folders known when it is made, so a video uploaded later is covered by no line and went last: behind about 2 million listed files, roughly 16 hours of a scan. A `*` line first in the list processes such new uploads first, when no listed directory covers them (each archive video has its own listed folder, so a new upload is in a new one).
+- `spec/tools/schemas/*` and `spec/errors/taxonomy.md` unchanged.
 
 ## 0.96.0: a list of paths to process first
 

@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.96.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.97.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1057,7 +1057,15 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   the scan goes on in relative-path order (for the bad entry: without it). Use
   it to put the files that matter most first in a large backlog: in an archive
   whose hash-tree paths carry no date, a list of folders sorted newest first
-  processes the newest videos first. The key applies to every source kind.
+  processes the newest videos first. A line that is exactly `*` stands for
+  every file that no other line covers, at that line's place: those files
+  follow in relative-path order where the `*` line is, instead of after all
+  listed files. A `*` line first in the file puts files added since the list
+  was made (new uploads) ahead of every listed file, when no line covers them:
+  a new file under a listed directory keeps that directory's place. Without a
+  `*` line, files
+  no line covers come last, as before. A second `*` line is ignored. The key
+  applies to every source kind.
 * **Directory ignore list.** Discovery does not descend into a directory whose
   **name** matches an entry in the ignore list. The default list is: `.git/`,
   `.dir2mcp/`, `node_modules/`, `vendor/`, `__pycache__/`, `dist/`, `build/`,
