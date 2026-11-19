@@ -147,7 +147,7 @@ Expected pass conditions:
 
 ## Changelog
 
-- **0.3.0**: the `file_skip` reason list names `no_speech` (spec 0.97.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have.
+- **0.3.0**: the `file_skip` reason list names `no_speech` (spec 0.99.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have.
 - **0.1.0** — Migrated from SPEC.md §3. Cross-referenced the on-disk artifacts to
   df-001/df-002 and `CONFIG_INVALID` to df-008.
 - **0.2.0** — Added the `file_skip` event and pinned `file_error` as strictly

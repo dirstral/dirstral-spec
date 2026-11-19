@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.8.0
+- **Version:** 0.9.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -61,7 +61,15 @@ deletion/tombstone semantics are in bs-008.
   the scan goes on in relative-path order (for the bad entry: without it). Use
   it to put the files that matter most first in a large backlog: in an archive
   whose hash-tree paths carry no date, a list of folders sorted newest first
-  processes the newest videos first. The key applies to every source kind.
+  processes the newest videos first. A line that is exactly `*` stands for
+  every file that no other line covers, at that line's place: those files
+  follow in relative-path order where the `*` line is, instead of after all
+  listed files. A `*` line first in the file puts files added since the list
+  was made (new uploads) ahead of every listed file, when no line covers them:
+  a new file under a listed directory keeps that directory's place. Without a
+  `*` line, files
+  no line covers come last, as before. A second `*` line is ignored. The key
+  applies to every source kind.
 - Default ignore list includes: `.git/`, `node_modules/`, `dist/`, `build/`,
   `.venv/`, `.dir2mcp/`.
 - Optional `.gitignore` support.
@@ -257,7 +265,7 @@ deletion/tombstone semantics are in bs-008.
 
   **A change of the effective pattern set (normative).** A document withheld as
   `secret_excluded` (bs-007) was judged against one pattern set. The effective
-  set changes when a spec version changes a default (0.97.0 did) or when an
+  set changes when a spec version changes a default (0.99.0 did) or when an
   operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a
   change, the implementation MUST evaluate each withheld document again against
   the new set, also when its `content_hash` is unchanged (§7.6). A document that
@@ -740,7 +748,8 @@ re-indexes it.
 
 ## Changelog
 
-- **0.8.0** (§7.2, §7.3, §7.6, §7.7): mirrors spec 0.97.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation. §7.7 also states that the next scan processes a document at `status=error` again. §7.6: when a document is next processed, the transcripts and chunks of a track that `media.stt.tracks` no longer selects are retired.
+- **0.9.0** (§7.2, §7.3, §7.6, §7.7): mirrors spec 0.99.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation. §7.7 also states that the next scan processes a document at `status=error` again. §7.6: a classification change processes a document again; a no-speech track whose STT identity changed and a track that failed in a document that stays `ok` are processed again; when a document is next processed, the transcripts and chunks of a track that `media.stt.tracks` no longer selects are retired.
+- **0.8.0** (§7.1): mirrors spec 0.97.0: a `*` line in `ingest.priority_list` stands for every file no other line covers, at that line's place.
 - **0.7.0** (§7.1): mirrors spec 0.96.0: `ingest.priority_list` names files to process first, in the file's line order; every other file follows in relative-path order. Discovery is unchanged.
 - **0.6.0** (§7.1): mirrors spec 0.94.0: `ingest.discovery_workers` (default `1`, range `1`–`64`) lets the walk read directories concurrently; the result MUST NOT depend on the value.
 - **0.5.0** (§7.1, §7.8): mirrors spec 0.90.0: discovery skips the SMIL backups `<smil>.bak.<ts>[.<n>]` of write-back (SPEC.md §7.1, §8.6.14). The SMIL itself is still indexed. A SMIL that the caption patch rewrote is confirmed by `content_hash` on the next scan, also when its `(size, mtime)` is unchanged (§7.8).

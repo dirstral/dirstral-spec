@@ -158,7 +158,7 @@ makes tool-level bypass of ingestion filters impossible.
 
 Before these rules, with or without span arguments: a document skipped as
 `no_speech`
-(td-003 §8.6.13) → return the **non-retryable** `MEDIA_NO_TEXT`, never
+(td-003 §8.6.6, §8.6.13) → return the **non-retryable** `MEDIA_NO_TEXT`, never
 `OCR_NOT_READY` and never empty content. A document that stays `status=ok`
 after every selected track was a no-speech result returns `MEDIA_NO_TEXT`
 where a rule below would return its transcript or `OCR_NOT_READY` for it
@@ -290,9 +290,7 @@ and `evidence` are optional.
   `transcript_partial`, `symlink_ignored`, `no_speech` (media whose STT decode
   found no speech in any selected audio track (`media.stt.tracks`; a track
   that is not selected is not decoded), with no other searchable
-  representation; td-003 §8.6.13; a no-speech result of a route fallback
-  decode with no transcript text in the recording is an error, not this
-  skip). New reasons are added only by a
+  representation; td-003 §8.6.6, §8.6.13). New reasons are added only by a
   minor version bump (additive); a client MAY receive an unrecognized value from
   a newer server and SHOULD render it verbatim rather than error. `count` is
   always **>= 1** (zero-count reasons are omitted). Implementations MAY omit the
@@ -315,9 +313,7 @@ representation, and (optionally) return segments.
 - `retranscribe` — boolean, default **false** (when true, re-transcribe even if
   a transcript already exists, and also when the stored result is a no-speech
   result; td-003 §8.6.13). A recording with no speech in any selected track is a
-  success result with `indexed: false` and no segments, for both values. One
-  exception: a whole-recording no-speech result of a route fallback decode
-  (td-001 §8.2.3) is an error, not a success (td-003 §8.6.13). A
+  success result with `indexed: false` and no segments, for both values. A
   recording in which a selected track has a transcript returns that
   transcript.
 
@@ -584,7 +580,7 @@ lifetime of the process.
 
 ## Changelog
 
-- **0.19.0**: `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document skipped as `no_speech`; the `skip_reasons` enum list names `no_speech` (spec 0.97.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
+- **0.19.0**: spec 0.99.0: `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document skipped as `no_speech` (spec 0.98.0), and for a document that stays `ok` with no transcript after no speech. `dir2mcp_transcribe`: a recording with no speech is a success result with `indexed: false`; `retranscribe=true` also decodes a stored no-speech result again. The `skip_reasons` enum list names `no_speech`, and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
 - **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
   spec 0.92.0): a client asks a server in watch mode to reconcile one path
   under the root now; the call validates, classifies, enqueues and returns,

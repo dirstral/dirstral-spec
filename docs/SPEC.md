@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.97.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.99.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -1057,7 +1057,15 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
   the scan goes on in relative-path order (for the bad entry: without it). Use
   it to put the files that matter most first in a large backlog: in an archive
   whose hash-tree paths carry no date, a list of folders sorted newest first
-  processes the newest videos first. The key applies to every source kind.
+  processes the newest videos first. A line that is exactly `*` stands for
+  every file that no other line covers, at that line's place: those files
+  follow in relative-path order where the `*` line is, instead of after all
+  listed files. A `*` line first in the file puts files added since the list
+  was made (new uploads) ahead of every listed file, when no line covers them:
+  a new file under a listed directory keeps that directory's place. Without a
+  `*` line, files
+  no line covers come last, as before. A second `*` line is ignored. The key
+  applies to every source kind.
 * **Directory ignore list.** Discovery does not descend into a directory whose
   **name** matches an entry in the ignore list. The default list is: `.git/`,
   `.dir2mcp/`, `node_modules/`, `vendor/`, `__pycache__/`, `dist/`, `build/`,
@@ -1189,7 +1197,7 @@ specifically to keep the single-binary, cross-compiled, CGO-free build.
 
   **Media and other binary sources.** For a source whose searchable text is derived (audio, video, a PDF, an image), the check of the source bytes MAY cover only a leading sample of them (the reference implementation reads 64 KiB), and the derived text (transcript, sidecar, translation, extracted text) MUST be screened in full before it is indexed. The re-evaluation after a pattern change applies the same rule: for an audio or video document it checks the same leading sample and screens the stored derived text. So it never needs bytes outside that sample, and `ingest.media_identity: sampled` (§7.6) needs no extra read for it.
 
-  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.97.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. The test is on the matches that stay after cancellation, not on one list alone. An allow pattern cancels only a match of the generic bearer-token default, so a change that replaces or removes that default can leave a match with no allow pattern to cancel it: a `redir_token` assignment that the old set released can match the new one. Such a change needs the pass. An implementation that cannot show that a change only matches less MUST run the pass. A document that an unfinished pass has not evaluated stays withheld from every tool until a pass evaluates it against the current effective set. A later change does not release it, also when that change can only match less: the document was never judged against the wider set, and the screen of each returned excerpt does not find a credential that crosses a chunk boundary. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt. The screen of an excerpt judges only the text of that excerpt. An allow pattern cancels a match there only when its context is in the same excerpt. A chunk that holds a `redir_token` assignment whose value matches the generic bearer-token default (20 or more key characters), without the start of its link, is therefore left out of the results, while its document stays indexed. Under the default patterns a shorter value is no secret match, so such a chunk is returned, unless an operator-configured secret pattern matches it. This rule errs toward withholding; the implementation stores no allow spans.
+  **A change of the effective pattern set (normative).** A document withheld as `secret_excluded` (§15.5) was judged against one pattern set. The effective set changes when a spec version changes a default (0.99.0 did) or when an operator edits `security.secret_patterns` or `security.secret_allow_patterns`. On the first scan after such a change, the implementation MUST evaluate each withheld document again against the new set, also when its `content_hash` is unchanged (§7.6). A document that the new set does not match is no longer withheld for a secret: the scan treats it as a new document, so every other §7.1 gate (path rules, `.gitignore`, size and type limits) still applies, and only a document that passes them is indexed. To detect the change, an implementation SHOULD persist a fingerprint of the effective set (for example a hash of the ordered secret and allow lists) and compare it at each scan. A document already indexed that the new set matches MUST be withheld, and its representations and chunks retired, so a credential that a new pattern finds does not stay searchable. That direction reads every indexed document once, so an implementation MAY run it as a background pass after the scan. Until that pass has evaluated a document against the new set, no tool returns any part of that document: `search` leaves out its hits, `ask` leaves out its passages before it builds the prompt (so they never reach a generation provider), and `open_file` returns `FORBIDDEN`. Screening only the excerpt is not enough, because a credential can cross a chunk boundary and no single excerpt then matches. The pass is needed only when the new set can match more than the old one (a new or wider secret pattern, or a removed or narrower allow pattern). A change that can only match less (an added allow pattern, a narrower secret pattern) needs no pass for indexed documents, so it hides nothing. The test is on the matches that stay after cancellation, not on one list alone. An allow pattern cancels only a match of the generic bearer-token default, so a change that replaces or removes that default can leave a match with no allow pattern to cancel it: a `redir_token` assignment that the old set released can match the new one. Such a change needs the pass. An implementation that cannot show that a change only matches less MUST run the pass. A document that an unfinished pass has not evaluated stays withheld from every tool until a pass evaluates it against the current effective set. A later change does not release it, also when that change can only match less: the document was never judged against the wider set, and the screen of each returned excerpt does not find a credential that crosses a chunk boundary. In addition, every tool MUST screen the text it is about to return against the effective set, and `ask` MUST do so before it builds the prompt. The screen of an excerpt judges only the text of that excerpt. An allow pattern cancels a match there only when its context is in the same excerpt. A chunk that holds a `redir_token` assignment whose value matches the generic bearer-token default (20 or more key characters), without the start of its link, is therefore left out of the results, while its document stays indexed. Under the default patterns a shorter value is no secret match, so such a chunk is returned, unless an operator-configured secret pattern matches it. This rule errs toward withholding; the implementation stores no allow spans.
 
 * Exclude large binaries by default:
 
@@ -2580,8 +2588,7 @@ worker reads the document text and rune spans from the shared store (8.7.4).
     is the usual case).
 
   The implementation MUST NOT treat a no-speech result as a transport or
-  provider error. It is not a failed window (§8.6.13; the one exception there is a fallback
-  decode after a failed route, when no window produced transcript text), it does not trigger
+  provider error. It is not a failed window (§8.6.13), it does not trigger
   `media.stt.on_route_error` (§8.2.4), and it does not advance a candidate list
   (§8.2.3). A response that does not parse, or that has neither a text field
   nor a segments field, is malformed and stays a provider error. A response is
@@ -2941,7 +2948,7 @@ language list and no model ship, and every model choice stays the operator's.
     no signal: the probe held no speech, and other parts of the item can still
     hold speech. The default profile decodes the item. (An identifier response
     with empty text that reports a language at or above the confidence floor is a signal, §8.2.3.) When that decode is also a no-speech result, the
-    outcome is `no_speech` (§8.6.13).
+    outcome is `no_speech` (§8.6.6, §8.6.13).
   * **Recording.** A transcript decoded with an identifier bound under `item`
     records `language_identifier` (the profile name), `language_scope: item`
     and `language_routes` (the resolved route table, shape below) on its
@@ -3527,7 +3534,8 @@ stable across re-indexing.
 
 * STT, OCR, and translation output MUST pass **degenerate-output checks** before
   being indexed. Minimum checks:
-  * **empty** output;
+  * **empty** output (but see *Silence is an outcome* below: STT that answered
+    and found no speech is not degenerate);
   * **repetition / looping** (the classic STT failure mode);
   * **low density vs. duration** (far too little text for the media length).
   * Implementations **SHOULD** additionally flag a **detected language ≠ pinned
@@ -3539,16 +3547,29 @@ stable across re-indexing.
     are all `quality_gate` refusals or no-speech results, with at least one
     refusal, fails. A `language_uncovered` refusal is not a gate failure; the
     mixed-reason rule of §8.2.2 and §8.6.13 decides a recording that has one.
-  * A no-speech result (§8.2) is not **empty** output. The gate MUST NOT reject
-    it, and it is not a refused range. §8.6.13 sets its outcome. The empty check
-    applies to OCR and translation output, and to STT output that is not a
-    no-speech result.
   * The **low density** check MUST NOT count the length of a no-speech window
     (§8.6.13) in the duration it compares the text with. A recording with one
     window of speech and long windows of music is not degenerate output.
 * A failed gate is a **non-fatal per-document error** (§7.7): the document is
   marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (§14.4) — and indexing continues.
+* **Silence is an outcome, not degenerate output.** When the item has no
+  speech, either because the STT provider answered successfully with an empty
+  transcript for the whole item, or because the audio or video item has no audio
+  track (no STT call is needed to establish that), and the item therefore
+  produces no representation, it MUST NOT be marked `status=error`:
+  it is recorded `status=skipped` with `skip_reason="no_speech"` (§15.6). The
+  empty transcript is cached like any transcript (keyed by the content and the
+  STT identity, §8.6.7), so a later run does not call STT for it again; the
+  item is re-derived only when its content or the STT identity changes, or when
+  the empty transcript is a route-fallback result (§8.6.7) that meets one of that
+  section's retry conditions (`on_route_error: fail`, a retry due under
+  `media.stt.route_retry_after`, or a changed default profile). A window of a
+  windowed decode that completes with no speech counts as decoded for coverage
+  (§8.6.13). A
+  provider failure (no answer, a timeout, a non-success response) is still an
+  error and is retried on the next run. An item whose windowed decode refused
+  windows is governed by §8.6.13 and §8.2.2, not by this rule.
 * The checks MUST be **deterministic** (the same output is judged the same way
   every run).
 
@@ -3982,7 +4003,7 @@ languages in one document**.
   degenerate dubbed track never discards a good original.
   A track whose decode is a no-speech result (§8.2) did not fail: it produces no
   transcript representation and is not an error. The document outcome
-  `no_speech` (§8.6.13) applies only when every selected track is a no-speech
+  `no_speech` (§8.6.6, §8.6.13) applies only when every selected track is a no-speech
   result. When at least one selected track failed and every other selected
   track is a no-speech result, no track produced a transcript and the document
   is `error`, as when every track failed: the failure is retried on the next
@@ -4019,9 +4040,11 @@ transcript exactly as it applies to an unreadable format.
   **two or more** windows, the implementation **MUST** record a `coverage` object
   on the `transcript` representation's `meta_json` (§5.2):
   * `windows_attempted`: integer ≥ 2, the scheduled windows.
-  * `windows_decoded`: integer ≥ 0, those that decoded: a window that yielded
-    transcript content, or a window whose decode is a no-speech result (§8.2).
-  * `ranges`: the decoded time ranges as `{start_ms, end_ms}` objects in
+  * `windows_decoded`: integer ≥ 0, those the provider decoded successfully,
+    whether or not they held speech: a window that completed with no speech was
+    listened to and counts (§8.6.6); a refused window does not.
+  * `ranges`: the decoded time ranges (silent decoded windows included, refused
+    windows excluded) as `{start_ms, end_ms}` objects in
     **absolute** recording time. They MUST be **coalesced** (adjacent or
     overlapping windows merge into one range), **non-overlapping**, and in
     **ascending** `start_ms` order, so a fully decoded recording records exactly
@@ -4070,14 +4093,11 @@ transcript exactly as it applies to an unreadable format.
   decoded at all. Text that never existed cannot be screened, so one cannot
   substitute for the other.
 
-* **A window with no speech is decoded (normative).** A window whose decode is
-  a no-speech result (§8.2) counts in `windows_decoded`, and its time range
-  joins `ranges` and `decoded_ms`. It is not a shortfall under
-  `media.stt.min_coverage`, so a recording with long stretches of music or
-  ambient sound does not trip the partial-transcript floor
-  (`transcript_partial`). It is not a failed window and not a refused range
-  (the fallback rule below in this section is the one exception).
-  The no-speech decode adds no language. When §8.2.2 resolves a language
+* **The language of a window with no speech (normative).** §8.6.6 counts a
+  window that completes with no speech as decoded (`windows_decoded`, `ranges`,
+  and so `decoded_ms`). These rules add to it. A window with no speech is a
+  window whose decode is a no-speech result (§8.2). It is
+  not a failed window. The no-speech decode adds no language. When §8.2.2 resolves a language
   for the window from another signal (a pin, or an identifier report at or
   above the floor when the implementation has one; it need not ask the
   identifier about a window whose decode is a no-speech result), that language is the language of the window, and the
@@ -4120,26 +4140,23 @@ transcript exactly as it applies to an unreadable format.
   The skip reason `no_speech` applies only when every window is a no-speech
   result.
 
-* **A recording with no speech is skipped, not failed (normative).** When the
-  decode of a recording is a no-speech result as a whole (the single request,
-  or every window of a windowed decode, with no failed window), the recording
-  produced no transcript, and that is the correct answer for it. Then:
-  * No transcript representation is produced for that track.
-  * When every selected track (§8.6.12) is a no-speech result and the
-    document has no other searchable representation (for example a direct
-    media embedding, §8.1.7), the implementation MUST record the document as
-    `status=skipped` with `skip_reason="no_speech"` (§15.6). It is not an
-    error. When the document keeps another searchable representation, it stays
-    `status=ok`, as §7.4.B.2 rules for an absent extraction.
-  * The implementation MUST NOT decode a no-speech track again while both the
-    `content_hash` (§7.6) and the STT derivation identity (§8.6.7) are
-    unchanged. When the derivation identity changes and the content does not,
-    the no-speech outcome is stale, as any derived transcript is (§8.6.7): the
-    implementation MUST decode the track again on the next run when the track is
-    still selected (§8.6.12), because another
-    model can find speech that this one did not. A change of `content_hash`
-    decodes it again as for any changed file. This guard covers only a track
-    whose decode was a no-speech result. A failed track is not covered by it.
+* **No speech in a document with tracks or other representations
+  (normative).** §8.6.6 makes an item with no speech `status=skipped` with
+  `skip_reason="no_speech"`, caches the empty transcript, and re-derives it
+  only when the content or the STT identity changes. These rules add to it:
+  * A track whose decode is a no-speech result (the single request, or every
+    window of a windowed decode, with no failed window) produces no transcript
+    representation. It is not a failed track.
+  * The `no_speech` skip applies when every selected track (§8.6.12)
+    is a no-speech result and the document has no other searchable
+    representation (for example a direct media embedding, §8.1.7). When the
+    document keeps another searchable representation, it stays `status=ok`,
+    as §7.4.B.2 rules for an absent extraction.
+  * The §8.6.6 cache guard applies per track. When the STT derivation identity
+    changes, a no-speech track that is still selected (§8.6.12) MUST be
+    decoded again on the next run; a track that is no longer selected is not
+    decoded. The guard covers only a track whose decode was a no-speech
+    result. A failed track is not covered by it.
     When no selected track produced a transcript and at least one selected
     track failed, the document is `error` and is processed again on the next
     run (§8.6.12). A track that failed with a
@@ -4177,20 +4194,11 @@ transcript exactly as it applies to an unreadable format.
     answers) MUST return `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never
     empty content. A call that another representation answers (for example
     recognition text for a time span) is answered from it.
-  * A no-speech result of a fallback decode (§8.2.3: the route for the item
-    failed and the default profile decoded the recording) is not a no-speech
-    result under this section when it covers the whole recording. The provider
-    for the identified language did not decode the recording, so the outcome
-    is an error (`TRANSCRIBE_FAILED`). The implementation stores no no-speech
-    outcome and no fallback record for it, and the next run tries the route
-    again. `media.stt.route_retry_after` does not delay that run, because no
-    fallback transcript exists. A fallback window with no speech, in a
-    recording that has transcript text, keeps its `fallback_from` entry and
-    follows the window retry of §8.2.3. When no window produced transcript
-    text, a window whose route failed and whose fallback decode is a no-speech
-    result counts as a failed window: the outcome is an error
-    (`TRANSCRIBE_FAILED`) and the recording is retried, also when every other
-    window is a no-speech result.
+  * A no-speech result of a route-fallback decode (§8.2.3) follows
+    §8.6.6: it is cached with its fallback record, and the retry conditions of
+    §8.6.7 decide when the route is tried again. A fallback window with no
+    speech, in a recording that has transcript text, keeps its `fallback_from`
+    entry and follows the window retry of §8.2.3.
   * When an earlier run indexed a transcript for the same track (for example
     under another model), the implementation MUST retire it, its chunks, the
     translations derived from it and the summaries derived from it (§8.6.7), as the refusal rule below retires a refused
@@ -5892,7 +5900,7 @@ Example tool execution error:
 * `FILE_NOT_FOUND`
 * `DOC_TYPE_UNSUPPORTED`
 * `OCR_NOT_READY` (returned by `dir2mcp_open_file` for binary doc types — PDF, audio — when no OCR/transcript representation is cached yet; retryable once ingestion completes)
-* `MEDIA_NO_TEXT` (returned by `dir2mcp_open_file` for a `replace`-mode multimodal media chunk (8.1.7) that has **no** text representation; **non-retryable** — the gap is permanent, unlike `OCR_NOT_READY`; the hit can still be cited. Also returned for a document skipped as `no_speech` (§8.6.13): it has no transcript, and no scan produces one while the content and the STT derivation identity are unchanged)
+* `MEDIA_NO_TEXT` (returned by `dir2mcp_open_file` for a `replace`-mode multimodal media chunk (8.1.7) that has **no** text representation; **non-retryable**: the gap is permanent, unlike `OCR_NOT_READY`; the hit can still be cited. Also returned for a document skipped as `no_speech` (§8.6.6, §8.6.13): it has no transcript, and no scan produces one while the content and the STT derivation identity are unchanged)
 
 ### 14.3 Index/state
 
@@ -6195,7 +6203,7 @@ or an empty/plain-text placeholder.  This ensures tool-level bypass of ingestion
 filters is impossible.
 
 The content check covers the whole source text, not only the slice that the
-call returns (spec 0.97.0). A credential outside the requested lines or page
+call returns (spec 0.99.0). A credential outside the requested lines or page
 still refuses the call, as ingestion withholds that document (§7.2). A slice
 check alone can miss a match that crosses the slice edge. The slice that the
 call returns MUST come from the same bytes that the check covered: the
@@ -6231,7 +6239,7 @@ decide.
 
 **Selection rules:**
 
-* First, for a document skipped as `no_speech` (§8.6.13): return the **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty content. This rule applies before the rules below, for every span argument (`page`, `start_ms`/`end_ms`, `start_line`/`end_line`, or none). A document that stays `status=ok` after every selected track was a no-speech result returns `MEDIA_NO_TEXT` where a rule below would return its transcript or `OCR_NOT_READY` for it (§8.6.13).
+* First, for a document skipped as `no_speech` (§8.6.6, §8.6.13): return the **non-retryable** `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never empty content. This rule applies before the rules below, for every span argument (`page`, `start_ms`/`end_ms`, `start_line`/`end_line`, or none). A document that stays `status=ok` after every selected track was a no-speech result returns `MEDIA_NO_TEXT` where a rule below would return its transcript or `OCR_NOT_READY` for it (§8.6.13).
 * If `page` provided → return OCR page text (if available; else error `DOC_TYPE_UNSUPPORTED`).
 * Else if `start_ms/end_ms` provided → return transcript excerpt (if available).
 * Else if `start_line/end_line` provided → return file lines.
@@ -6505,7 +6513,7 @@ honestly as `ok`, `skipped` or `error`.
           "reason": {
             "type": "string",
             "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "transcript_partial", "symlink_ignored", "no_speech"],
-            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. no_speech: media whose STT decode found no speech in any selected audio track (media.stt.tracks; a track that is not selected is not decoded) (\u00a78.2, \u00a78.6.13): every decode returned a well-formed response with empty text and no segment that holds text, for example a recording that holds only music or ambient sound, and the document has no other searchable representation. A no-speech result of a route fallback decode with no transcript text in the recording is not this skip: it is an error and the recording is retried (§8.6.13). It is not an error, and a track whose decode was a no-speech result is not decoded again by a scan while both the content_hash and the STT derivation identity are unchanged (td-003 \u00a78.6.13; an explicit dir2mcp_transcribe call with retranscribe=true decodes it again); a change of either makes the next run decode it again when the track is still selected. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. no_speech: audio or video whose STT answered with no speech (or which has no audio track), so it has no representation (\u00a78.6.6); it is retried only when its content or the STT identity changes. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
           },
           "count": {
             "type": "integer",

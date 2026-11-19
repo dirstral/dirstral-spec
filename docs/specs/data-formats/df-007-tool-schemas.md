@@ -78,7 +78,7 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
-- **0.11.0**: `stats.json` `skip_reasons[].reason` enum gains `no_speech`: media whose STT decode found no speech in any selected audio track (`media.stt.tracks`; a track that is not selected is not decoded) (td-003 §8.6.13), with no other searchable representation. Additive and closed-per-minor as before, so a client MAY receive it from a newer server and SHOULD render it verbatim. Mirrors spec 0.97.0.
+- **0.11.0**: `stats.json` `skip_reasons[].reason` enum gains `no_speech` (spec 0.98.0, td-003 §8.6.6): audio or video whose STT answered with no speech, or which has no audio track. Additive and closed-per-minor as before, so a client MAY receive it from a newer server and SHOULD render it verbatim.
 - **0.10.0**: added `recheck_path.json` (`dir2mcp_recheck_path`, SPEC §15.13,
   spec 0.92.0): input `rel_path` (required) and `recursive` (default `true`);
   output `rel_path`, `kind`, `queued`, `pending`, all required,
