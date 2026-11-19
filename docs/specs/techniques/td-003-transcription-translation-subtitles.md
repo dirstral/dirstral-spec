@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.14.0
+- **Version:** 0.15.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -280,7 +280,8 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
 
 * STT, OCR, and translation output MUST pass **degenerate-output checks** before
   being indexed. Minimum checks:
-  * **empty** output;
+  * **empty** output (but see *Silence is an outcome* below: STT that answered
+    and found no speech is not degenerate);
   * **repetition / looping** (the classic STT failure mode);
   * **low density vs. duration** (far too little text for the media length).
   * Implementations **SHOULD** additionally flag a **detected language ≠ pinned
@@ -292,6 +293,23 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   is marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (df-008 §14.4) — and indexing
   continues.
+* **Silence is an outcome, not degenerate output.** When the item has no
+  speech, either because the STT provider answered successfully with an empty
+  transcript for the whole item, or because the audio or video item has no audio
+  track (no STT call is needed to establish that), and the item therefore
+  produces no representation, it MUST NOT be marked `status=error`:
+  it is recorded `status=skipped` with `skip_reason="no_speech"` (df-007). The
+  empty transcript is cached like any transcript (keyed by the content and the
+  STT identity, §8.6.7), so a later run does not call STT for it again; the
+  item is re-derived only when its content or the STT identity changes, or when
+  the empty transcript is a route-fallback result (§8.6.7) that meets one of that
+  section's retry conditions (`on_route_error: fail`, a retry due under
+  `media.stt.route_retry_after`, or a changed default profile). A window of a
+  windowed decode that completes with no speech counts as decoded for coverage
+  (§8.6.13). A
+  provider failure (no answer, a timeout, a non-success response) is still an
+  error and is retried on the next run. An item whose windowed decode refused
+  windows is governed by §8.6.13 and SPEC.md §8.2.2, not by this rule.
 * The checks MUST be **deterministic** (the same output is judged the same way
   every run).
 
@@ -623,8 +641,11 @@ transcript exactly as it applies to an unreadable format.
   **two or more** windows, the implementation **MUST** record a `coverage` object
   on the `transcript` representation's `meta_json` (df-003 §5.2):
   * `windows_attempted`: integer ≥ 2, the scheduled windows.
-  * `windows_decoded`: integer ≥ 0, those that yielded transcript content.
-  * `ranges`: the decoded time ranges as `{start_ms, end_ms}` objects in
+  * `windows_decoded`: integer ≥ 0, those the provider decoded successfully,
+    whether or not they held speech: a window that completed with no speech was
+    listened to and counts (§8.6.6); a refused window does not.
+  * `ranges`: the decoded time ranges (silent decoded windows included, refused
+    windows excluded) as `{start_ms, end_ms}` objects in
     **absolute** recording time. They MUST be **coalesced** (adjacent or
     overlapping windows merge into one range), **non-overlapping**, and in
     **ascending** `start_ms` order, so a fully decoded recording records exactly
@@ -744,6 +765,7 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.15.0**: spec 0.98.0: §8.6.6 **Silence is an outcome**: STT that answered with no speech (or an item with no audio track) is `status=skipped`, `skip_reason="no_speech"`, not an error; the cached empty transcript keeps it from being sent to STT again until the content or STT identity changes.
 - **0.14.0**: spec 0.96.0: §8.6.11 **Determinism** names the order `ingest.priority_list` sets (bs-002 §7.1).
 - **0.13.0**: spec 0.91.0: §8.6.10 adds the **TTML layout**:
   `media.subtitles.ttml.layout` (`spans` default, or `divs`: one

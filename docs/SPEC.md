@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.97.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.98.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -305,7 +305,7 @@ file, right now". `file_skip.data` MUST include:
 * `doc_type`
 * `reason` — a value from the `skip_reasons` enum (§15.2): `unsupported_format`,
   `binary_ignored`, `archive`, `ignore_rule`, `secret_excluded`, `path_excluded`,
-  `size_cap`, `language_uncovered`, `transcript_partial`, `symlink_ignored`. New reasons are added only by a minor version
+  `size_cap`, `language_uncovered`, `transcript_partial`, `symlink_ignored`, `no_speech`. New reasons are added only by a minor version
   bump; a client MAY receive an unrecognized value from a newer server and SHOULD
   render it verbatim rather than error.
 
@@ -3290,7 +3290,8 @@ stable across re-indexing.
 
 * STT, OCR, and translation output MUST pass **degenerate-output checks** before
   being indexed. Minimum checks:
-  * **empty** output;
+  * **empty** output (but see *Silence is an outcome* below: STT that answered
+    and found no speech is not degenerate);
   * **repetition / looping** (the classic STT failure mode);
   * **low density vs. duration** (far too little text for the media length).
   * Implementations **SHOULD** additionally flag a **detected language ≠ pinned
@@ -3302,6 +3303,23 @@ stable across re-indexing.
 * A failed gate is a **non-fatal per-document error** (§7.7): the document is
   marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (§14.4) — and indexing continues.
+* **Silence is an outcome, not degenerate output.** When the item has no
+  speech, either because the STT provider answered successfully with an empty
+  transcript for the whole item, or because the audio or video item has no audio
+  track (no STT call is needed to establish that), and the item therefore
+  produces no representation, it MUST NOT be marked `status=error`:
+  it is recorded `status=skipped` with `skip_reason="no_speech"` (§15.6). The
+  empty transcript is cached like any transcript (keyed by the content and the
+  STT identity, §8.6.7), so a later run does not call STT for it again; the
+  item is re-derived only when its content or the STT identity changes, or when
+  the empty transcript is a route-fallback result (§8.6.7) that meets one of that
+  section's retry conditions (`on_route_error: fail`, a retry due under
+  `media.stt.route_retry_after`, or a changed default profile). A window of a
+  windowed decode that completes with no speech counts as decoded for coverage
+  (§8.6.13). A
+  provider failure (no answer, a timeout, a non-success response) is still an
+  error and is retried on the next run. An item whose windowed decode refused
+  windows is governed by §8.6.13 and §8.2.2, not by this rule.
 * The checks MUST be **deterministic** (the same output is judged the same way
   every run).
 
@@ -3756,8 +3774,11 @@ transcript exactly as it applies to an unreadable format.
   **two or more** windows, the implementation **MUST** record a `coverage` object
   on the `transcript` representation's `meta_json` (§5.2):
   * `windows_attempted`: integer ≥ 2, the scheduled windows.
-  * `windows_decoded`: integer ≥ 0, those that yielded transcript content.
-  * `ranges`: the decoded time ranges as `{start_ms, end_ms}` objects in
+  * `windows_decoded`: integer ≥ 0, those the provider decoded successfully,
+    whether or not they held speech: a window that completed with no speech was
+    listened to and counts (§8.6.6); a refused window does not.
+  * `ranges`: the decoded time ranges (silent decoded windows included, refused
+    windows excluded) as `{start_ms, end_ms}` objects in
     **absolute** recording time. They MUST be **coalesced** (adjacent or
     overlapping windows merge into one range), **non-overlapping**, and in
     **ascending** `start_ms` order, so a fully decoded recording records exactly
@@ -6092,8 +6113,8 @@ honestly as `ok`, `skipped` or `error`.
         "properties": {
           "reason": {
             "type": "string",
-            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "transcript_partial", "symlink_ignored"],
-            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
+            "enum": ["unsupported_format", "binary_ignored", "archive", "ignore_rule", "secret_excluded", "path_excluded", "size_cap", "language_uncovered", "transcript_partial", "symlink_ignored", "no_speech"],
+            "description": "Stable skip-reason enum. unsupported_format: extension/MIME has no extractor (e.g. .odt, .rtf, encrypted PDF, image outside the OCR allowlist, video with no sidecar). binary_ignored: detected-binary file with no text representation. archive: an archive container itself, or a nested archive member not expanded. ignore_rule: excluded by an .gitignore/.dir2mcpignore-style rule. secret_excluded: withheld because it matched secret-detection. path_excluded: excluded by a configured path/glob exclusion. size_cap: exceeded the configured max file size. language_uncovered: media whose resolved source language is outside the selected STT model's declared stt_languages coverage, skipped under media.stt.on_uncovered_language=skip (§8.2.1) instead of transcribed to degraded output. transcript_partial: media whose windowed decode covered less of the recording than media.stt.min_coverage requires, dropped under media.stt.on_partial_transcript=skip (\u00a78.6.13) instead of indexed as a complete transcript. symlink_ignored: a discovered entry is a symbolic link and ingest.follow_symlinks is false, so the link is not followed and the target is not indexed. It applies to a link to a file and to a link to a directory: with following off the walker does not resolve the target, so it cannot tell them apart. no_speech: audio or video whose STT answered with no speech (or which has no audio track), so it has no representation (\u00a78.6.6); it is retried only when its content or the STT identity changes. This enum is closed for a given spec minor; new reasons are introduced only by a minor version bump (additive), so a client MAY receive a value it does not recognize from a newer server and SHOULD render it verbatim rather than error."
           },
           "count": {
             "type": "integer",
