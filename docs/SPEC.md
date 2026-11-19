@@ -3303,14 +3303,20 @@ stable across re-indexing.
 * A failed gate is a **non-fatal per-document error** (§7.7): the document is
   marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (§14.4) — and indexing continues.
-* **Silence is an outcome, not degenerate output.** When the STT provider
-  answers successfully and the item has no speech (an empty transcript for the
-  whole item, or an audio or video item with no audio track) and the item
-  therefore produces no representation, it MUST NOT be marked `status=error`:
+* **Silence is an outcome, not degenerate output.** When the item has no
+  speech, either because the STT provider answered successfully with an empty
+  transcript for the whole item, or because the audio or video item has no audio
+  track (no STT call is needed to establish that), and the item therefore
+  produces no representation, it MUST NOT be marked `status=error`:
   it is recorded `status=skipped` with `skip_reason="no_speech"` (§15.6). The
   empty transcript is cached like any transcript (keyed by the content and the
   STT identity, §8.6.7), so a later run does not call STT for it again; the
-  item is re-derived only when its content or the STT identity changes. A
+  item is re-derived only when its content or the STT identity changes, or when
+  the empty transcript is a route-fallback result (§8.6.7) that meets one of that
+  section's retry conditions (`on_route_error: fail`, a retry due under
+  `media.stt.route_retry_after`, or a changed default profile). A window of a
+  windowed decode that completes with no speech counts as decoded for coverage
+  (§8.6.13). A
   provider failure (no answer, a timeout, a non-success response) is still an
   error and is retried on the next run. An item whose windowed decode refused
   windows is governed by §8.6.13 and §8.2.2, not by this rule.
@@ -3768,8 +3774,11 @@ transcript exactly as it applies to an unreadable format.
   **two or more** windows, the implementation **MUST** record a `coverage` object
   on the `transcript` representation's `meta_json` (§5.2):
   * `windows_attempted`: integer ≥ 2, the scheduled windows.
-  * `windows_decoded`: integer ≥ 0, those that yielded transcript content.
-  * `ranges`: the decoded time ranges as `{start_ms, end_ms}` objects in
+  * `windows_decoded`: integer ≥ 0, those the provider decoded successfully,
+    whether or not they held speech: a window that completed with no speech was
+    listened to and counts (§8.6.6); a refused window does not.
+  * `ranges`: the decoded time ranges (silent decoded windows included, refused
+    windows excluded) as `{start_ms, end_ms}` objects in
     **absolute** recording time. They MUST be **coalesced** (adjacent or
     overlapping windows merge into one range), **non-overlapping**, and in
     **ascending** `start_ms` order, so a fully decoded recording records exactly
