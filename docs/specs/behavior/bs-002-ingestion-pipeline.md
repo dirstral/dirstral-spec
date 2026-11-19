@@ -298,8 +298,9 @@ deletion/tombstone semantics are in bs-008.
   excerpt. A chunk that holds a `redir_token` assignment whose value matches
   the generic bearer-token default (20 or more key characters), without the
   start of its link, is therefore left out of the results, while its document
-  stays indexed. A shorter value is no secret match, so such a chunk is
-  returned. This rule errs toward withholding; the implementation stores no
+  stays indexed. Under the default patterns a shorter value is no secret
+  match, so such a chunk is returned, unless an operator-configured secret
+  pattern matches it. This rule errs toward withholding; the implementation stores no
   allow spans.
 
 - Exclude large binaries by default:

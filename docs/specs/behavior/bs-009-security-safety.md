@@ -86,8 +86,9 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
   on its own text. An excerpt is withheld only when it holds a secret match
   that no allow match in the same excerpt cancels: for example a `redir_token`
   value of 20 or more key characters (a generic bearer-token match) without
-  the start of its link. A shorter value such as `redir_token=short` is no
-  match, so that excerpt is returned. One narrow exception: `dir2mcp_recheck_path`
+  the start of its link. Under the default patterns, a shorter value such as
+  `redir_token=short` is no match, so that excerpt is returned unless an
+  operator-configured secret pattern matches it. One narrow exception: `dir2mcp_recheck_path`
   ([bs-007](bs-007-tool-specifications.md)) accepts a path that the path rules
   exclude, so the reconcile can retire what was indexed there. It checks those
   rules before any filesystem access, does not stat, resolve or read the path,
