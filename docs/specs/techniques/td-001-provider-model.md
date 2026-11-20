@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.11.0
+- **Version:** 0.12.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -111,11 +111,11 @@ open (8.3) — never as `CONFIG_INVALID`. All other `✅` cells are statically
 valid.
 
 **Extraction is not a cell in this matrix.** Document/image *extraction-engine*
-selection (docling / docling-serve / mistral-ocr / pandoc) is a per-format,
-fidelity-ordered routing decision owned by
+selection (docling / docling-serve / mistral-ocr / pandoc / libreoffice) is a
+per-format, fidelity-ordered routing decision owned by
 [td-004](td-004-representation-extraction.md) §B.1, not a `kind`-level capability
-here: extraction fidelity is per-format and two engines (`docling`, `pandoc`)
-have no §8.1.1 provider profile. Where an extraction engine *is* an §8 surface,
+here: extraction fidelity is per-format and three engines (`docling`, `pandoc`,
+`libreoffice`) have no §8.1.1 provider profile. Where an extraction engine *is* an §8 surface,
 it binds through the corresponding capability — the `mistral` extraction engine
 is the active `ocr` provider (selected per 8.1.3), and the audio extraction path
 binds `stt` ([td-004](td-004-representation-extraction.md) §C). No
@@ -412,9 +412,59 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   `kind` carries the `stt` capability (8.1.2) qualifies.
 * Outputs MUST be normalized to the same `transcript` representation format
   regardless of provider.
+* **A response with no speech is a result, not an error (normative).** An STT
+  provider can return a well-formed response for audio that holds no speech. For
+  example, an OpenAI-compatible server returns `{"text":"","segments":[]}` for a
+  clip that holds only music or ambient sound. Such a response is a **no-speech
+  result**: a successful decode that found no speech. A response is a no-speech
+  result when all of these are true:
+  * it parses and is not malformed (the rules below);
+  * it has a text field, a segments field, or both;
+  * its text is empty or holds only whitespace (an absent text field counts
+    as empty, so `{"segments":[]}` is a no-speech result);
+  * it holds no segment whose text holds more than whitespace (zero segments
+    is the usual case).
+
+  The implementation MUST NOT treat a no-speech result as a transport or
+  provider error. It is not a failed window
+  ([td-003](td-003-transcription-translation-subtitles.md) §8.6.13), it does not
+  trigger `media.stt.on_route_error` (§8.2.4), and it does not advance a
+  candidate list (§8.2.3). A response that does not parse, or that has neither a
+  text field nor a segments field, is malformed and stays a provider error. A response is
+  also malformed when its `text` is present and not a string, when its
+  `segments` is present and not an array, or when a segment is not an object or
+  has a `text` that is present and not a string. A `words` field (top level
+  or inside a segment) that is present and not an array is also malformed; a JSON
+  `null` there counts as an absent field, because a server with an optional
+  word list sends it when word timing is off. A
+  response is also malformed
+  when a segment has a `start` or an `end` but no `text`: the decoder reports a
+  timed range of speech that the text does not hold. A response is
+  also malformed when it carries timed words (a top-level `words` array or a
+  `words` array inside a segment, with at least one entry) but no text anywhere in
+  the response (the text field and the text of every segment are absent, empty
+  or hold only whitespace): the
+  decoder reports speech that the text does not hold. A malformed response is never
+  a no-speech result, so it never becomes a durable `no_speech` skip.
+  td-003 §8.6.6 and §8.6.13 say what a no-speech result does to the transcript
+  and to the document (`no_speech`). A sidecar (td-003 §8.6.4) still replaces
+  STT, so these rules never apply to a document whose transcript comes from a
+  sidecar.
 * **Gemini** transcribes via the native `models/{model}:generateContent` surface:
   the audio is sent as an inline-data part (base64, with its MIME type) alongside
   a transcription instruction, and the model's text output is the transcript.
+  That generated text is the text field of the normalized response, and
+  normalization runs before the no-speech test above, so empty or
+  whitespace-only generated text is a no-speech result, not a malformed
+  response. A response with no candidate has no text field and is malformed.
+  A candidate with no text, or with only whitespace, that did not finish
+  normally (a `finishReason`
+  other than `STOP`, for example a safety block or a token limit) is a
+  provider error, not a no-speech result: the model did not complete the
+  transcription. This rule covers only a candidate with no text or only
+  whitespace; the handling of a candidate that holds other text and did not
+  finish normally is unchanged by
+  this version.
   Gemini's OpenAI-compatible layer exposes no `/v1/audio/transcriptions`, so the
   native surface is required (a `kind: openai` Gemini profile is therefore not
   STT-capable). The `stt_model` (default `gemini-2.5-flash`) and optional
@@ -461,6 +511,18 @@ the authoritative text.
 Spec 0.82.0 adds rules for when a route-fallback transcript is decoded again
 (`media.stt.route_retry_after`, `route_fallback_at`, `route_fallback_by`). See
 SPEC.md §8.2.4, the authoritative text.
+
+Spec 0.99.0: a no-speech result (§8.2) from the language identifier that
+reports no language is no signal, under `item` and under `window` (SPEC.md
+§8.2.3, §8.2.4). An identifier response with empty text that reports a language
+at or above the implementation's confidence floor is still a signal (a report
+below the floor is no signal, as SPEC.md §8.2.3 states): the identifier's text is discarded in any case. Under `item`,
+on no signal the default profile decodes the item. When that decode is also a
+no-speech result, the document outcome follows the conditions of td-003
+§8.6.13: the skip reason `no_speech` applies only when the document has no other
+searchable representation. Under `window`,
+resolution continues per window down the SPEC.md §8.2.3 precedence (decoder
+report, then text) and the §8.2.2 continuity rule applies.
 
 ### 8.3 Note on TTS
 
@@ -590,6 +652,7 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.12.0**: §8.2 (spec 0.99.0): a well-formed STT response with empty text and no segment that holds text is a **no-speech result**, a successful decode, not a provider error; a malformed response stays an error. §8.2.3/§8.2.4: a no-speech identifier response that reports no language is no signal. §8.1.2: the extraction-engine list names `libreoffice`. A segment with a `start` or an `end` but no `text` is malformed. The Gemini generated text is the text field of the normalized response.
 - **0.11.0**: §8.8 (spec 0.85.0): pointers to the `media.language` pin rules and
   the sampled-detection rule for a long text.
 

@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.18.0
+- **Version:** 0.19.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -156,6 +156,14 @@ makes tool-level bypass of ingestion filters impossible.
 
 **Selection rules (priority order).**
 
+Before these rules, with or without span arguments: a document skipped as
+`no_speech`
+(td-003 §8.6.6, §8.6.13) → return the **non-retryable** `MEDIA_NO_TEXT`, never
+`OCR_NOT_READY` and never empty content. A document that stays `status=ok`
+after every selected track was a no-speech result returns `MEDIA_NO_TEXT`
+where a rule below would return its transcript or `OCR_NOT_READY` for it
+(td-003 §8.6.13).
+
 1. If `page` is provided → return OCR page text (if available; else
    `DOC_TYPE_UNSUPPORTED`).
 2. Else if `start_ms`/`end_ms` provided → return the transcript excerpt (if
@@ -278,7 +286,11 @@ and `evidence` are optional.
   minor: `unsupported_format` (no extractor — e.g. `.odt`/`.rtf`, encrypted PDF,
   image outside the OCR allowlist, video with no sidecar), `binary_ignored`,
   `archive` (container or un-expanded nested member), `ignore_rule`,
-  `secret_excluded`, `path_excluded`, `size_cap`. New reasons are added only by a
+  `secret_excluded`, `path_excluded`, `size_cap`, `language_uncovered`,
+  `transcript_partial`, `symlink_ignored`, `no_speech` (media whose STT decode
+  found no speech in any selected audio track (`media.stt.tracks`; a track
+  that is not selected is not decoded), with no other searchable
+  representation; td-003 §8.6.6, §8.6.13). New reasons are added only by a
   minor version bump (additive); a client MAY receive an unrecognized value from
   a newer server and SHOULD render it verbatim rather than error. `count` is
   always **>= 1** (zero-count reasons are omitted). Implementations MAY omit the
@@ -299,7 +311,11 @@ representation, and (optionally) return segments.
 - `language` — optional source-language hint.
 - `timestamps` — boolean, default **true**.
 - `retranscribe` — boolean, default **false** (when true, re-transcribe even if
-  a transcript already exists).
+  a transcript already exists, and also when the stored result is a no-speech
+  result; td-003 §8.6.13). A recording with no speech in any selected track is a
+  success result with `indexed: false` and no segments, for both values. A
+  recording in which a selected track has a transcript returns that
+  transcript.
 
 **Behavior.** Output carries `rel_path`, `stt_provider`, `model`, `indexed`
 (required), and optional `segments[]` (`start_ms`, `end_ms`, `text` per
@@ -564,6 +580,7 @@ lifetime of the process.
 
 ## Changelog
 
+- **0.19.0**: spec 0.99.0: `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document skipped as `no_speech` (spec 0.98.0), and for a document that stays `ok` with no transcript after no speech. `dir2mcp_transcribe`: a recording with no speech is a success result with `indexed: false`; `retranscribe=true` also decodes a stored no-speech result again. The `skip_reasons` enum list names `no_speech`, and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
 - **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
   spec 0.92.0): a client asks a server in watch mode to reconcile one path
   under the root now; the call validates, classifies, enqueues and returns,

@@ -1,7 +1,7 @@
 # bs-009: Security & safety requirements
 
 - **ID:** bs-009
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -77,8 +77,18 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
   configurable via `security.secret_patterns`.
 - The exclusion engine is consulted on **every** file access, including
   `open_file` ([bs-004](bs-004-mcp-transport.md)); tool handlers MUST reject or return an
-  empty result for any path or content matching the configured patterns or path
-  excludes. One narrow exception: `dir2mcp_recheck_path`
+  empty result for any path or content that matches the secret set or the path
+  excludes. "Matches the secret set" has the meaning of
+  [bs-002](bs-002-ingestion-pipeline.md) §7.2: a generic bearer-token match
+  that a `security.secret_allow_patterns` match covers is cancelled, so a
+  document that ingestion releases is not refused here as a whole. A released
+  document can still have an excerpt refused: bs-002 §7.2 screens each excerpt
+  on its own text. An excerpt is withheld only when it holds a secret match
+  that no allow match in the same excerpt cancels: for example a `redir_token`
+  value of 20 or more key characters (a generic bearer-token match) without
+  the start of its link. Under the default patterns, a shorter value such as
+  `redir_token=short` is no match, so that excerpt is returned unless an
+  operator-configured secret pattern matches it. One narrow exception: `dir2mcp_recheck_path`
   ([bs-007](bs-007-tool-specifications.md)) accepts a path that the path rules
   exclude, so the reconcile can retire what was indexed there. It checks those
   rules before any filesystem access, does not stat, resolve or read the path,
@@ -91,6 +101,11 @@ referenced here live in [df-001](../data-formats/df-001-connection-json.md) /
 
 ## Changelog
 
+- **0.3.0** (spec 0.99.0): tool handlers refuse content that matches the
+  secret set as bs-002 §7.2 defines it: a generic bearer-token match that a
+  `security.secret_allow_patterns` match covers is cancelled. A document that
+  ingestion releases is therefore not refused here. Before this version, any
+  match of a configured pattern was refused.
 - **0.2.0** (spec 0.92.0): the sensitive-file rule names its one exception,
   `dir2mcp_recheck_path`: it accepts a path-excluded path so the reconcile can
   retire it, checks the path rules before any filesystem access, never stats,

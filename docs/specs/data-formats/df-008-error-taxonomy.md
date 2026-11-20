@@ -1,7 +1,7 @@
 # df-008: Error taxonomy (canonical codes)
 
 - **ID:** df-008
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -51,7 +51,10 @@ Each tool error returns an object with:
   completes.
 - `MEDIA_NO_TEXT` — `dir2mcp_open_file` for a `replace`-mode multimodal media
   chunk (td-002) with **no** text representation. **Non-retryable** — the gap is
-  permanent (unlike `OCR_NOT_READY`); the hit can still be cited.
+  permanent (unlike `OCR_NOT_READY`); the hit can still be cited. Also returned
+  for a document skipped as `no_speech` (td-003 §8.6.6, §8.6.13): it has no transcript,
+  and no scan produces one while the content and the STT derivation identity
+  are unchanged.
 
 ### 14.3 Index / state
 
@@ -133,6 +136,8 @@ every error.
 
 ## Changelog
 
+- **0.5.0**: spec 0.99.0: `MEDIA_NO_TEXT` is also the `dir2mcp_open_file`
+  outcome for a document skipped as `no_speech` (td-003 §8.6.6, §8.6.13). No new code.
 - **0.4.0**: added `TOOL_UNAVAILABLE` (index/state) for a tool the running
   server does not serve in its current mode, and `QUEUE_FULL` (retryable) for
   a bounded request queue that is full; both first used by

@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.15.0
+- **Version:** 0.16.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -288,7 +288,14 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
     language** mismatch.
   * Under `media.stt.language_scope: window` (SPEC.md §8.2.2) the checks MAY run
     per decoded window; a failing window is a refused range
-    (`reason: quality_gate`) and the document fails only when every window fails.
+    (`reason: quality_gate`) and the document fails only when every gated
+    window fails. A no-speech window is not gated (§8.6.13): a recording whose windows
+    are all `quality_gate` refusals or no-speech results, with at least one
+    refusal, fails. A `language_uncovered` refusal is not a gate failure; the
+    mixed-reason rule of SPEC.md §8.2.2 and §8.6.13 decides a recording that has one.
+  * The **low density** check MUST NOT count the length of a no-speech window
+    (§8.6.13) in the duration it compares the text with. A recording with one
+    window of speech and long windows of music is not degenerate output.
 * A failed gate is a **non-fatal per-document error** (bs-002 §7.7): the document
   is marked `status=error` with the appropriate code — `TRANSCRIBE_FAILED`,
   `OCR_FAILED`, or the new `TRANSLATE_FAILED` (df-008 §14.4) — and indexing
@@ -694,12 +701,133 @@ transcript exactly as it applies to an unreadable format.
   decoded at all. Text that never existed cannot be screened, so one cannot
   substitute for the other.
 
+* **The language of a window with no speech (normative).** §8.6.6 counts a
+  window that completes with no speech as decoded (`windows_decoded`, `ranges`,
+  and so `decoded_ms`). These rules add to it. A window with no speech is a
+  window whose decode is a no-speech result (SPEC.md §8.2, td-001 §8.2). It is
+  not a failed window. The no-speech decode adds no language. When SPEC.md
+  §8.2.2 resolves a language
+  for the window from another signal (a pin, or an identifier report at or
+  above the floor when the implementation has one; it need not ask the
+  identifier about a window whose decode is a no-speech result), that language is the language of the window, and the
+  continuity rule uses it as for any window. Otherwise the window has no
+  language. This rule takes precedence over the inheritance rule of
+  SPEC.md §8.2.2: that rule gives a language to a window that holds transcript
+  text and has no confident language, and a no-speech window holds none, so it
+  inherits nothing: its entry in `coverage.languages` carries its time range
+  and route and no `language`. A no-speech window never joins the
+  representation-language sum of SPEC.md §8.2.2, whatever its language. A no-speech
+  window with no resolved language does not change the continuity state: a
+  following window with
+  no confident language inherits the last language resolved before the
+  no-speech window. The low-confidence re-decode rule below does not use a
+  no-speech window.
+
 * **All windows failed is still an error.** When **no** window decodes, the
   recording produced no transcript and the existing per-document rules apply
   unchanged (bs-002 §7.7): it is a transcription failure recorded as
   `documents.status=error`, not a coverage record. The distinction is the point: a
   failure is retried on the next run, a `skip` is a decision the daemon already
-  made.
+  made. When at least one window failed and every other window is a no-speech
+  result, the outcome is also this error, because a failed window can hold
+  speech. A window that the quality gate refused
+  (§8.2.2, `reason: quality_gate`) counts as a failed window in this rule: when
+  every window is a no-speech result or a quality-gate refusal, and at least
+  one is a refusal, the outcome is this error (`TRANSCRIBE_FAILED`) and the
+  recording is retried. When the refusals of such a recording are all
+  `language_uncovered`, or of both reasons, the mixed-reason rule of §8.2.2
+  applies unchanged (`status=skipped`, `skip_reason="language_uncovered"`). A
+  window that failed (a transport or provider failure, not a refusal) takes
+  precedence over that rule: when at least one window failed and no window
+  produced transcript text, the outcome is this error and the recording is
+  retried, also when other windows are `language_uncovered` refusals or
+  no-speech results. The failed window can hold speech in a covered language.
+  When at least one window produced transcript text, this precedence does not
+  apply: the coverage rules of this section (`media.stt.min_coverage`,
+  `on_partial_transcript`) decide the outcome as before, so a
+  `transcript_partial` skip stays a skip.
+  The skip reason `no_speech` applies only when every window is a no-speech
+  result.
+
+* **No speech in a document with tracks or other representations
+  (normative).** §8.6.6 makes an item with no speech `status=skipped` with
+  `skip_reason="no_speech"`, caches the empty transcript, and re-derives it
+  only when the content or the STT identity changes. These rules add to it:
+  * A track whose decode is a no-speech result (the single request, or every
+    window of a windowed decode, with no failed window) produces no transcript
+    representation. It is not a failed track.
+  * When at least one selected track (SPEC.md §8.6.12) failed and every other
+    selected track is a no-speech result, the document is `error`, as when
+    every track failed: the failed track can hold speech, so the failure is
+    retried on the next run.
+  * The `no_speech` skip applies when every selected track (SPEC.md §8.6.12)
+    is a no-speech result and the document has no other searchable
+    representation (for example a direct media embedding, td-002). When the
+    document keeps another searchable representation, it stays `status=ok`,
+    as td-004 §B.2 rules for an absent extraction.
+  * The §8.6.6 cache guard applies per track. When the STT derivation identity
+    changes, a no-speech track that is still selected (§8.6.12) MUST be
+    decoded again on the next run; a track that is no longer selected is not
+    decoded. The guard covers only a track whose decode was a no-speech
+    result. A failed track is not covered by it.
+    When no selected track produced a transcript and at least one selected
+    track failed, the document is `error` and is processed again on the next
+    run (§8.6.12). A track that failed with a
+    transport or provider error, in a document that stays `ok` because another
+    selected track produced a transcript, is retried on the next run: the
+    implementation MUST process the document again, also with an unchanged
+    `content_hash` (bs-002 §7.6), until the track produces a transcript or a
+    no-speech result. The tracks that succeeded are read from the stored
+    results and are not decoded again. A track that the quality gate refused
+    (§8.6.6) is not retried this way, because its decode is stored and a new
+    run reads the same result. It is decoded again when the document is
+    processed again (a content change, a re-index or an identity change).
+  * `dir2mcp_transcribe` (bs-007) follows this guard. With `retranscribe=false` it
+    sends no decode request for a recording whose stored result is a no-speech
+    result for every selected track under the current STT derivation identity, and it returns a success result
+    with `indexed: false` and no segments. `retranscribe=true` is an explicit
+    request and is exempt from the guard: the implementation MUST decode the
+    recording again. When the new decode is again a no-speech result for every selected track,
+    the tool returns the same success result, and an earlier transcript is retired as
+    the rule below requires. `dir2mcp_transcribe_and_ask` (bs-007) has no `retranscribe`
+    argument and behaves as `retranscribe=false`: it sends no decode request
+    and returns no error. Its result has the shape of its schema, with
+    `transcribed: false`: the question is answered with no transcript for the
+    file, so the answer is an abstention unless other indexed text of the
+    corpus answers it.
+  * `dir2mcp_open_file` on a document that is `status=skipped` with
+    `skip_reason="no_speech"` MUST return the non-retryable `MEDIA_NO_TEXT`
+    (df-008, bs-007 `dir2mcp_open_file`), never the retryable `OCR_NOT_READY` and never empty
+    content. No later scan produces a transcript while the content and the
+    STT derivation identity are unchanged.
+    The same holds for a document that stays `status=ok` through another
+    representation after every selected track was a no-speech result: its
+    transcript is absent, not pending. A call that would return the transcript
+    (the default call on audio, or a time span that no other representation
+    answers) MUST return `MEDIA_NO_TEXT`, never `OCR_NOT_READY` and never
+    empty content. A call that another representation answers (for example
+    recognition text for a time span) is answered from it.
+  * A no-speech result of a route-fallback decode (td-001 §8.2.3) follows
+    §8.6.6: it is cached with its fallback record, and the retry conditions of
+    §8.6.7 decide when the route is tried again. A fallback window with no
+    speech, in a recording that has transcript text, keeps its `fallback_from`
+    entry and follows the window retry of td-001 §8.2.3.
+  * When an earlier run indexed a transcript for the same track (for example
+    under another model), the implementation MUST retire it, its chunks, the
+    translations derived from it and the summaries derived from it (§8.6.7), as the refusal rule below retires a refused
+    transcript.
+  * Subtitle files that write-back (§8.6.14) wrote for that track in an
+    earlier run remain. The implementation MUST NOT delete them: a no-speech
+    result of one model is not proof that the earlier subtitles are wrong,
+    and the files are in the operator's media folder. Their
+    `emitted_artifacts` rows also remain, so the files stay owned and are
+    never read as authored sidecars. A later run that produces a transcript
+    for the track rewrites them under `refresh`. An operator who wants them
+    gone removes them. A file that the implementation does not own is not
+    touched. Otherwise a player keeps showing the speech of the earlier
+    transcript.
+  * A sidecar (§8.6.4) replaces STT, so this outcome never applies to a
+    document whose transcript comes from a sidecar.
 
 * **Coverage survives the transcript cache.** An implementation that caches
   transcripts (bs-002 §7.6; §8.6.7) MUST persist the coverage alongside the
@@ -765,6 +893,7 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.16.0**: spec 0.99.0: additions to the 0.15.0 no-speech rule. §8.6.6: under window scope a no-speech window is not gated, and the low-density check does not count no-speech windows in the duration. §8.6.13: a no-speech window adds no language, never joins the representation-language sum, and with no language from another signal does not change the continuity state. A failed window or a quality-gate refusal with every other window no-speech is an error; a failed window takes precedence over the `language_uncovered` skip when no window produced transcript text. Per track: a failed track with every other selected track no-speech makes the document `error`; `no_speech` needs every selected track no-speech and no other searchable representation, else the document stays `ok`; the cache guard covers no-speech tracks only, and a track that failed with a transport or provider error in a document that stays `ok` is retried on the next run. `dir2mcp_transcribe` follows the guard with `retranscribe=false` and decodes again with `retranscribe=true` (bs-007); `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document with no transcript after no speech. An earlier transcript of the track is retired; subtitle files that write-back wrote stay.
 - **0.15.0**: spec 0.98.0: §8.6.6 **Silence is an outcome**: STT that answered with no speech (or an item with no audio track) is `status=skipped`, `skip_reason="no_speech"`, not an error; the cached empty transcript keeps it from being sent to STT again until the content or STT identity changes.
 - **0.14.0**: spec 0.96.0: §8.6.11 **Determinism** names the order `ingest.priority_list` sets (bs-002 §7.1).
 - **0.13.0**: spec 0.91.0: §8.6.10 adds the **TTML layout**:
