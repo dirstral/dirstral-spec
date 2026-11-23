@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.16.0
+- **Version:** 0.17.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -129,6 +129,37 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   is `CONFIG_INVALID`. Any other value is `CONFIG_INVALID`. The key is read only
   when translation is enabled. The prompt-side keys below (`glossary`,
   `name_hints`) apply to the `chat` engine only.
+* **A `whisper`-engine translation is decoded on the transcription schedule
+  (0.100.0).** The translate task decodes the same audio as the source
+  transcription (a video's audio track, not its container) and on the same
+  §8.6.13 schedule. When the source decode of that audio takes one request, the
+  translation takes one request. When the source decode is windowed (the audio
+  is over the provider's per-request payload cap, or the recording is longer
+  than the implementation's decode window), the translation is decoded in the
+  same overlapping windows and merged by the same rules into one English
+  transcript in absolute time. No translate request carries more audio than one
+  window, and the time limit of each request is sized to the audio it carries,
+  as for a transcription request. "One pass" above names the single
+  audio-to-English step, not a single request. An implementation MAY offer a
+  translate window of its own (to bound timestamp drift); it MAY narrow the
+  window and MUST NOT widen a request past the transcription window.
+  * A window that fails is skipped, as a failed transcription window is
+    (§8.6.13), and the translation of the decoded windows is persisted for the
+    run (a partial track is better than none). **Only a complete translation
+    is cached.** For this rule a window counts as failed when any part of it
+    failed, including one piece of a window split to fit the payload cap while
+    its other pieces decoded. A translation with any failed window MUST NOT be cached, MUST
+    record `translation_incomplete: true` in its `meta_json` (df-003 §5.2), and
+    MUST be re-derived on the next run, which MUST NOT count it as a
+    translation already present. The implementation SHOULD log the failed
+    window count. When **every** window fails, the translation failed
+    (`TRANSLATE_FAILED`, df-008 §14.4; the source transcript is not affected):
+    no translated transcript is persisted or cached, and the next run
+    translates again.
+  * The §8.6.13 `coverage` object is recorded on the source-language
+    transcript. A `whisper`-engine translation is a representation derived from
+    the same audio and records no `coverage` (absence is "no assertion",
+    df-003 §5.2); the partial-transcript floor does not apply to it.
 * **Proper-noun spelling hints (optional, off by default).** When translation
   runs on a chat provider, the operator MAY set `media.translate.name_hints:
   true`. The implementation then detects the proper nouns in each source line

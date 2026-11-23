@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.99.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.100.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -3314,6 +3314,36 @@ stable across re-indexing.
   is `CONFIG_INVALID`. Any other value is `CONFIG_INVALID`. The key is read only
   when translation is enabled. The prompt-side keys below (`glossary`,
   `name_hints`) apply to the `chat` engine only.
+* **A `whisper`-engine translation is decoded on the transcription schedule
+  (0.100.0).** The translate task decodes the same audio as the source
+  transcription (a video's audio track, not its container) and on the same
+  §8.6.13 schedule. When the source decode of that audio takes one request, the
+  translation takes one request. When the source decode is windowed (the audio
+  is over the provider's per-request payload cap, or the recording is longer
+  than the implementation's decode window), the translation is decoded in the
+  same overlapping windows and merged by the same rules into one English
+  transcript in absolute time. No translate request carries more audio than one
+  window, and the time limit of each request is sized to the audio it carries,
+  as for a transcription request. "One pass" above names the single
+  audio-to-English step, not a single request. An implementation MAY offer a
+  translate window of its own (to bound timestamp drift); it MAY narrow the
+  window and MUST NOT widen a request past the transcription window.
+  * A window that fails is skipped, as a failed transcription window is
+    (§8.6.13), and the translation of the decoded windows is persisted for the
+    run (a partial track is better than none). **Only a complete translation
+    is cached.** For this rule a window counts as failed when any part of it
+    failed, including one piece of a window split to fit the payload cap while
+    its other pieces decoded. A translation with any failed window MUST NOT be cached, MUST
+    record `translation_incomplete: true` in its `meta_json` (§5.2), and MUST be
+    re-derived on the next run, which MUST NOT count it as a translation
+    already present. The implementation SHOULD log the failed window count.
+    When **every** window fails, the translation failed (`TRANSLATE_FAILED`,
+    §14.4; the source transcript is not affected): no translated transcript is
+    persisted or cached, and the next run translates again.
+  * The §8.6.13 `coverage` object is recorded on the source-language
+    transcript. A `whisper`-engine translation is a representation derived from
+    the same audio and records no `coverage` (absence is "no assertion", §5.2);
+    the partial-transcript floor does not apply to it.
 * **Translated segment timing.** A `chat`-engine translation keeps each source
   line's timestamp marker verbatim, so a translated transcript's segments MUST
   carry the **spoken span** of the source segments they translate: the same
