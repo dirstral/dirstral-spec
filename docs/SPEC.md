@@ -3331,7 +3331,9 @@ stable across re-indexing.
   * A window that fails is skipped, as a failed transcription window is
     (§8.6.13), and the translation of the decoded windows is persisted for the
     run (a partial track is better than none). **Only a complete translation
-    is cached.** A translation with any failed window MUST NOT be cached, MUST
+    is cached.** For this rule a window counts as failed when any part of it
+    failed, including one piece of a window split to fit the payload cap while
+    its other pieces decoded. A translation with any failed window MUST NOT be cached, MUST
     record `translation_incomplete: true` in its `meta_json` (§5.2), and MUST be
     re-derived on the next run, which MUST NOT count it as a translation
     already present. The implementation SHOULD log the failed window count.
