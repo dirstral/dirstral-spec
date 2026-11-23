@@ -3329,10 +3329,15 @@ stable across re-indexing.
   translate window of its own (to bound timestamp drift); it MAY narrow the
   window and MUST NOT widen a request past the transcription window.
   * A window that fails is skipped, as a failed transcription window is
-    (§8.6.13). When **every** window fails, the translation failed
-    (`TRANSLATE_FAILED`, §14.4; the source transcript is not affected): no
-    translated transcript is persisted or cached, and the next run translates
-    again.
+    (§8.6.13), and the translation of the decoded windows is persisted for the
+    run (a partial track is better than none). **Only a complete translation
+    is cached.** A translation with any failed window MUST NOT be cached, MUST
+    record `translation_incomplete: true` in its `meta_json` (§5.2), and MUST be
+    re-derived on the next run, which MUST NOT count it as a translation
+    already present. The implementation SHOULD log the failed window count.
+    When **every** window fails, the translation failed (`TRANSLATE_FAILED`,
+    §14.4; the source transcript is not affected): no translated transcript is
+    persisted or cached, and the next run translates again.
   * The §8.6.13 `coverage` object is recorded on the source-language
     transcript. A `whisper`-engine translation is a representation derived from
     the same audio and records no `coverage` (absence is "no assertion", §5.2);
