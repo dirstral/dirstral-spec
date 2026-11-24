@@ -100,8 +100,9 @@ changes. A deployment that never imports sees no change.
   resolves to (`conflicting`), is counted and listed in the report and is never
   fatal. The §7.2 secret check applies to the record text. Applied records
   are kept in the state directory, so a `reindex` restores them; the
-  representation is a function of the record, the media duration and
-  `annotations.name_folds` only.
+  representation is a function of the source name, the record, the media
+  duration and `annotations.name_folds` only (one representation for each
+  source and document).
 - §7.11.4 **Mapping.** Each person is one annotation over the whole media
   (`[0, duration_ms]`, or the `document` span when no duration is known) with
   `entities: [<normalized person id>]`, `event: appears`, and the attributes

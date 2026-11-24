@@ -2318,8 +2318,9 @@ carries it as the attribute `content_id: "C-1001"`.
   representation without a new import. The record is removed with the
   document's tombstone (§6.6).
 * **Deterministic build.** The `editorial` representation is a function of the
-  retained record, the media duration and the configured
-  `annotations.name_folds` (§7.11.4) only. When the document's duration becomes
+  source name, the retained record, the media duration and the configured
+  `annotations.name_folds` (§7.11.4) only; one representation exists for each
+  source and document. When the document's duration becomes
   known or changes (for example after a content change), or when the folds
   change, the implementation MUST build the spans and person ids again from the
   retained record. A content
