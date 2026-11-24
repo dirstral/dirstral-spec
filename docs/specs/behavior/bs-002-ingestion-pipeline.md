@@ -751,7 +751,10 @@ matched document gets one `editorial` representation per source (df-003):
 The key resolves only to indexed audio and video documents; with `--key stem`
 it is a name prefix (the file name equals the key, or the key followed by `.`,
 `_` or `-`), and it applies to each eligible document it matches. A field
-that the record shape does not define is never fatal. A scalar extra top-level
+that the record shape does not define is not fatal, with one exception: an
+extra top-level field with a reserved name (a defined attribute name, or a
+name that starts with `match_` or `dir2mcp:`) makes the record invalid
+(SPEC.md §7.11.2). A scalar extra top-level
 field is kept as a provenance attribute under its own name, and a scalar extra
 `match` member as `match_<member>`. Every extra field in a `people` or
 `segments` item, and every extra field with a null, object or array value, is

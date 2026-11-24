@@ -2391,10 +2391,14 @@ combining mark after it (with the fold `ё=е`, `ё` before U+0306 becomes `е`
 U+0306, whose NFC is U+04D7). Step 6 covers a composed character that is a
 `<from>`: with the folds `ъ=е` and `ё=е`, `ъ` before U+0308 (which NFC does
 not compose) becomes `е` U+0308, step 5 composes `ё`, and the next pass gives
-`е`. Step 6 ends: after a fold pass no `<from>` is left, because no `<to>` is
-a `<from>`; step 4 writes only U+0020, which is not a `<from>`; so only a
-composition in step 5 can make a new `<from>`, and a composition makes the
-text shorter. The result is the stored id, and the same
+`е`. Step 6 ends. After step 3 no `<from>` is left, because no `<to>` is a
+`<from>`, and step 4 writes only U+0020, which is not a `<from>`. From the
+second pass on, step 3 starts from NFC text and writes only `<to>` characters,
+which are not combining marks and which NFC does not change, so step 5 can
+change the text only by a composition, and each composition removes one code
+point. A pass after the second changes the text only when step 5 of the pass
+before it composed. The loop therefore ends within as many passes as the text
+has code points, plus two. The result is the stored id, and the same
 function, with the same folds, is applied to a requested value before the
 comparison (§9.9). The id is the filter key; `display_name` keeps the original
 spelling. Different names for one person (aliases, transliterations) are not
