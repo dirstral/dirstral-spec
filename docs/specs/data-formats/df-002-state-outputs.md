@@ -1,7 +1,7 @@
 # df-002: State-directory outputs
 
 - **ID:** df-002
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -34,6 +34,7 @@ All state lives under `<state-dir>` (default `<root>/.dir2mcp/`):
     ocr/                        # cached OCR outputs (optional)
     transcribe/                 # cached transcripts (optional)
     annotations/                # cached annotation JSON (optional)
+  imports/                      # staged editorial imports, retained applied records, import reports (SPEC.md §7.11; layout implementation-defined)
   payments/
     pricing.snapshot.json       # effective price policy (optional)
     settlement.log              # payment verification/settlement outcomes (optional)
@@ -121,6 +122,7 @@ Fallback-path example:
 
 ## Changelog
 
+- **0.2.0**: mirrors spec 0.101.0: the `imports/` directory holds staged editorial imports, the applied records kept for rebuilds, and the import reports (SPEC.md §7.11).
 - **0.1.0** — Migrated from SPEC.md §4.1/§4.2/§4.4. Cross-referenced
   `connection.json` → df-001, `meta.sqlite` → df-003, the model profile → td-001;
   noted the snapshot MUST-not-hold-secrets rule and the df-000 `format_version`

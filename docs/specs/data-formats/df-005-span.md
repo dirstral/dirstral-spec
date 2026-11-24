@@ -1,7 +1,7 @@
 # df-005: Span
 
 - **ID:** df-005
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -76,7 +76,41 @@ require a client to read it in order to rank or filter correctly.
 
 All four fields are **optional and additive**, exactly as `speaker` is: a
 consumer that does not recognize them MUST treat the span as it did before. A
-chunk that is not a recognition annotation carries none of them.
+chunk that is not a recognition or editorial annotation carries none of them.
+
+### Editorial annotation metadata on a `time` or `document` span
+
+An `editorial` annotation (SPEC.md §7.11) is imported from an external source
+that people wrote. Its span uses the same fields as a recognition annotation,
+so the `entities`, `events`, `attributes` and `sources` filters apply to it
+unchanged:
+
+* `entities`: on a person annotation, `[<person id>]`, the normalized name
+  (SPEC.md §7.11.4); absent on a segment or description annotation;
+* `event`: `appears` (a person), `segment` (a timecoded segment) or
+  `description` (the document-level text);
+* `attributes`: `display_name` on a person annotation, and `role` when the
+  record gives one; on every annotation, each match provenance value that the
+  record has (`match_score`, `external_id`, `external_name`, `external_date`)
+  each extra scalar `match` member as `match_<member>`, and each extra
+  top-level scalar field of the record (SPEC.md §7.11.2);
+* `sources`: `[<source name>]`, always present.
+
+An `editorial` span carries no `derivation`. It is neither a reading of the
+source nor a model's description: it is authored data, and the hit's
+`rep_type: editorial` says so. A consumer MUST present it as an editor
+annotation from the named source, never as transcript text and never as model
+output.
+
+Span kinds, per annotation:
+
+* a person annotation: the whole-media `time` span `[0, duration_ms]` when the
+  media duration is known, otherwise the `document` span;
+* a segment annotation: a `time` span;
+* a description annotation: always the `document` span.
+
+The `document` span therefore also MAY carry `entities`, `event`,
+`attributes` and `sources`. SPEC.md §7.11.4 is the normative text.
 
 
 A `Span` is exactly one of five variants, selected by `kind`. Each variant is
@@ -105,6 +139,7 @@ A `Span` is exactly one of five variants, selected by `kind`. Each variant is
         "speaker": { "type": "string", "description": "Optional (td-003): stable per-transcript speaker id on a diarized transcript." },
         "speaker_label": { "type": "string", "description": "Optional human-readable speaker name (td-003)." },
         "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (bs-007 design 0004): entity ids the recognizer attributed to this span." },
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" }, "propertyNames": { "not": { "pattern": "^dir2mcp:" } }, "description": "Optional (SPEC.md §9.10): producer-defined key/value scopes of the annotation. Present in common.json since spec 0.59.0; listed here from 0.4.0." },
         "event": { "type": "string", "description": "Optional (bs-007 design 0004): the producer's event token for this span. Vocabulary is producer-defined." },
         "derivation": { "type": "string", "enum": ["observed", "generated"], "description": "Optional: whether this span records something observed or something a model generated. Absent means observed." },
         "sources": { "type": "array", "items": { "type": "string" }, "description": "Optional: the recognizers that contributed to this annotation. Producer-defined tags." }
@@ -134,7 +169,13 @@ A `Span` is exactly one of five variants, selected by `kind`. Each variant is
     },
     {
       "additionalProperties": false,
-      "properties": { "kind": { "const": "document" } },
+      "properties": {
+        "kind": { "const": "document" },
+        "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (SPEC.md §7.11): entity ids of a whole-document annotation." },
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" }, "propertyNames": { "not": { "pattern": "^dir2mcp:" } }, "description": "Optional (SPEC.md §7.11, §9.10): attributes of a whole-document annotation." },
+        "event": { "type": "string", "description": "Optional (SPEC.md §7.11): the annotation's event token." },
+        "sources": { "type": "array", "items": { "type": "string" }, "description": "Optional (SPEC.md §7.11): the annotation's sources." }
+      },
       "required": ["kind"]
     }
   ]
@@ -163,7 +204,9 @@ The `document` variant is emitted by `dir2mcp_open_file` when the requested
 `rel_path` is a binary doc type (PDF, audio) and the caller did not supply
 `page`, `start_ms`/`end_ms`, or `start_line`/`end_line`. It signals that
 `content` is the full extracted / transcript representation rather than a paged
-or timed slice.
+or timed slice. It is also the span of an `editorial` annotation with
+whole-document scope (SPEC.md §7.11.4), with the optional annotation fields
+above.
 
 ## Examples
 
@@ -175,10 +218,23 @@ or timed slice.
   "bbox": { "page": 4, "l": 72.0, "t": 90.0, "r": 523.0, "b": 410.0, "coord_origin": "TOPLEFT" },
   "section": ["VIRGIN ISLANDS", "Power to provide assistance"] }
 { "kind": "document" }
+{ "kind": "time", "start_ms": 4000, "end_ms": 72000, "event": "segment",
+  "attributes": { "match_score": "1.25", "external_id": "X-2002" },
+  "sources": ["example-catalogue"] }
+{ "kind": "document", "event": "description",
+  "attributes": { "match_score": "1.25" }, "sources": ["example-catalogue"] }
 ```
 
 ## Changelog
 
+- **0.4.0**: spec 0.101.0: the `editorial` annotation (SPEC.md §7.11) uses the
+  `time` span fields `entities`, `event`, `attributes` and `sources`, with fixed
+  events `appears`, `segment` and `description` and no `derivation`. The
+  `document` variant gains the same four optional fields, for an annotation with
+  whole-document scope. Additive: a consumer that does not recognize them treats
+  the span as before. The `time` variant block now lists `attributes`, which
+  `common.json` and SPEC.md §15.1.1 have carried since spec 0.59.0 and this
+  copy did not.
 - **0.3.0**: added the optional `time` span field `sources`, an array naming
   the recognizers that contributed to an annotation. It is not what `derivation`
   says: `derivation` reports whether an annotation records or describes, and

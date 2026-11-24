@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.8.0
+- **Version:** 0.9.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -61,7 +61,7 @@ other described the wire, without saying which was which.
 
 - `rep_id` (PK)
 - `doc_id` (FK)
-- `rep_type` (`raw_text | extracted_markdown | transcript | annotation_text | annotation_json | summary`)
+- `rep_type` (`raw_text | extracted_markdown | transcript | annotation_text | annotation_json | summary | editorial`)
 - `rep_hash` (stable; changes when the rep changes)
 - `created_unix`
 - `meta_json` (MUST include provider/model for OCR/transcription/annotation when applicable)
@@ -92,6 +92,12 @@ A **translated** transcript also records `source_language`, `translate_provider`
 identity), and optional `speakers` (the distinct speaker ids, each optionally
 with a `label`; per-segment attribution lives on the span's
 `extra_json.speaker`).
+
+**Editorial `meta_json`** (SPEC.md §7.11.4): an `editorial` representation holds
+the imported annotations of one source for one document. It records `source`,
+`key_kind`, `key`, optional `match`, `record_hash`, `imported_unix` and the
+detected-language fields, and no provider or model: it is authored data, not
+model-derived (td-003 §8.6.7).
 
 **Summary `meta_json`** — the `summary` `rep_type` and the full `meta_json`
 contract (`summary_level`, generator identity, `prompt_version` / optional
@@ -202,14 +208,17 @@ both are matchable per-language values (bs-003).
 ### 5.4 `spans` (provenance for citations)
 
 - `chunk_id` (FK)
-- `span_kind` (`lines | page | time | region`)
+- `span_kind` (`lines | page | time | region | document`)
 - `start` (integer) — `start_line` / `page` / `start_ms` / first page (region)
 - `end` (integer) — `end_line` / `page` / `end_ms` / last page (region)
 - `extra_json` (nullable) — speaker, confidence, section breadcrumb, bbox, etc.
 
-This is the at-rest form of the [df-005](df-005-span.md) `Span`. The `document`
-span kind (df-005) has no row here — it is synthesized by `open_file` when no
-finer provenance exists.
+This is the at-rest form of the [df-005](df-005-span.md) `Span`. A chunk with no
+span row is served as a `document` span (df-005), and `open_file` synthesizes
+one when no finer provenance exists. A `document` row (`start` and `end` are
+`0`) is written for an `editorial` chunk with whole-document scope, so that its
+`extra_json` can carry `entities`, `event`, `attributes` and `sources` (SPEC.md
+§7.11.4).
 
 For `time` spans on a **diarized** transcript (td-003), `extra_json` MAY carry a
 `speaker` (stable per-transcript id) and `speaker_label`; both are
@@ -297,6 +306,7 @@ and behaves exactly as before.
 
 ## Changelog
 
+- **0.9.0**: mirrors spec 0.101.0: the `editorial` `rep_type` and its `meta_json` (SPEC.md §7.11), and the `document` `span_kind`, written for an `editorial` chunk with whole-document scope so that it can carry the annotation fields. Additive; an index with no import is unchanged.
 - **0.8.0** — Added the additive `emitted_artifacts` table (§5.6) that records
   every subtitle file written by td-003 §8.6.14 write-back, so an owned output
   is never re-ingested as an authored sidecar. No change to existing tables;

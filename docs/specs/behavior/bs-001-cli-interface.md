@@ -1,7 +1,7 @@
 # bs-001: CLI interface
 
 - **ID:** bs-001
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -37,6 +37,13 @@ provider/capability profiles referenced by preflight live in
 
 - `dir2mcp config print`
   Print effective config (defaults + file + env + flags).
+
+- `dir2mcp annotate import <file.jsonl> --source <name> [--key stem|rel_path|content_hash]`
+  Validate a file of external editorial annotations and stage it in the state
+  directory. The command writes no index; the process that writes the index (the
+  running `up` daemon, or the next `up` or `reindex` run) applies it. An invalid
+  file stages nothing and exits `1`. The record shape, the key modes, the apply
+  rules and the report are SPEC.md §7.11.
 
 - `dir2mcp version`
 
@@ -112,6 +119,7 @@ provider/capability profiles referenced by preflight live in
 
 ## Changelog
 
+- **0.2.0**: mirrors spec 0.101.0: the `dir2mcp annotate import` command (SPEC.md §7.11), which validates and stages an import of external editorial annotations.
 - **0.1.0** — Migrated from SPEC.md §2. Rewired cross-references from mutable
   section numbers to stable doc IDs: §17 (secure token handling) → bs-009; §8.1
   / §8.1.1 / §8.1.3 (provider profiles, auto-selection) → td-001. Reformatted
