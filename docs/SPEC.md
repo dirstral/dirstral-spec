@@ -691,6 +691,7 @@ A **diarized** transcript (§8.6.8) additionally records:
 An `editorial` representation holds the annotations of one import source for
 one document. It is authored data, not model-derived (§8.6.7). Its `meta_json`
 records `source`, `key_kind`, `key`, optional `match`, `record_hash`,
+`name_folds`,
 `imported_unix` and the detected-language fields below, and no provider or
 model. §7.11.4 is the normative text.
 
@@ -2317,9 +2318,11 @@ carries it as the attribute `content_id: "C-1001"`.
   representation without a new import. The record is removed with the
   document's tombstone (§6.6).
 * **Deterministic build.** The `editorial` representation is a function of the
-  retained record and the media duration only. When the document's duration
-  becomes known or changes (for example after a content change), the
-  implementation MUST build the spans again from the retained record. A content
+  retained record, the media duration and the configured
+  `annotations.name_folds` (§7.11.4) only. When the document's duration becomes
+  known or changes (for example after a content change), or when the folds
+  change, the implementation MUST build the spans and person ids again from the
+  retained record. A content
   change of the document does not remove its editorial annotations.
 
 #### 7.11.4 Mapping to annotations
@@ -2369,14 +2372,37 @@ media). For a document with no known duration yet, it is the `document` span
   match score is applied at query time.
 
 **Person id normalization.** The person id is the name after these steps, in
-this order: Unicode NFC; Unicode default lower case; `ё` replaced by `е`; each
-run of white space replaced by one space; leading and trailing space removed;
-Unicode NFC again. The last step keeps the function idempotent: `ё` replaced
-by `е` before a combining mark can compose into another character (`е` with
-U+0306 is U+04D7). The result is the stored id, and the same function is
-applied to a requested value before the comparison (§9.9). The id is the
-filter key; `display_name` keeps the original spelling. Different
-names for one person (aliases, transliterations) are not merged.
+this order:
+
+1. Unicode NFC.
+2. Unicode default lower case.
+3. The character folds of `annotations.name_folds` (§16.2), when the key is
+   set. By default the list is empty, and no character is folded.
+4. Each run of white space replaced by one space; leading and trailing space
+   removed.
+5. Unicode NFC again.
+
+Step 5 keeps the result in NFC, so the function is idempotent. It is needed
+also with no fold: a lower-case mapping can give a decomposed sequence (U+0130
+becomes U+0069 U+0307), and a fold can give a character that composes with the
+combining mark after it (with the fold `ё=е`, `ё` before U+0306 becomes `е`
+U+0306, whose NFC is U+04D7). The result is the stored id, and the same
+function, with the same folds, is applied to a requested value before the
+comparison (§9.9). The id is the filter key; `display_name` keeps the original
+spelling. Different names for one person (aliases, transliterations) are not
+merged.
+
+**Character folds (optional).** `annotations.name_folds` is a list of
+`"<from>=<to>"` entries, each side one Unicode code point (for example
+`"ё=е"`). The default is an empty list, because a fold is a choice for one
+language and one corpus. The folds apply in one pass: a character that a fold
+writes is not folded again. A `<from>` is compared after step 2, so it is
+written in lower case. An entry that is not two single code points joined by
+`=`, or a second entry with the same `<from>`, is `CONFIG_INVALID`. The folds
+are part of the person id: when the configured list differs from the list that
+an `editorial` representation records (`name_folds` in `meta_json`), the
+implementation MUST build the ids again from the retained record, with no new
+import, as for a duration change (§7.11.3).
 
 **Never merged into other representations.** Editorial text MUST NOT be written
 into a transcript chunk or span, and MUST NOT change how a transcript is
@@ -2385,7 +2411,9 @@ chunked. An `editorial` chunk is its own hit, with `rep_type: editorial`.
 **`meta_json`** of the `editorial` representation records: `source` (the
 source name), `key_kind` (`stem`, `rel_path` or `content_hash`), `key` (the
 record's key value), `match` (the record's `match` object, when present),
-`record_hash` (a stable hash of the validated record), `imported_unix`, and the
+`record_hash` (a stable hash of the validated record), `imported_unix`,
+`name_folds` (the folds that built its person ids, an empty list when none),
+and the
 §5.2 detected-language fields (`language_source: declared` when the record has
 `language`, otherwise detected per §8.8). It records no provider or model.
 
@@ -2465,13 +2493,19 @@ An implementation MUST pass these cases.
    `abc_1080p.mp4` only. With a second indexed video `abc_720p.mp4` that is not
    grouped with it (§8.6.5), both videos get the annotations and the report
    counts the key in `multi_matched`.
-6. **Person filter.** After the import, `dir2mcp_search` with
-   `entities: ["Пётр Ёлкин"]` returns an `editorial` hit from each document
-   whose record lists that person, also when the record writes the name in
-   another case, with `е` in place of `ё`, or with extra white space. No
-   returned `editorial` hit comes from a document whose record does not list
-   that person (§9.9). Recognition hits are outside this case: they still match
-   their entity ids literally.
+6. **Person filter.** One record lists `Пётр Ёлкин` and another lists
+   `Петр Елкин`.
+   * With no `annotations.name_folds` (the default), `dir2mcp_search` with
+     `entities: ["Пётр Ёлкин"]` returns an `editorial` hit from the first
+     document, also when its record writes the name in another case or with
+     extra white space, and no `editorial` hit from the second document: the
+     two names are different ids.
+   * With `annotations.name_folds: ["ё=е"]`, the same query returns an
+     `editorial` hit from both documents. The change of the folds alone, with
+     no new import, rebuilds the stored ids (§7.11.4).
+   * In both runs, no returned `editorial` hit comes from a document whose
+     record lists neither name (§9.9). Recognition hits are outside this case:
+     they still match their entity ids literally.
 7. **Segment query.** A query whose text matches one segment returns that
    segment's `editorial` hit with a `time` span equal to the segment's range.
 8. **Provenance in results.** Every `editorial` hit has `rep_type: editorial`,
@@ -5945,10 +5979,11 @@ recognition capability landed; this declares what was already on the wire.
   `description` are fixed by §7.11.4.
 * **Person ids on `editorial` hits.** A requested `entities` element is compared
   with an `editorial` hit's entity ids after the §7.11.4 person id
-  normalization, so `Пётр Ёлкин` matches the id `петр елкин`. The
-  normalization is idempotent, so a requested normalized id matches too. It is
-  applied to `editorial` hits only; against a recognition hit the comparison
-  stays literal.
+  normalization, so `Пётр  Ёлкин` matches the id `пётр ёлкин`. A character fold
+  applies only when `annotations.name_folds` sets one: with `"ё=е"`,
+  `Петр Елкин` matches too. The normalization is idempotent, so a requested
+  normalized id matches too. It is applied to `editorial` hits only; against a
+  recognition hit the comparison stays literal.
 * **Multi-value semantics.** Within a field, **OR**: a hit matches if the
   annotation references **any** requested entity id, respectively if its
   `event` equals any requested value. Across the two fields, and against every
@@ -7973,6 +8008,9 @@ x402:
     enabled: false
     metadata:
       description: ""
+
+annotations:
+  name_folds: []                # §7.11.4: optional single-character folds for editorial person ids, "<from>=<to>" (for example "ё=е"); empty = none
 
 server:
   listen: "127.0.0.1:0"

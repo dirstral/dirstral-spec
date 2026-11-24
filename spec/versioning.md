@@ -65,8 +65,8 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 ## 0.101.0: import external editorial annotations
 
 One new optional CLI command, one new representation type, one new optional
-filter on `dir2mcp_search` and `dir2mcp_ask`, and new optional span fields
-(`MINOR` per the pre-1.0 policy). No existing field, default or error code
+filter on `dir2mcp_search` and `dir2mcp_ask`, new optional span fields and
+one new optional config key (`MINOR` per the pre-1.0 policy). No existing field, default or error code
 changes. A deployment that never imports sees no change.
 
 - §7.11 (new; bs-002 points to it) **External editorial annotation import.**
@@ -110,8 +110,14 @@ changes. A deployment that never imports sees no change.
   `document` span. Every annotation carries `sources: [<source name>]` and the
   attributes `match_score`, `external_id`, `external_name`, `external_date` when
   the record has them, each extra scalar `match` member as `match_<member>`,
-  and each extra top-level scalar field under its own name. Person id: NFC, lower case, `ё` to `е`, white space collapsed and
-  trimmed, then NFC again (so the function is idempotent); no alias merging.
+  and each extra top-level scalar field under its own name. Person id: NFC, lower case, white space collapsed and trimmed, then NFC
+  again (so the function is idempotent); no alias merging. No character is
+  folded by default. The new optional key `annotations.name_folds` (§16.2,
+  bs-011; default empty) lists single-character folds such as `"ё=е"`, applied
+  after lower case at import and to the requested filter value. The folds are
+  part of the person id: the representation records them in `meta_json`
+  (`name_folds`), and a change of the key rebuilds the ids from the retained
+  records with no new import.
 - §5.2, §1.1 (df-003) **`editorial` rep_type.** Authored data in the sidecar
   trust class: no derivation identity, never re-derived by a model change
   (§8.6.7, td-003), and never merged into a transcript chunk or span. §5.4: a
@@ -143,7 +149,7 @@ changes. A deployment that never imports sees no change.
 - `spec/tools/schemas/common.json` (`Span`), `search.json` and `ask.json`
   (`sources`; descriptions of `entities`, `events`, `attributes`) change.
   `spec/errors/taxonomy.md` is unchanged.
-- Mirrors: bs-001 0.2.0, bs-002 0.10.0, bs-003 0.5.0, bs-007 0.20.0, df-002
+- Mirrors: bs-001 0.2.0, bs-002 0.10.0, bs-003 0.5.0, bs-007 0.20.0, bs-011 0.21.0, df-002
   0.2.0, df-003 0.9.0, df-005 0.4.0, df-007 0.12.0, df-009 0.4.0, td-003 0.18.0.
 - Motivation: dir2mcp#1187. An archive keeps a hand-written editor
   description for each asset: the programme and date, presenters, guests with

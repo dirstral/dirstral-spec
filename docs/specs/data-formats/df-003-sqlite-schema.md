@@ -95,7 +95,8 @@ with a `label`; per-segment attribution lives on the span's
 
 **Editorial `meta_json`** (SPEC.md §7.11.4): an `editorial` representation holds
 the imported annotations of one source for one document. It records `source`,
-`key_kind`, `key`, optional `match`, `record_hash`, `imported_unix` and the
+`key_kind`, `key`, optional `match`, `record_hash`, `imported_unix`,
+`name_folds` (the folds that built its person ids) and the
 detected-language fields, and no provider or model: it is authored data, not
 model-derived (td-003 §8.6.7).
 
