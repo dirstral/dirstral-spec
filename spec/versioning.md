@@ -117,7 +117,10 @@ changes. A deployment that never imports sees no change.
   after lower case at import and to the requested filter value. The folds are
   part of the person id: the representation records them in `meta_json`
   (`name_folds`), and a change of the key rebuilds the ids from the retained
-  records with no new import.
+  records with no new import. A chain (`a=b`, `b=c`), a duplicate `<from>`, or
+  a side that lower case or NFC changes is `CONFIG_INVALID`; with a fold set,
+  the steps after lower case repeat until the text does not change, so a
+  stored id always matches itself as a filter.
 - §5.2, §1.1 (df-003) **`editorial` rep_type.** Authored data in the sidecar
   trust class: no derivation identity, never re-derived by a model change
   (§8.6.7, td-003), and never merged into a transcript chunk or span. §5.4: a

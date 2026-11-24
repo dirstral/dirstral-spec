@@ -2381,12 +2381,18 @@ this order:
 4. Each run of white space replaced by one space; leading and trailing space
    removed.
 5. Unicode NFC again.
+6. When a fold is set and step 5 changed the text, steps 3 to 5 again, until
+   the text does not change.
 
 Step 5 keeps the result in NFC, so the function is idempotent. It is needed
 also with no fold: a lower-case mapping can give a decomposed sequence (U+0130
 becomes U+0069 U+0307), and a fold can give a character that composes with the
 combining mark after it (with the fold `ё=е`, `ё` before U+0306 becomes `е`
-U+0306, whose NFC is U+04D7). The result is the stored id, and the same
+U+0306, whose NFC is U+04D7). Step 6 covers a composed character that is a
+`<from>` (with the folds `x=е` and `ё=е`, `x` before U+0308 becomes `ё`).
+Step 6 ends: a pass that composes nothing changes nothing on the next pass,
+because no `<to>` is a `<from>`, and a pass that composes makes the text
+shorter. The result is the stored id, and the same
 function, with the same folds, is applied to a requested value before the
 comparison (§9.9). The id is the filter key; `display_name` keeps the original
 spelling. Different names for one person (aliases, transliterations) are not
@@ -2397,8 +2403,18 @@ merged.
 `"ё=е"`). The default is an empty list, because a fold is a choice for one
 language and one corpus. The folds apply in one pass: a character that a fold
 writes is not folded again. A `<from>` is compared after step 2, so it is
-written in lower case. An entry that is not two single code points joined by
-`=`, or a second entry with the same `<from>`, is `CONFIG_INVALID`. The folds
+written in lower case. These entries are `CONFIG_INVALID`, because each one
+would let a second normalization change a stored id, and a filter for that id
+would then miss it:
+
+* an entry that is not two single code points joined by `=`;
+* a second entry with the same `<from>`;
+* a `<from>` or a `<to>` that Unicode default lower case or NFC changes;
+* a `<to>` that is the `<from>` of another entry (a chain such as `a=b`,
+  `b=c`).
+
+With these rules and step 6, the person id normalization is idempotent for
+every valid list. The single fold `"ё=е"` is valid. The folds
 are part of the person id: when the configured list differs from the list that
 an `editorial` representation records (`name_folds` in `meta_json`), the
 implementation MUST build the ids again from the retained record, with no new
@@ -2503,6 +2519,8 @@ An implementation MUST pass these cases.
    * With `annotations.name_folds: ["ё=е"]`, the same query returns an
      `editorial` hit from both documents. The change of the folds alone, with
      no new import, rebuilds the stored ids (§7.11.4).
+   * `annotations.name_folds: ["a=b", "b=c"]` and `["ё=Е"]` are each
+     `CONFIG_INVALID` at load (a chain; a `<to>` that lower case changes).
    * In both runs, no returned `editorial` hit comes from a document whose
      record lists neither name (§9.9). Recognition hits are outside this case:
      they still match their entity ids literally.
