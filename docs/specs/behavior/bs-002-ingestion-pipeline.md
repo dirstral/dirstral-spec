@@ -751,9 +751,11 @@ matched document gets one `editorial` representation per source (df-003):
 The key resolves only to indexed audio and video documents; with `--key stem`
 it is a name prefix (the file name equals the key, or the key followed by `.`,
 `_` or `-`), and it applies to each eligible document it matches. A field
-that the record shape does not define is never fatal: a scalar one is kept as a
-provenance attribute (a `match` member as `match_<member>`), and any other one
-is ignored and reported by its path. A re-import replaces that source's annotations on each document the
+that the record shape does not define is never fatal. A scalar extra top-level
+field is kept as a provenance attribute under its own name, and a scalar extra
+`match` member as `match_<member>`. Every extra field in a `people` or
+`segments` item, and every extra field with a null, object or array value, is
+ignored and reported by its path (SPEC.md §7.11.2). A re-import replaces that source's annotations on each document the
 file names (idempotent). A key that matches no document, or only documents
 that are not eligible, is counted and listed in the import report, never
 fatal. Editorial annotations are authored data in the

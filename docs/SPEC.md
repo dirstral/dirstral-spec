@@ -2466,9 +2466,12 @@ An implementation MUST pass these cases.
    grouped with it (§8.6.5), both videos get the annotations and the report
    counts the key in `multi_matched`.
 6. **Person filter.** After the import, `dir2mcp_search` with
-   `entities: ["Пётр Ёлкин"]` returns hits from each document whose record
-   lists that person, written in any case, with `ё` or `е`, or with extra white
-   space, and from no other document (§9.9).
+   `entities: ["Пётр Ёлкин"]` returns an `editorial` hit from each document
+   whose record lists that person, also when the record writes the name in
+   another case, with `е` in place of `ё`, or with extra white space. No
+   returned `editorial` hit comes from a document whose record does not list
+   that person (§9.9). Recognition hits are outside this case: they still match
+   their entity ids literally.
 7. **Segment query.** A query whose text matches one segment returns that
    segment's `editorial` hit with a `time` span equal to the segment's range.
 8. **Provenance in results.** Every `editorial` hit has `rep_type: editorial`,
