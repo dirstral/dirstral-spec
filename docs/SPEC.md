@@ -2381,18 +2381,20 @@ this order:
 4. Each run of white space replaced by one space; leading and trailing space
    removed.
 5. Unicode NFC again.
-6. When a fold is set and step 5 changed the text, steps 3 to 5 again, until
-   the text does not change.
+6. When a fold is set and steps 3 to 5 changed the text, steps 3 to 5 again,
+   until the text does not change.
 
 Step 5 keeps the result in NFC, so the function is idempotent. It is needed
 also with no fold: a lower-case mapping can give a decomposed sequence (U+0130
 becomes U+0069 U+0307), and a fold can give a character that composes with the
 combining mark after it (with the fold `ё=е`, `ё` before U+0306 becomes `е`
 U+0306, whose NFC is U+04D7). Step 6 covers a composed character that is a
-`<from>` (with the folds `x=е` and `ё=е`, `x` before U+0308 becomes `ё`).
-Step 6 ends: a pass that composes nothing changes nothing on the next pass,
-because no `<to>` is a `<from>`, and a pass that composes makes the text
-shorter. The result is the stored id, and the same
+`<from>`: with the folds `ъ=е` and `ё=е`, `ъ` before U+0308 (which NFC does
+not compose) becomes `е` U+0308, step 5 composes `ё`, and the next pass gives
+`е`. Step 6 ends: after a fold pass no `<from>` is left, because no `<to>` is
+a `<from>`; step 4 writes only U+0020, which is not a `<from>`; so only a
+composition in step 5 can make a new `<from>`, and a composition makes the
+text shorter. The result is the stored id, and the same
 function, with the same folds, is applied to a requested value before the
 comparison (§9.9). The id is the filter key; `display_name` keeps the original
 spelling. Different names for one person (aliases, transliterations) are not
@@ -2410,6 +2412,8 @@ would then miss it:
 * an entry that is not two single code points joined by `=`;
 * a second entry with the same `<from>`;
 * a `<from>` or a `<to>` that Unicode default lower case or NFC changes;
+* a `<from>` or a `<to>` that is white space or a combining mark (general
+  category `M`);
 * a `<to>` that is the `<from>` of another entry (a chain such as `a=b`,
   `b=c`).
 
@@ -2519,8 +2523,12 @@ An implementation MUST pass these cases.
    * With `annotations.name_folds: ["ё=е"]`, the same query returns an
      `editorial` hit from both documents. The change of the folds alone, with
      no new import, rebuilds the stored ids (§7.11.4).
-   * `annotations.name_folds: ["a=b", "b=c"]` and `["ё=Е"]` are each
-     `CONFIG_INVALID` at load (a chain; a `<to>` that lower case changes).
+   * With `annotations.name_folds: ["ъ=е", "ё=е"]`, a record that lists
+     `ъ` U+0308 gets the id `е`, and a filter for that stored id returns its
+     `editorial` hit (step 6, §7.11.4).
+   * `annotations.name_folds: ["a=b", "b=c"]`, `["ё=Е"]` and `["x= "]` are
+     each `CONFIG_INVALID` at load (a chain; a `<to>` that lower case changes;
+     a white-space side).
    * In both runs, no returned `editorial` hit comes from a document whose
      record lists neither name (§9.9). Recognition hits are outside this case:
      they still match their entity ids literally.
