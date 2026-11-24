@@ -1,7 +1,7 @@
 # td-003: Transcription, translation & subtitles
 
 - **ID:** td-003
-- **Version:** 0.17.0
+- **Version:** 0.18.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -376,6 +376,8 @@ df-003 SQLite schema; the timed provenance coordinate is the df-005 `Span`
   STT provider/model derivation identity and MUST NOT be invalidated by an STT
   model change. (A change to the sidecar file itself still re-ingests via the
   mtime gate, §8.6.4.)
+* **`editorial` representations are NOT model-derived**, as a sidecar
+  transcript is not. SPEC.md §7.11 and §8.6.7 are the normative text.
 * **A route-fallback transcript** (spec 0.82.0): the rules for when a cached
   route-fallback transcript is decoded again are in SPEC.md §8.2.4 and §8.6.7,
   the authoritative text.
@@ -924,6 +926,7 @@ configuration keys are listed in bs-011 §16.2.
 
 ## Changelog
 
+- **0.18.0**: spec 0.101.0: §8.6.7 states that imported `editorial` representations (SPEC.md §7.11) are not model-derived, as a sidecar transcript is not, and that their text never enters a transcript.
 - **0.16.0**: spec 0.99.0: additions to the 0.15.0 no-speech rule. §8.6.6: under window scope a no-speech window is not gated, and the low-density check does not count no-speech windows in the duration. §8.6.13: a no-speech window adds no language, never joins the representation-language sum, and with no language from another signal does not change the continuity state. A failed window or a quality-gate refusal with every other window no-speech is an error; a failed window takes precedence over the `language_uncovered` skip when no window produced transcript text. Per track: a failed track with every other selected track no-speech makes the document `error`; `no_speech` needs every selected track no-speech and no other searchable representation, else the document stays `ok`; the cache guard covers no-speech tracks only, and a track that failed with a transport or provider error in a document that stays `ok` is retried on the next run. `dir2mcp_transcribe` follows the guard with `retranscribe=false` and decodes again with `retranscribe=true` (bs-007); `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document with no transcript after no speech. An earlier transcript of the track is retired; subtitle files that write-back wrote stay.
 - **0.15.0**: spec 0.98.0: §8.6.6 **Silence is an outcome**: STT that answered with no speech (or an item with no audio track) is `status=skipped`, `skip_reason="no_speech"`, not an error; the cached empty transcript keeps it from being sent to STT again until the content or STT identity changes.
 - **0.14.0**: spec 0.96.0: §8.6.11 **Determinism** names the order `ingest.priority_list` sets (bs-002 §7.1).

@@ -1,7 +1,7 @@
 # df-007: Tool input/output JSON schemas
 
 - **ID:** df-007
-- **Version:** 0.11.0
+- **Version:** 0.12.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -78,6 +78,7 @@ the `Span` definition was already correct. `search.json`/`ask.json` `$ref`
 
 ## Changelog
 
+- **0.12.0**: spec 0.101.0: `common.json` `Span`: the `document` variant gains the optional `entities`, `attributes`, `event` and `sources` (an `editorial` annotation with whole-document scope, SPEC.md §7.11), and the `time` field descriptions name `editorial` annotations. `search.json` and `ask.json` gain the optional `sources` filter (SPEC.md §9.11), and their `entities`, `events` and `attributes` descriptions name `editorial` annotations. Additive.
 - **0.11.0**: `stats.json` `skip_reasons[].reason` enum gains `no_speech` (spec 0.98.0, td-003 §8.6.6): audio or video whose STT answered with no speech, or which has no audio track. Additive and closed-per-minor as before, so a client MAY receive it from a newer server and SHOULD render it verbatim.
 - **0.10.0**: added `recheck_path.json` (`dir2mcp_recheck_path`, SPEC §15.13,
   spec 0.92.0): input `rel_path` (required) and `recursive` (default `true`);

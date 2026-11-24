@@ -1,7 +1,7 @@
 # bs-007: Tool specifications (behavior)
 
 - **ID:** bs-007
-- **Version:** 0.19.0
+- **Version:** 0.20.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -71,6 +71,9 @@ input-validation, and provider codes in df-008 apply across all tools.
   eligible and are kept iff their span **overlaps** the window (inclusive).
   Absent ⇒ open on that side. `time_from_ms` > `time_to_ms` is `INVALID_FIELD`;
   a window matching nothing is an empty result, not an error. Full contract: §9.8.
+- `sources`: optional; restricts hits to annotations whose span `sources`
+  contains a requested value. Full contract: SPEC.md §9.11. The annotation
+  filters also apply to `editorial` hits (SPEC.md §7.11, §9.9, §9.10).
 
 **Behavior.** Output carries `query`, `k`, `index_used`, `hits[]`, and
 `indexing_complete` (the latter three plus `query` are required).
@@ -106,6 +109,8 @@ result `content[]` MUST include at least one `text` item summarizing results
   **contexts** to an intra-document media time window (millisecond offsets within
   a document's timeline, §5.4), same value forms and semantics as
   `dir2mcp_search`.
+- `sources`: optional; restricts retrieved **contexts** the same way as
+  `dir2mcp_search`. Full contract: SPEC.md §9.11.
 
 **Behavior.** Output MAY carry a top-level `evidence` verdict of the eligible
 set behind the answer (`strong | sufficient | insufficient | unknown`, SPEC
@@ -580,6 +585,7 @@ lifetime of the process.
 
 ## Changelog
 
+- **0.20.0**: spec 0.101.0: `dir2mcp_search` and `dir2mcp_ask` take the optional `sources` filter (SPEC.md §9.11), and the annotation filters apply to imported `editorial` annotations (SPEC.md §7.11).
 - **0.19.0**: spec 0.99.0: `dir2mcp_open_file` returns `MEDIA_NO_TEXT` for a document skipped as `no_speech` (spec 0.98.0), and for a document that stays `ok` with no transcript after no speech. `dir2mcp_transcribe`: a recording with no speech is a success result with `indexed: false`; `retranscribe=true` also decodes a stored no-speech result again. The `skip_reasons` enum list names `no_speech`, and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have (the schema already had them).
 - **0.18.0**: added `dir2mcp_recheck_path` (optional extension, SPEC §15.13,
   spec 0.92.0): a client asks a server in watch mode to reconcile one path

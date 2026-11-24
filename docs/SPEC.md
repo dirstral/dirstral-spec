@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.100.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.101.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -92,6 +92,8 @@ Current high-level status:
   - `annotation_text` (flattened `key: value` text derived from annotation_json)
   - `summary` (model-generated coarse view over a document or a window of
     adjacent fine units, for coarse-to-fine retrieval; §5.2, §9.7)
+  - `editorial` (annotations that people wrote outside dir2mcp and that an
+    operator imported: people, timecoded segments, a description; §7.11)
 - **Chunk**: span of a representation used for embedding and retrieval.
 - **Span**: provenance coordinates for citations: line range, page number, or time range.
 
@@ -174,6 +176,10 @@ until that document is marked **Stable**.
 
 - `dir2mcp config print`  
   Print effective config (defaults + file + env + flags).
+
+- `dir2mcp annotate import <file.jsonl> --source <name> [--key stem|rel_path|content_hash]`  
+  Validate a file of external editorial annotations and stage it in the state
+  directory. The process that writes the index applies it (§7.11).
 
 - `dir2mcp version`
 
@@ -268,7 +274,7 @@ Emit NDJSON (one JSON object per line), schema:
 {
   "ts": "2026-02-25T12:34:56.789Z",
   "level": "info|warn|error",
-  "event": "index_loaded|server_started|connection|scan_progress|embed_progress|file_error|file_skip|payment_required|payment_verified|payment_settled|payment_failed|fatal",
+  "event": "index_loaded|server_started|connection|scan_progress|embed_progress|file_error|file_skip|payment_required|payment_verified|payment_settled|payment_failed|editorial_import_staged|editorial_import_applied|fatal",
   "data": {}
 }
 ```
@@ -282,6 +288,9 @@ Required events for `up`:
 * `file_error` for per-document failures (non-fatal)
 * `file_skip` for per-document skips (never-indexed documents)
 * if x402 is enabled: `payment_required`, `payment_verified`, `payment_settled`, `payment_failed`
+* when an editorial import is applied: `editorial_import_applied` (§7.11.5)
+
+`dir2mcp annotate import --json` emits `editorial_import_staged` (§7.11.1).
 
 `file_error` is emitted **per document**, at `level: "error"`, once for each
 document set to `status="error"` during ingest. It MUST NOT be used to report a
@@ -393,6 +402,7 @@ All state lives under `<state-dir>` (default `<root>/.dir2mcp/`).
     ocr/                        # cached OCR outputs (optional)
     transcribe/                 # cached transcripts (optional)
     annotations/                # cached annotation JSON (optional)
+  imports/                      # staged editorial imports, retained applied records, import reports (§7.11; layout implementation-defined)
   payments/
     pricing.snapshot.json       # effective price policy (optional)
     settlement.log              # payment verification/settlement outcomes (optional)
@@ -614,7 +624,7 @@ The exact SQL types may vary; semantics must match.
 
 * `rep_id` (PK)
 * `doc_id` (FK)
-* `rep_type` (`raw_text|extracted_markdown|transcript|annotation_text|annotation_json|summary`)
+* `rep_type` (`raw_text|extracted_markdown|transcript|annotation_text|annotation_json|summary|editorial`)
 * `rep_hash` (stable; changes when rep changes)
 * `created_unix`
 * `meta_json` (must include provider/model for OCR/transcription/annotations when applicable)
@@ -675,6 +685,15 @@ A **diarized** transcript (§8.6.8) additionally records:
   the transcript (e.g. `["S1", "S2"]`), each optionally paired with a
   human-readable `label`. The per-segment attribution lives on the segment span's
   `extra_json.speaker` (§5.4).
+
+**Editorial meta_json requirements (§7.11)**
+
+An `editorial` representation holds the annotations of one import source for
+one document. It is authored data, not model-derived (§8.6.7). Its `meta_json`
+records `source`, `key_kind`, `key`, optional `match`, `record_hash`,
+`name_folds`,
+`imported_unix` and the detected-language fields below, and no provider or
+model. §7.11.4 is the normative text.
 
 **Summary meta_json requirements (hierarchical retrieval, §9.7)**
 
@@ -828,7 +847,7 @@ matchable per-language values (§9.5).
 ### 5.4 `spans` (provenance for citations)
 
 * `chunk_id` (FK)
-* `span_kind` (`lines|page|time|region`)
+* `span_kind` (`lines|page|time|region|document`)
 * `start` (integer)  # start_line / page / start_ms / page (region)
 * `end` (integer)    # end_line / page / end_ms / page (region)
 * `extra_json` (nullable)  # speaker, confidence, section breadcrumb, bbox, etc.
@@ -841,8 +860,15 @@ MUST treat the span as un-attributed (degrade to a flat transcript citation).
 Diarization is **off by default** and **provider-dependent** (§8.6.8); a
 non-diarized transcript carries no `speaker` field.
 
+The `document` span kind records whole-document scope: `start` and `end` are
+`0`. It is written for `editorial` chunks that have no time range (§7.11.4). A
+chunk with no span row is still served as a `document` span (df-005).
+
 For `time` spans produced by the **recognition** capability, `extra_json` MAY
-carry `entities`, `event`, `derivation` and `sources`. **df-005 is the source of
+carry `entities`, `event`, `derivation` and `sources`. For `time` and
+`document` spans of an `editorial` chunk (§7.11.4), `extra_json` carries
+`entities` (people only), `event`, `attributes` and `sources`, and never
+`derivation`. **df-005 is the source of
 truth for all four**, including the normative rule that a consumer MUST NOT present a
 `generated` annotation as the source's own account of what happened. They are
 optional and additive in the same way `speaker` is above.
@@ -2130,6 +2156,397 @@ any caller.
 * **Selection.** The active CorpusFS is chosen by `source.kind` (§7.8, §16.2);
   `local` is the default. No new config surface is introduced by this
   subsection — `source:` (§16.2) already declares the backing store.
+
+### 7.11 External editorial annotation import (optional)
+
+An operator MAY import annotations that people wrote outside dir2mcp about a
+document: the people in it with their roles, timecoded segments, and a written
+description. A typical source is the catalogue of a media asset management
+system. The import adds one representation of type `editorial` (§5.2) to each
+matched document. It is an optional command: a deployment that never imports
+sees no change.
+
+**Trust class.** Editorial annotations are authored data, in the same trust
+class as a subtitle sidecar (§8.6.4, §8.6.7). They carry no model derivation
+identity. A provider, model or prompt change never invalidates or re-derives
+them. They are not the document's own content and not model output: a consumer
+MUST present them as an editor annotation from the named source (§9.3), never as
+transcript text and never as a recognizer's reading. An `editorial` span carries
+no `derivation` field (df-005).
+
+#### 7.11.1 Command
+
+```
+dir2mcp annotate import <file.jsonl> --source <name> [--key stem|rel_path|content_hash]
+```
+
+* `<file.jsonl>` is a UTF-8 file with one JSON object per line (§7.11.2). Blank
+  lines are ignored.
+* `--source <name>` (required) names the source. The name is free text, 1 to 128
+  characters, with no control characters. It is recorded on every annotation
+  (§7.11.4) and is what the source filter matches (§9.11). The contract assigns
+  no meaning to any source name.
+* `--key` selects the record field that identifies the document (default
+  `stem`):
+  * `stem`: a name prefix. A document matches when its file name (the last
+    path segment of `rel_path`, extension included) equals the key, or starts
+    with the key followed by one of the separators `.`, `_` or `-`. So the key
+    `abc` matches `abc.mp4`, `abc_1080p.mp4` and `abc-en.mp3`, and does not
+    match `abcd.mp4` or `x_abc.mp4`. The comparison is exact (case-sensitive,
+    no normalization).
+  * `rel_path`: the document's `rel_path` (§5.1), exactly.
+  * `content_hash`: the document's stored `content_hash` (§5.1), exactly.
+
+  **Eligible documents.** A key resolves only to eligible documents: documents
+  that are not deleted, have `doc_type` `audio` or `video`, and are indexed
+  (`status=ok`). A skipped, ignored or failed file, and any other document
+  type, is never annotated, even when its name matches. A key that resolves to
+  an alias document (§7.9) applies to its canonical document. Renditions
+  grouped under §8.6.5 count as one document, the canonical rendition. When a
+  key matches more than one eligible document (separate renditions, for
+  example), the record applies to each of them, and the report counts the key
+  as `multi_matched` (§7.11.5).
+* The global flags apply (§2.2), so `--state-dir` selects the state directory
+  and `--json` selects NDJSON output (§3.2).
+
+**Validate, then stage.** The command validates the whole file first. When any
+record is invalid, it stages nothing, lists each invalid line by line number
+with a reason, and exits `1`. When every record is valid, it writes the
+validated records to the state directory (`imports/`, §4.1) as one staged
+import, with an atomic write, and exits `0`. The command MUST NOT write
+`meta.sqlite` or a vector index. It MAY read the index to print a preview of the
+counts that §7.11.5 defines; the preview is not the final report, because the
+document set can change before the import is applied. With `--json` it emits one
+`editorial_import_staged` event (§3.2) with `source`, `key`, `records`,
+`ignored_fields` (§7.11.5) and, when it read the index, the preview counts.
+
+**One writer.** The process that writes the index applies a staged import: the
+running `up` daemon, or the next `up` or `reindex` run when no daemon runs. A
+running daemon MUST apply a staged import without a restart, no later than its
+next scan pass. Staged imports are applied one at a time, in staging order.
+After the apply step, the staged file is removed.
+
+#### 7.11.2 Record shape
+
+Each line is one JSON object. The field names are generic. A producer maps its
+own names to them before the import.
+
+| Field | Type | Rule |
+|---|---|---|
+| `stem`, `rel_path` or `content_hash` | string | Required: the field that `--key` names, non-empty. |
+| `source` | string | Optional. When present, it MUST equal `--source`. |
+| `match` | object | Optional provenance of the match to an external record: `score` (number), `external_id` (string), `external_name` (string), `external_date` (string, `YYYY-MM-DD`). Each member is optional. Other members follow the extra-field rule below. |
+| `language` | string | Optional BCP-47 tag of the record's text. |
+| `header` | string | Optional title line, for example the programme name. |
+| `people` | array | Optional. Each item is `{ "name": string, "role": string }`. `name` is required and non-empty after trimming. `role` is optional free text. |
+| `topics` | array of strings | Optional. |
+| `segments` | array | Optional. Each item is `{ "t": string or number, "text": string }`. `text` is required and non-empty after trimming. |
+| `description` | string | Optional. The editor's full text. |
+| any other top-level field | string, number or boolean | Optional. Kept as a provenance attribute under its own name (§7.11.4). Never interpreted. |
+
+* `t` is a start offset from the start of the media: a string `HH:MM:SS`,
+  `MM:SS` or `SS`, each with an optional fraction `.f` to `.fff`, or a
+  non-negative JSON number of seconds. A string with a separator other than `:`
+  or `.` is invalid. The producer converts other notations before the import.
+* A record is invalid when a defined field has the wrong type, a required
+  field is missing or empty, `source` differs from `--source`, or `t` does not
+  parse.
+* **Extra fields are never fatal.** A field that the table does not define
+  never makes a record invalid, at any level. A scalar value is written as an
+  attribute string: a number in the shortest decimal form that reads back as
+  the same number, a boolean as `true` or `false`, a string as written.
+  * An extra top-level field with a string, number or boolean value is kept as
+    a provenance attribute under its own name on every annotation of the
+    record.
+  * An extra member of `match` with a string, number or boolean value is kept
+    as a provenance attribute under the name `match_<member>` on every
+    annotation of the record (for example `asset_id` becomes
+    `match_asset_id`).
+  * An extra field with a null, object or array value (top level or in
+    `match`), and every extra field in a `people` item or a `segments` item, is
+    ignored.
+  * Each ignored field is reported by its path, with the number of records
+    that had it: for example `extra`, `match.notes`, `people[].x`,
+    `segments[].y` (`ignored_fields`, §7.11.5).
+* **Reserved names.** An extra top-level field whose name is a defined
+  attribute name (`role`, `display_name`, `external_id`, `external_name`,
+  `external_date`), starts with `match_`, or starts with `dir2mcp:` makes the
+  record invalid, because it would overwrite or forge a defined or derived
+  value. An extra `match` member whose name starts with `dir2mcp:` is ignored
+  and reported.
+* Two records in one file with the same key value make the file invalid.
+* A record with no `header`, `people`, `topics`, `segments` and `description`
+  content is valid. Applied, it removes the source's annotations from the
+  document (§7.11.3).
+
+Example (illustration only; one record is one line):
+
+```json
+{"stem": "0123456789abcdef0123456789abcdef01234567", "source": "example-catalogue", "content_id": "C-1001", "match": {"score": 1.25, "external_id": "X-2002", "external_name": "Example_Show_Episode_01", "external_date": "2001-01-01"}, "header": "Пример передачи", "people": [{"name": "Пётр Ёлкин", "role": "инженер"}], "topics": ["погода"], "segments": [{"t": "00:00:04", "text": "Прогноз погоды на неделю"}], "description": "<the editor's full text>"}
+```
+
+Here `content_id` is an extra top-level field: each annotation of the record
+carries it as the attribute `content_id: "C-1001"`.
+
+#### 7.11.3 Apply semantics
+
+* **Key resolution.** For each record, the apply step resolves the key against
+  the eligible documents (§7.11.1). A record resolves to one or more eligible
+  documents and applies to each, or it resolves to none. A key with no
+  eligible match is `unmatched` when it matches no document at all, and
+  `non_media_only` when it matches only documents that are not eligible (a
+  skipped file, a file that is not audio or video, or media not indexed yet).
+  When two records of one import resolve to the same document, neither is
+  applied to that document, and both keys are `conflicting`. Each of these
+  cases is counted and listed in the report (§7.11.5) and is never fatal. A
+  record with no eligible match is not retained; a later import applies it
+  once the document is indexed.
+* **Full replace per source and document (idempotent).** For each document that a
+  record resolves to, the apply step replaces every `editorial` annotation of
+  that source on that document with the annotations built from the record
+  (§7.11.4). The replace is atomic per document: a reader sees the old set or
+  the new set, never a mix. Annotations of other sources, and documents that no
+  record names, are not changed. To import the same file again gives the same
+  representation, chunks, spans and attributes. When the built annotations equal
+  the stored ones, an implementation SHOULD NOT rewrite or embed them again.
+* **Secret check.** The §7.2 secret-pattern check applies to the record's text.
+  A record that matches is not applied, and the report lists its key as
+  `withheld`.
+* **Retained for rebuilds.** The implementation MUST keep each applied record
+  per (source, document) in the state directory, so that a full rebuild
+  (`reindex`) and a document that is processed again restore the `editorial`
+  representation without a new import. The record is removed with the
+  document's tombstone (§6.6).
+* **Deterministic build.** The `editorial` representation is a function of the
+  source name, the retained record, the media duration and the configured
+  `annotations.name_folds` (§7.11.4) only; one representation exists for each
+  source and document. When the document's duration becomes
+  known or changes (for example after a content change), or when the folds
+  change, the implementation MUST build the spans and person ids again from the
+  retained record. A content
+  change of the document does not remove its editorial annotations.
+
+#### 7.11.4 Mapping to annotations
+
+One record gives one `editorial` representation per (document, source). Each
+annotation is one chunk with one span, `index_kind=text`, embedded and
+BM25-indexed like any text chunk. The span carries the df-005 annotation fields
+(`entities`, `event`, `attributes`, `sources`), so the filters of §9.9, §9.10
+and §9.11 apply to it unchanged.
+
+**Document scope.** "Whole media" is the `time` span `[0, duration_ms]` when the
+document's duration is known (§5.2 transcript `duration_ms`, or a probe of the
+media). For a document with no known duration yet, it is the `document` span
+(df-005), which carries the same annotation fields.
+
+* **People.** Each `people` item gives one annotation over the whole media.
+  * `entities`: `[<person id>]`, the normalized name (below).
+  * `event`: `appears`. The value says only that the person is part of the
+    document. Their part in it (guest, presenter, subject) is not recorded here.
+  * `attributes`: `display_name` (the name as written, trimmed) and `role` (the
+    editor's free-text job title or description, trimmed; omitted when absent or
+    empty).
+  * chunk text: `<display_name>, <role>`, or `<display_name>` with no role.
+  Two items with the same person id in one record give one annotation; the
+  first item's display name and the non-empty roles in record order, joined
+  with `; `, are kept.
+* **Segments.** The segments are sorted by start offset (a stable sort). Each
+  segment gives one annotation over `[t, next)`, where `next` is the start of
+  the next segment with a greater offset, and the last segment ends at the media
+  end. Offsets are rounded to the nearest millisecond. A segment that starts at
+  or after a known duration is dropped and counted (`segments_dropped`). When
+  the duration is not known, the last segment ends at its own start (a
+  zero-length span) until the duration is known (§7.11.3).
+  * `event`: `segment`; no `entities`.
+  * chunk text: the segment's `text`, trimmed.
+* **Description.** `header`, then `topics` (one per line), then `description`,
+  separated by blank lines, form one document-level text. It is chunked by the
+  §7.5 text rules. Each of its chunks carries the `document` span with `event`
+  `description`. It is absent when all three are empty.
+* **Provenance on every annotation.** `sources` is `[<source name>]`.
+  `attributes` also carry, when the record has them: `match_score` (the score as
+  the shortest decimal string that reads back as the same number, for example
+  `1.25`), `external_id`, `external_name` and `external_date`, each extra
+  scalar member of `match` as `match_<member>`, and each extra top-level scalar
+  field of the record under its own name (§7.11.2). These are
+  ordinary §9.10 attributes, so they are filterable by equality. No minimum
+  match score is applied at query time.
+
+**Person id normalization.** The person id is the name after these steps, in
+this order:
+
+1. Unicode NFC.
+2. Unicode default lower case.
+3. The character folds of `annotations.name_folds` (§16.2), when the key is
+   set. By default the list is empty, and no character is folded.
+4. Each run of white space replaced by one space; leading and trailing space
+   removed.
+5. Unicode NFC again.
+6. When a fold is set and steps 3 to 5 changed the text, steps 3 to 5 again,
+   until the text does not change.
+
+Step 5 keeps the result in NFC, so the function is idempotent. It is needed
+also with no fold: a lower-case mapping can give a decomposed sequence (U+0130
+becomes U+0069 U+0307), and a fold can give a character that composes with the
+combining mark after it (with the fold `ё=е`, `ё` before U+0306 becomes `е`
+U+0306, whose NFC is U+04D7). Step 6 covers a composed character that is a
+`<from>`: with the folds `ъ=е` and `ё=е`, `ъ` before U+0308 (which NFC does
+not compose) becomes `е` U+0308, step 5 composes `ё`, and the next pass gives
+`е`. Step 6 ends. After step 3 no `<from>` is left, because no `<to>` is a
+`<from>`, and step 4 writes only U+0020, which is not a `<from>`. From the
+second pass on, step 3 starts from NFC text and writes only `<to>` characters,
+which are not combining marks and which NFC does not change, so step 5 can
+change the text only by a composition, and each composition removes one code
+point. A pass after the second changes the text only when step 5 of the pass
+before it composed. The loop therefore ends within as many passes as the text
+has code points, plus two. The result is the stored id, and the same
+function, with the same folds, is applied to a requested value before the
+comparison (§9.9). The id is the filter key; `display_name` keeps the original
+spelling. Different names for one person (aliases, transliterations) are not
+merged.
+
+**Character folds (optional).** `annotations.name_folds` is a list of
+`"<from>=<to>"` entries, each side one Unicode code point (for example
+`"ё=е"`). The default is an empty list, because a fold is a choice for one
+language and one corpus. The folds apply in one pass: a character that a fold
+writes is not folded again. A `<from>` is compared after step 2, so it is
+written in lower case. These entries are `CONFIG_INVALID`, because each one
+would let a second normalization change a stored id, and a filter for that id
+would then miss it:
+
+* an entry that is not two single code points joined by `=`;
+* a second entry with the same `<from>`;
+* a `<from>` or a `<to>` that Unicode default lower case or NFC changes;
+* a `<from>` or a `<to>` that is white space or a combining mark (general
+  category `M`);
+* a `<to>` that is the `<from>` of another entry (a chain such as `a=b`,
+  `b=c`).
+
+With these rules and step 6, the person id normalization is idempotent for
+every valid list. The single fold `"ё=е"` is valid. The folds
+are part of the person id: when the configured list differs from the list that
+an `editorial` representation records (`name_folds` in `meta_json`), the
+implementation MUST build the ids again from the retained record, with no new
+import, as for a duration change (§7.11.3).
+
+**Never merged into other representations.** Editorial text MUST NOT be written
+into a transcript chunk or span, and MUST NOT change how a transcript is
+chunked. An `editorial` chunk is its own hit, with `rep_type: editorial`.
+
+**`meta_json`** of the `editorial` representation records: `source` (the
+source name), `key_kind` (`stem`, `rel_path` or `content_hash`), `key` (the
+record's key value), `match` (the record's `match` object, when present),
+`record_hash` (a stable hash of the validated record), `imported_unix`,
+`name_folds` (the folds that built its person ids, an empty list when none),
+and the
+§5.2 detected-language fields (`language_source: declared` when the record has
+`language`, otherwise detected per §8.8). It records no provider or model.
+
+#### 7.11.5 Import report
+
+The apply step records a report for each staged import in the state directory
+(`imports/`, §4.1) and emits one `editorial_import_applied` event (§3.2) with
+the same data:
+
+* `source`, `key`, `records`, `applied_unix`;
+* `applied` (documents written) and `annotations` (annotations written);
+* the counts `unmatched` (the key matches no document), `non_media_only` (the
+  key matches only documents that are not eligible, §7.11.1), `conflicting`
+  and `withheld`, each with its full key list: `unmatched_keys`,
+  `non_media_only_keys`, `conflicting_keys`, `withheld_keys`;
+* `multi_matched`, the count of keys applied to more than one document;
+* `ignored_fields`, the path of each extra field that was ignored (§7.11.2),
+  for example `people[].x`, each with the number of records that had it;
+* `segments_dropped`.
+
+The event level is `warn` when `unmatched`, `non_media_only`, `conflicting` or
+`withheld` is non-zero, otherwise `info`.
+
+#### 7.11.6 Out of scope
+
+* Segment-aware chunking of the transcript (the transcript chunks do not follow
+  editorial segments).
+* Merging person aliases into one entity; a role per entity (one person as
+  guest in one document and as presenter in another).
+* A minimum-confidence query filter. `match_score` is an attribute only.
+* Rights and licensing data.
+* A command that removes a whole source. A record with no content removes the
+  source from one document (§7.11.2).
+
+#### 7.11.7 Privacy (non-normative)
+
+Imported names can include private persons, not only public figures: people
+heard in a news item, for example. The import adds names and job titles as
+text and adds no biometric data. The names reach every client that can search
+the corpus, and every copy of the index. An operator should confirm that they
+may process the names in the source before an import, and should restrict
+access to a corpus that holds them.
+
+#### 7.11.8 Conformance cases (normative)
+
+An implementation MUST pass these cases.
+
+1. **Import shape.** A file with one valid record and one record with a
+   `people` item that has no `name` stages nothing and exits `1` with the line
+   number of the invalid record. The same file without the invalid record
+   stages one import and exits `0`, and `meta.sqlite` is unchanged until the
+   apply step. A record with an extra top-level field `content_id: "C-1001"`,
+   an extra `match` member `asset_id: "A-7"` and an extra field `x` in a
+   `people` item is valid: each of its annotations carries the attributes
+   `content_id: "C-1001"` and `match_asset_id: "A-7"`, and the report lists
+   `people[].x` in `ignored_fields` with a count of 1. A record with a
+   top-level field `match_note` is invalid.
+2. **Mapping.** A record with two people, three segments at `00:00:00`,
+   `00:01:00` and `00:02:30`, a header and a description, applied to a video of
+   `00:03:00`, gives two `appears` annotations over `[0, 180000]`, three
+   `segment` annotations over `[0, 60000]`, `[60000, 150000]` and
+   `[150000, 180000]`, and description chunks with a `document` span. Every
+   span carries `sources: [<source>]` and the record's `match_score`.
+3. **Idempotent re-import.** Importing the same file twice gives the same
+   representation, chunk texts, spans and attributes as one import. Importing a
+   changed record for one document replaces that source's annotations on that
+   document only; another source's annotations on it, and the annotations of
+   documents the file does not name, are unchanged.
+4. **Unknown key.** A record whose key matches no document is counted as
+   `unmatched` and its key is listed in `unmatched_keys`. A record whose key
+   matches only a skipped non-media file is counted as `non_media_only` and
+   listed in `non_media_only_keys`. The other records are applied, and the
+   apply step does not fail.
+5. **Name prefix and eligibility.** With `--key stem` and the key `abc`, a
+   corpus holding the indexed video `abc_1080p.mp4`, the skipped file
+   `abc_thumb.bin` and the indexed video `abcd.mp4` gives annotations on
+   `abc_1080p.mp4` only. With a second indexed video `abc_720p.mp4` that is not
+   grouped with it (§8.6.5), both videos get the annotations and the report
+   counts the key in `multi_matched`.
+6. **Person filter.** One record lists `Пётр Ёлкин` and another lists
+   `Петр Елкин`.
+   * With no `annotations.name_folds` (the default), `dir2mcp_search` with
+     `entities: ["Пётр Ёлкин"]` returns an `editorial` hit from the first
+     document, also when its record writes the name in another case or with
+     extra white space, and no `editorial` hit from the second document: the
+     two names are different ids.
+   * With `annotations.name_folds: ["ё=е"]`, the same query returns an
+     `editorial` hit from both documents. The change of the folds alone, with
+     no new import, rebuilds the stored ids (§7.11.4).
+   * With `annotations.name_folds: ["ъ=е", "ё=е"]`, a record that lists
+     `ъ` U+0308 gets the id `е`, and a filter for that stored id returns its
+     `editorial` hit (step 6, §7.11.4).
+   * `annotations.name_folds: ["a=b", "b=c"]`, `["ё=Е"]` and `["x= "]` are
+     each `CONFIG_INVALID` at load (a chain; a `<to>` that lower case changes;
+     a white-space side).
+   * In both runs, no returned `editorial` hit comes from a document whose
+     record lists neither name (§9.9). Recognition hits are outside this case:
+     they still match their entity ids literally.
+7. **Segment query.** A query whose text matches one segment returns that
+   segment's `editorial` hit with a `time` span equal to the segment's range.
+8. **Provenance in results.** Every `editorial` hit has `rep_type: editorial`,
+   a span with `sources` equal to `[<source>]` and, when the record had a score,
+   `attributes.match_score`; its citation renders as an editor annotation
+   (§9.3). On a corpus where no recognizer tag equals the source name, the
+   source filter (§9.11) with the source name returns only that source's hits.
+9. **No editorial text in a transcript.** After the import, no transcript chunk
+   or transcript span of the document contains editorial text or editorial span
+   fields, and the transcript chunks are the same as before the import.
 
 ---
 
@@ -3628,6 +4045,10 @@ stable across re-indexing.
   STT provider/model derivation identity and MUST NOT be invalidated by an STT
   model change. (A change to the sidecar file itself still re-ingests via the
   mtime gate, §8.6.4.)
+* **`editorial` representations are NOT model-derived** (§7.11). They are in the
+  sidecar trust class: no derivation identity, and no provider, model or prompt
+  change invalidates them. Only a new import of the same source for the document
+  replaces them, and a duration change rebuilds their spans (§7.11.3).
 * **A route-fallback transcript is provisional.** A transcript, or a window of
   one, that the default profile decoded after a route candidate failed
   (§8.2.4, `route_fallback_from` or `coverage.languages[].fallback_from`) has
@@ -4799,6 +5220,14 @@ Each hit includes:
   * `page` (page)
   * `time` (start_ms/end_ms; on a diarized transcript MAY also carry
     `speaker`/`speaker_label`, §8.6.8)
+  * `document` (whole-document scope, for example an `editorial` description
+    chunk, §7.11.4)
+
+An `editorial` hit (§7.11) carries `rep_type: editorial`, and its span carries
+`sources` and, when present, `attributes` (with `match_score`, `external_id`,
+`external_name`, `external_date`). These fields are its provenance: a client
+uses them to tell an editor annotation from transcript text and from model
+output.
 
 **Cross-file de-duplication.** When `dedup.retrieval: true`, search MUST collapse
 candidate hits whose source documents belong to the same duplicate group (§7.9)
@@ -4839,6 +5268,14 @@ Within answers, citations must be rendered as:
   (§8.6.8) the speaker MAY be appended, e.g.
   `[interview.mp4@t=02:13-02:41 › S2]`; the base form is used when no speaker is
   present.
+* editorial annotation (§7.11): the base form of the span, then
+  ` › editor annotation (<source>, match <score>)`, where `<source>` is the
+  span's `sources` entry and `<score>` its `match_score` attribute. A time span
+  renders as `[news.mp4@t=00:04-01:12 › editor annotation (example-catalogue, match 1.25)]`;
+  a `document` span renders as `[news.mp4 › editor annotation (example-catalogue, match 1.25)]`.
+  Without a score the part `, match <score>` is left out. An `editorial` hit
+  MUST NOT be rendered as a transcript citation alone, because that presents
+  editor text as words spoken in the media.
 
 ### 9.4 RAG generation
 
@@ -5556,7 +5993,8 @@ and existing callers that never send them observe no change.
 
 `dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept **optional**
 `entities` and `events`, each an array of strings, restricting hits to those
-derived from a recognition annotation (design 0004) that matches. Absent or
+derived from a recognition annotation (design 0004) or an `editorial`
+annotation (§7.11) that matches. Absent or
 empty means no filtering on that field, so existing callers observe no change.
 
 Promoted from design 0004 §7, where it shipped as a proposed delta "at
@@ -5568,15 +6006,23 @@ recognition capability landed; this declares what was already on the wire.
   against the annotation's `event`. The wire's `event` is a free-form
   backend-declared string, so this filter defines **no vocabulary** and MUST
   NOT constrain one: `pitch` and `at_bat` are the reference backend's values,
-  not normative ones.
+  not normative ones. The `editorial` values `appears`, `segment` and
+  `description` are fixed by §7.11.4.
+* **Person ids on `editorial` hits.** A requested `entities` element is compared
+  with an `editorial` hit's entity ids after the §7.11.4 person id
+  normalization, so `Пётр  Ёлкин` matches the id `пётр ёлкин`. A character fold
+  applies only when `annotations.name_folds` sets one: with `"ё=е"`,
+  `Петр Елкин` matches too. The normalization is idempotent, so a requested
+  normalized id matches too. It is applied to `editorial` hits only; against a
+  recognition hit the comparison stays literal.
 * **Multi-value semantics.** Within a field, **OR**: a hit matches if the
   annotation references **any** requested entity id, respectively if its
   `event` equals any requested value. Across the two fields, and against every
   other filter, **AND**. So `entities=[team:x]` with `events=[at_bat]` is a
   role-exact selection that entity ids alone cannot express.
-* **Eligibility.** Only hits derived from a recognition annotation carry
-  entities and an event. A hit from any other representation does **not**
-  match a non-empty filter, mirroring how the media time-window filter (§9.8)
+* **Eligibility.** Only hits derived from a recognition annotation or an
+  `editorial` annotation carry entities and an event. A hit from any other
+  representation does **not** match a non-empty filter, mirroring how the media time-window filter (§9.8)
   admits only time-spanned hits.
 * **Unknown values are empty, not errors.** An id or event value that exists
   nowhere in the corpus matches nothing and returns an empty result set,
@@ -5617,8 +6063,8 @@ ingestion and be recoverable per annotation, exactly as the annotation's
 entities and `event` must; persisting the annotation text alone is not
 conforming, because it makes this filter unimplementable and silently discards
 data the backend computed. "Recoverable" has a defined wire surface: when the
-annotation carries attributes, a recognition-derived hit's `span` MUST include
-that `attributes` map (§15.1.1 shared `Span`), mirroring how `entities` and
+annotation carries attributes, a recognition-derived or `editorial` hit's
+`span` MUST include that `attributes` map (§15.1.1 shared `Span`), mirroring how `entities` and
 `event` surface there; the property is omitted only when the annotation has no
 attributes. A MAY here would let a server accept the filter and hide the very
 values it filtered by, so a client could never render or verify the scope.
@@ -5640,9 +6086,9 @@ acceptable values:
   listed value. **Across keys, and against every other filter: AND.**
 * **Values match literally**, case-sensitively, as strings. An annotation that
   lacks a requested KEY does not match.
-* **Eligibility.** Only hits derived from a recognition annotation carry
-  attributes; a hit from any other representation never matches a non-empty
-  filter (mirrors §9.8, §9.9).
+* **Eligibility.** Only hits derived from a recognition annotation or an
+  `editorial` annotation (§7.11.4) carry attributes; a hit from any other
+  representation never matches a non-empty filter (mirrors §9.8, §9.9).
 * **Unknown values are not errors, and they do not poison the OR.** A value
   that exists nowhere in the corpus simply matches nothing; a matching sibling
   value under the same key still returns its hits. Only a filter whose every
@@ -5658,6 +6104,33 @@ Ranges are deliberately out of scope: values match by equality only, and
 have types and comparison semantics, and the tool for "a contiguous stretch of
 the timeline" already exists (§9.8); a producer whose scopes map to time
 already MUST emit accurate spans (Design 0004).
+
+### 9.11 Annotation source filter (optional)
+
+`dir2mcp_search` (§15.2) and `dir2mcp_ask` (§15.3) MAY accept an **optional**
+`sources` argument, an array of strings, that restricts hits to annotations
+whose span `sources` (df-005) contains a requested value. Its main use is to
+select or isolate an imported editorial source (§7.11); it applies to
+recognition annotations in the same way.
+
+* **Values match literally**, case-sensitively, against each entry of the
+  span's `sources`. Absent or empty disables the filter.
+* **Within the field: OR.** A hit matches when its `sources` contains ANY
+  requested value. **Against every other filter: AND.**
+* **Eligibility.** Only annotation-derived hits (recognition or `editorial`)
+  carry `sources`; any other hit never matches a non-empty filter (mirrors
+  §9.9, §9.10).
+* **Unknown values are empty, not errors** (mirrors §9.9).
+* **Pipeline placement.** Candidate-selection, before dedup, rerank and
+  truncation to `k`, exactly as §9.9. It removes candidates only.
+
+An editorial source name and a recognizer tag share this one namespace, and
+the filter does not tell them apart: a value equal to both returns the
+editorial hits and the recognition hits that carry it. The guarantee "only
+that import source's hits" holds when no recognizer tag in the corpus equals
+the source name. An operator SHOULD NOT name an import source after a
+recognizer tag that the same corpus uses. A client that must isolate editorial
+hits also checks `rep_type: editorial` (§9.2).
 
 ---
 
@@ -6050,7 +6523,13 @@ All schemas are JSON Schema (draft-agnostic, compatible with common validators).
     },
     {
       "additionalProperties": false,
-      "properties": { "kind": { "const": "document" } },
+      "properties": {
+        "kind": { "const": "document" },
+        "entities": { "type": "array", "items": { "type": "string" }, "description": "Optional (§7.11): entity ids of a whole-document annotation." },
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" }, "propertyNames": { "not": { "pattern": "^dir2mcp:" } }, "description": "Optional (§7.11, §9.10): key/value attributes of a whole-document annotation." },
+        "event": { "type": "string", "description": "Optional (§7.11): the annotation's event token." },
+        "sources": { "type": "array", "items": { "type": "string" }, "description": "Optional (§7.11, df-005): the annotation's sources, for example the editorial import source name." }
+      },
       "required": ["kind"]
     }
   ]
@@ -6070,7 +6549,9 @@ The `document` variant is emitted by `dir2mcp_open_file` when the requested
 `rel_path` is a binary doc type (PDF, audio) and the caller did not supply
 `page`, `start_ms/end_ms`, or `start_line/end_line`. It signals that
 `content` is the full OCR / transcript representation rather than a paged or
-timed slice.
+timed slice. It is also the span of an `editorial` annotation with
+whole-document scope (§7.11.4), which carries the optional annotation fields
+`entities`, `event`, `attributes` and `sources`.
 
 #### 15.1.2 `Hit`
 
@@ -7558,6 +8039,9 @@ x402:
     enabled: false
     metadata:
       description: ""
+
+annotations:
+  name_folds: []                # §7.11.4: optional single-character folds for editorial person ids, "<from>=<to>" (for example "ё=е"); empty = none
 
 server:
   listen: "127.0.0.1:0"

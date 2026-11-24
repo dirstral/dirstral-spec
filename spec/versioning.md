@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.100.0`
+**Current spec version:** `0.101.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,109 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.101.0: import external editorial annotations
+
+One new optional CLI command, one new representation type, one new optional
+filter on `dir2mcp_search` and `dir2mcp_ask`, new optional span fields and
+one new optional config key (`MINOR` per the pre-1.0 policy). No existing field, default or error code
+changes. A deployment that never imports sees no change.
+
+- §7.11 (new; bs-002 points to it) **External editorial annotation import.**
+  `dir2mcp annotate import <file.jsonl> --source <name> [--key stem|rel_path|content_hash]`
+  validates a JSONL file of per-document annotations that people wrote outside
+  dir2mcp and stages it in the state directory (`imports/`). An invalid record
+  stages nothing (exit `1`, each bad line listed); a record is invalid only
+  when a defined field is missing, empty or of the wrong type. A field that the
+  shape does not define is never fatal: a scalar top-level field is kept as a
+  provenance attribute under its own name (for example `content_id`), a scalar
+  extra `match` member as `match_<member>` (for example `match_asset_id`), and
+  every other extra field (a non-scalar value, or any field in a `people` or
+  `segments` item) is ignored and reported by its path with a count
+  (`ignored_fields`, for example `people[].x`). A top-level extra field named
+  after a defined attribute, or starting with `match_` or `dir2mcp:`, is
+  invalid.
+  The process that writes the index (the running daemon, or the next `up` or
+  `reindex` run) applies it, so one process writes the index. The record shape
+  is generic: the key field, optional `source`, optional `match` (`score`,
+  `external_id`, `external_name`, `external_date`), optional `language`,
+  `header`, `people[{name, role}]`, `topics[]`, `segments[{t, text}]` and
+  `description`.
+- §7.11.3 **Apply rules.** A re-import is a full replace of that source's
+  annotations on each document the file names (idempotent, atomic per
+  document). With `--key stem` the key is a name prefix: a file name equal to
+  the key, or the key followed by `.`, `_` or `-` (`<key>_1080p.mp4`). A key
+  resolves only to indexed (`status=ok`) audio or video documents; it applies
+  to each such document it matches (`multi_matched` in the report). A key that
+  matches no document (`unmatched`), only documents that are not eligible
+  (`non_media_only`), or a document that another record of the import also
+  resolves to (`conflicting`), is counted and listed in the report and is never
+  fatal. The §7.2 secret check applies to the record text. Applied records
+  are kept in the state directory, so a `reindex` restores them; the
+  representation is a function of the source name, the record, the media
+  duration and `annotations.name_folds` only (one representation for each
+  source and document).
+- §7.11.4 **Mapping.** Each person is one annotation over the whole media
+  (`[0, duration_ms]`, or the `document` span when no duration is known) with
+  `entities: [<normalized person id>]`, `event: appears`, and the attributes
+  `role` and `display_name`. Each segment is one annotation over `[t, next t)`,
+  the last one to the media end, with `event: segment`. Header, topics and
+  description form one document-level text with `event: description` and a
+  `document` span. Every annotation carries `sources: [<source name>]` and the
+  attributes `match_score`, `external_id`, `external_name`, `external_date` when
+  the record has them, each extra scalar `match` member as `match_<member>`,
+  and each extra top-level scalar field under its own name. Person id: NFC, lower case, white space collapsed and trimmed, then NFC
+  again (so the function is idempotent); no alias merging. No character is
+  folded by default. The new optional key `annotations.name_folds` (§16.2,
+  bs-011; default empty) lists single-character folds such as `"ё=е"`, applied
+  after lower case at import and to the requested filter value. The folds are
+  part of the person id: the representation records them in `meta_json`
+  (`name_folds`), and a change of the key rebuilds the ids from the retained
+  records with no new import. A chain (`a=b`, `b=c`), a duplicate `<from>`, or
+  a side that lower case or NFC changes, or that is white space or a combining
+  mark, is `CONFIG_INVALID`; with a fold set, the steps after lower case
+  repeat until the text does not change, so a stored id always matches itself
+  as a filter.
+- §5.2, §1.1 (df-003) **`editorial` rep_type.** Authored data in the sidecar
+  trust class: no derivation identity, never re-derived by a model change
+  (§8.6.7, td-003), and never merged into a transcript chunk or span. §5.4: a
+  `document` `span_kind` row (`start` and `end` `0`) carries the annotation
+  fields of a whole-document `editorial` chunk.
+- §9.2, §9.3 (bs-003) **Provenance and citation.** An `editorial` hit has
+  `rep_type: editorial`, and its span carries `sources` and the match
+  attributes. It is cited as
+  `[path@t=<start>-<end> › editor annotation (<source>, match <score>)]`, never as
+  a transcript citation alone.
+- §9.9, §9.10 (bs-003, bs-007) **Filters apply to `editorial` hits.** An
+  `entities` value is compared with an `editorial` hit's person ids after the
+  §7.11.4 normalization (recognition hits stay literal). New §9.11 **`sources`
+  filter** (optional): restricts hits to annotations whose span `sources`
+  contains a requested value; OR within, AND across, literal, candidate
+  selection. Source names and recognizer tags share one namespace, so an
+  operator should not name a source after a recognizer tag.
+- §15.1.1 (df-005) **Span.** The `document` variant gains the optional
+  `entities`, `attributes`, `event` and `sources`. df-005 also lists the
+  `time` field `attributes`, which `common.json` had since 0.59.0.
+- §2.1 (bs-001), §3.2 (df-009), §4.1 (df-002): the command, the
+  `editorial_import_staged` and `editorial_import_applied` NDJSON events, and
+  the `imports/` state directory.
+- §7.11.6 **Out of scope:** segment-aware chunking of the transcript, entity
+  alias merging and a role per entity, a minimum-confidence query filter
+  (`match_score` is an attribute only), rights data, and removal of a whole
+  source. §7.11.7 is a non-normative privacy note (imported names can include
+  private persons). §7.11.8 lists the normative conformance cases.
+- `spec/tools/schemas/common.json` (`Span`), `search.json` and `ask.json`
+  (`sources`; descriptions of `entities`, `events`, `attributes`) change.
+  `spec/errors/taxonomy.md` is unchanged.
+- Mirrors: bs-001 0.2.0, bs-002 0.10.0, bs-003 0.5.0, bs-007 0.20.0, bs-011 0.21.0, df-002
+  0.2.0, df-003 0.9.0, df-005 0.4.0, df-007 0.12.0, df-009 0.4.0, td-003 0.18.0.
+- Motivation: dir2mcp#1187. An archive keeps a hand-written editor
+  description for each asset: the programme and date, presenters, guests with
+  job titles, topics and, for news blocks, timecoded segments. These
+  descriptions were matched to the archive videos outside dir2mcp. They belong
+  next to the transcripts, so search can filter by person and land on the right
+  segment, with their provenance kept apart from transcript text and model
+  output.
 
 ## 0.100.0: a `whisper`-engine translation is decoded on the transcription schedule
 

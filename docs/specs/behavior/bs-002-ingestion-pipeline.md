@@ -1,7 +1,7 @@
 # bs-002: Ingestion pipeline
 
 - **ID:** bs-002
-- **Version:** 0.9.0
+- **Version:** 0.10.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -728,6 +728,43 @@ any caller.
   `local` is the default. No new config surface is introduced by this subsection —
   `source:` (bs-011) already declares the backing store.
 
+### 7.11 External editorial annotation import (optional)
+
+SPEC.md §7.11 is the normative text; this section names its rules. An operator
+MAY import annotations that people wrote outside dir2mcp (people with roles,
+timecoded segments, a description) with `dir2mcp annotate import` (bs-001). The
+command validates and stages the file in the state directory (df-002); the
+process that writes the index applies it, so one process writes the index. Each
+matched document gets one `editorial` representation per source (df-003):
+
+- each person is one annotation over the whole media, with `entities` set to
+  the normalized person id, `event` `appears`, the attribute `display_name`,
+  and the attribute `role` when the record gives one;
+- each segment is one annotation over `[t, next t)`, the last one to the media
+  end, with `event` `segment`;
+- header, topics and description form one document-level text with `event`
+  `description` and a `document` span (df-005);
+- every annotation carries `sources: [<source name>]`, and each match
+  provenance attribute (`match_score`, `external_id`, `external_name`,
+  `external_date`) that the record has; an absent one is omitted.
+
+The key resolves only to indexed audio and video documents; with `--key stem`
+it is a name prefix (the file name equals the key, or the key followed by `.`,
+`_` or `-`), and it applies to each eligible document it matches. A field
+that the record shape does not define is not fatal, with one exception: an
+extra top-level field with a reserved name (a defined attribute name, or a
+name that starts with `match_` or `dir2mcp:`) makes the record invalid
+(SPEC.md §7.11.2). A scalar extra top-level
+field is kept as a provenance attribute under its own name, and a scalar extra
+`match` member as `match_<member>`. Every extra field in a `people` or
+`segments` item, and every extra field with a null, object or array value, is
+ignored and reported by its path (SPEC.md §7.11.2). A re-import replaces that source's annotations on each document the
+file names (idempotent). A key that matches no document, or only documents
+that are not eligible, is counted and listed in the import report, never
+fatal. Editorial annotations are authored data in the
+sidecar trust class (td-003 §8.6.7): no derivation identity, never re-derived
+by a model change, and never merged into a transcript chunk or span.
+
 ## Examples
 
 **Symlink under root (§7.1, follow enabled).** A symlink `docs/latest →
@@ -748,6 +785,7 @@ re-indexes it.
 
 ## Changelog
 
+- **0.10.0** (§7.11): mirrors spec 0.101.0: a new section names the external editorial annotation import (`dir2mcp annotate import`) and points to SPEC.md §7.11 for the rules.
 - **0.9.0** (§7.2, §7.3, §7.6, §7.7): mirrors spec 0.99.0. §7.2: a new `security.secret_allow_patterns` list cancels a secret match that an allow match covers; its default releases only the `redir_token` parameter of a YouTube redirect link, so a pasted redirect link no longer withholds a document, while the generic bearer-token default stays broad. The `sk-` hyphenated-key default is now listed, and it and the `sk_`/`api_` default get a left boundary (a URL slug such as `...krasnoyarsk-...` no longer matches). New normative regression fixtures (must hit and must not hit). A change of the effective pattern set makes the next scan evaluate each `secret_excluded` document again, and withholds an indexed document that the new set matches. §7.3: a clarification that lists video containers and decides `.ts`/`.mts` by content (an MPEG transport stream is `video`). §7.7: the coverage report names `libreoffice` and the `.doc` remediation. §7.7 also states that the next scan processes a document at `status=error` again. §7.6: a classification change processes a document again; a no-speech track whose STT identity changed and a track that failed in a document that stays `ok` are processed again; when a document is next processed, the transcripts and chunks of a track that `media.stt.tracks` no longer selects are retired.
 - **0.8.0** (§7.1): mirrors spec 0.97.0: a `*` line in `ingest.priority_list` stands for every file no other line covers, at that line's place.
 - **0.7.0** (§7.1): mirrors spec 0.96.0: `ingest.priority_list` names files to process first, in the file's line order; every other file follows in relative-path order. Discovery is unchanged.

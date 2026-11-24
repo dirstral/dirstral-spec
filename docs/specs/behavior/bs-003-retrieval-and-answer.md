@@ -1,7 +1,7 @@
 # bs-003: Retrieval and answer generation
 
 - **ID:** bs-003
-- **Version:** 0.4.0
+- **Version:** 0.5.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -79,6 +79,13 @@ Each hit includes:
   - `page` (page)
   - `time` (start_ms/end_ms; on a diarized transcript MAY also carry
     `speaker`/`speaker_label`, [td-003](../techniques/td-003-transcription-translation-subtitles.md))
+  - `document` (whole-document scope, for example an `editorial` description
+    chunk, SPEC.md §7.11)
+
+An `editorial` hit (an imported editor annotation) has `rep_type: editorial`
+and carries its provenance on the span. SPEC.md §9.2 is the normative text, and
+SPEC.md §9.9, §9.10 and §9.11 hold the filter rules for these hits (the
+`sources` filter included).
 
 The full hit schema is normative in
 [df-006](../data-formats/df-006-hit-citation.md); the `span` type is
@@ -124,6 +131,9 @@ Within answers, citations MUST be rendered as:
   segment-level bounds identically. On a diarized transcript (td-003) the speaker
   MAY be appended, e.g. `[interview.mp4@t=02:13-02:41 › S2]`; the base form is
   used when no speaker is present.
+- editorial annotation: rendered as an editor annotation with its source and
+  match score, never as a transcript citation alone. SPEC.md §9.3 is the
+  normative text.
 
 ### RAG generation
 
@@ -228,6 +238,7 @@ migration and no breaking change.
 
 ## Changelog
 
+- **0.5.0**: mirrors spec 0.101.0: `editorial` hits (SPEC.md §7.11) and their provenance fields, the `document` span on a hit, the editor-annotation citation form, the editorial person-id comparison in the `entities` filter, and the new `sources` filter (SPEC.md §9.11).
 - **0.4.0**: mirrors spec 0.84.0 (the "Answer script check" in `docs/SPEC.md`): an optional answer script check, with at most one more generation on a mismatch.
 - **0.3.0**: mirrors spec 0.73.0 (SPEC.md §9.1): under `index=auto` a query that is not code-oriented searches both axes on a corpus holding text and code chunks.
 - **0.2.0** — Per-language retrieval filter: added the OPTIONAL `language_match`

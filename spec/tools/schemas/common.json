@@ -66,13 +66,13 @@
               "items": {
                 "type": "string"
               },
-              "description": "Optional (SPEC 5.4, design 0004): entity ids the recognizer attributed to this span. Same values the entities filter matches. Absent on a span that is not a recognition annotation."
+              "description": "Optional (df-005, design 0004, bs-002 7.11): entity ids the recognizer attributed to this span, or the normalized person id of an editorial annotation. Same values the entities filter matches. Absent on a span that is not a recognition or editorial annotation."
             },
             "attributes": {
               "type": "object",
               "additionalProperties": { "type": "string" },
               "propertyNames": { "not": { "pattern": "^dir2mcp:" } },
-              "description": "Optional (SPEC 9.10, design 0006): the producer-defined key/value scopes the recognizer attached to this annotation, for example {\"inning\": \"8\"}. Same values the attributes filter matches. Absent on a span that is not a recognition annotation."
+              "description": "Optional (SPEC 9.10, design 0006, df-005, bs-002 7.11): the producer-defined key/value scopes attached to this annotation, for example {\"inning\": \"8\"}, or the role, display_name and match provenance (match_score, external_id, external_name, external_date) of an editorial annotation. Same values the attributes filter matches. Absent on a span that is not a recognition or editorial annotation."
             },
             "event": {
               "type": "string",
@@ -91,7 +91,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Optional (df-005): the recognizers that contributed to this annotation, for example [\"scorebug\"] or [\"playbyplay\",\"face\"]. Producer-defined tags, not a closed set and not a relevance signal. A client MAY use them to explain or weigh a hit, because recognizers differ in reliability."
+              "description": "Optional (df-005): the recognizers that contributed to this annotation, for example [\"scorebug\"] or [\"playbyplay\",\"face\"]. Producer-defined tags, not a closed set and not a relevance signal. A client MAY use them to explain or weigh a hit, because recognizers differ in reliability. On an editorial annotation (df-005, bs-002 7.11) it is [<import source name>]. Same values the sources filter (bs-003, SPEC 9.11) matches."
             }
           },
           "required": [
@@ -166,6 +166,26 @@
           "properties": {
             "kind": {
               "const": "document"
+            },
+            "entities": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Optional (df-005, bs-002 7.11): entity ids of a whole-document annotation, for example the normalized person id of an editorial annotation on a document with no known duration."
+            },
+            "attributes": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "propertyNames": { "not": { "pattern": "^dir2mcp:" } },
+              "description": "Optional (df-005, bs-002 7.11, SPEC 9.10): key/value attributes of a whole-document annotation, for example the match provenance of an editorial annotation."
+            },
+            "event": {
+              "type": "string",
+              "description": "Optional (df-005, bs-002 7.11): the event token of a whole-document annotation, for example appears or description."
+            },
+            "sources": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Optional (df-005, bs-002 7.11): the sources of a whole-document annotation, for example [<import source name>] on an editorial annotation."
             }
           },
           "required": [

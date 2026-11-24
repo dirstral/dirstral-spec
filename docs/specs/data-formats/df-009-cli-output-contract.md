@@ -1,7 +1,7 @@
 # df-009: CLI output contract
 
 - **ID:** df-009
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -55,7 +55,7 @@ Emit NDJSON — one JSON object per line:
 {
   "ts": "2026-02-25T12:34:56.789Z",
   "level": "info|warn|error",
-  "event": "index_loaded|server_started|connection|scan_progress|embed_progress|file_error|file_skip|payment_required|payment_verified|payment_settled|payment_failed|fatal",
+  "event": "index_loaded|server_started|connection|scan_progress|embed_progress|file_error|file_skip|payment_required|payment_verified|payment_settled|payment_failed|editorial_import_staged|editorial_import_applied|fatal",
   "data": {}
 }
 ```
@@ -64,7 +64,10 @@ Required events for `up`: `index_loaded`, `server_started`, `connection`
 (endpoint + headers + token reference), periodic `scan_progress` and
 `embed_progress`, `file_error` for per-document (non-fatal) failures, `file_skip`
 for per-document skips, and — if x402 is enabled — `payment_required`,
-`payment_verified`, `payment_settled`, `payment_failed`.
+`payment_verified`, `payment_settled`, `payment_failed`. When the process applies
+an editorial import (SPEC.md §7.11.5), it emits `editorial_import_applied` with
+the import report as `data`. `dir2mcp annotate import --json` emits
+`editorial_import_staged` (SPEC.md §7.11.1).
 
 `file_error` is emitted **per document**, at `level: "error"`, once per document
 set to `status="error"` during ingest. It **MUST NOT** be used to report a
@@ -147,6 +150,7 @@ Expected pass conditions:
 
 ## Changelog
 
+- **0.4.0**: spec 0.101.0: two events for the editorial import (SPEC.md §7.11): `editorial_import_staged` from `dir2mcp annotate import --json`, and `editorial_import_applied` from the process that applies the import, with the import report as `data` (level `warn` when any key was unmatched, matched only non-media documents, conflicted or was withheld).
 - **0.3.0**: the `file_skip` reason list names `no_speech` (spec 0.99.0), and also `language_uncovered`, `transcript_partial` and `symlink_ignored`, which this list did not have.
 - **0.1.0** — Migrated from SPEC.md §3. Cross-referenced the on-disk artifacts to
   df-001/df-002 and `CONFIG_INVALID` to df-008.
