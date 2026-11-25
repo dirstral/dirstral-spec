@@ -5384,7 +5384,9 @@ bound of §8.9.5 expires.
 A video with no representation of any kind after recognition (no transcript, no
 sidecar, no media chunks and no recognition) MUST be recorded durably and MUST
 NOT be reported as indexed (§7.7). The reference implementation records
-`status="error"`.
+`status="error"`. A `recognition` representation that an earlier run left
+active, and that §8.9.4 keeps, counts as a representation here: the daemon
+reads the store for this verdict, not only the result of this run.
 
 #### 8.9.7 Derivation identity and re-derivation
 
