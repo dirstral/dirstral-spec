@@ -56,6 +56,7 @@ degenerate-output quality gate (SPEC §8.6.6) also surfaces through these codes.
 | `TRANSCRIBE_FAILED` | No | Transcription failed, **or** transcript rejected by the degenerate-output quality gate (empty/repetition/low-density, SPEC §8.6.6) |
 | `TRANSLATE_FAILED` | No | Translation failed, **or** translated output rejected by the degenerate-output quality gate (SPEC §8.6.6) |
 | `ANNOTATE_FAILED` | No | Structured annotation/extraction failed |
+| `RECOGNIZE_FAILED` | No | Recognition failed: local copy, transport, a status other than 200, an undecodable body, or the expired call bound (SPEC §8.9.6). The document error only when the document has no active representation; the next scan retries the document |
 | `FILE_TOO_LARGE` | No | File exceeds the configured per-type size limit |
 | `BINARY_SKIPPED` | No | File classified as binary and skipped |
 

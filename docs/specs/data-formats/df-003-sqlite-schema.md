@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.9.0
+- **Version:** 0.10.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -61,7 +61,7 @@ other described the wire, without saying which was which.
 
 - `rep_id` (PK)
 - `doc_id` (FK)
-- `rep_type` (`raw_text | extracted_markdown | transcript | annotation_text | annotation_json | summary | editorial`)
+- `rep_type` (`raw_text | extracted_markdown | transcript | annotation_text | annotation_json | summary | editorial | recognition`)
 - `rep_hash` (stable; changes when the rep changes)
 - `created_unix`
 - `meta_json` (MUST include provider/model for OCR/transcription/annotation when applicable)
@@ -92,6 +92,14 @@ A **translated** transcript also records `source_language`, `translate_provider`
 identity), and optional `speakers` (the distinct speaker ids, each optionally
 with a `label`; per-segment attribution lives on the span's
 `extra_json.speaker`).
+
+**Recognition `meta_json`** (SPEC.md §5.2, §8.9): a `recognition` representation
+holds the annotations that the recognition backend returned for one video. It is
+model-derived. Its `meta_json` records `source: recognize`, `provider`, `model`
+(the backend's `recognizer.name`), `model_version` (`recognizer.version`) and,
+when a persisted annotation references a defined id, the entity dictionary
+`entities` (`[{id, label, aliases?}]`). The per-annotation attribution lives on
+each chunk's `time` span (df-005).
 
 **Editorial `meta_json`** (SPEC.md §7.11.4): an `editorial` representation holds
 the imported annotations of one source for one document. It records `source`,
@@ -307,6 +315,7 @@ and behaves exactly as before.
 
 ## Changelog
 
+- **0.10.0**: mirrors spec 0.102.0: the `recognition` `rep_type` and its `meta_json` (SPEC.md §5.2, §8.9). The reference implementation has written this type since design 0004; the enum now lists it. Additive.
 - **0.9.0**: mirrors spec 0.101.0: the `editorial` `rep_type` and its `meta_json` (SPEC.md §7.11), and the `document` `span_kind`, written for an `editorial` chunk with whole-document scope so that it can carry the annotation fields. Additive; an index with no import is unchanged.
 - **0.8.0** — Added the additive `emitted_artifacts` table (§5.6) that records
   every subtitle file written by td-003 §8.6.14 write-back, so an owned output

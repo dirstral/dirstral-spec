@@ -624,7 +624,7 @@ The exact SQL types may vary; semantics must match.
 
 * `rep_id` (PK)
 * `doc_id` (FK)
-* `rep_type` (`raw_text|extracted_markdown|transcript|annotation_text|annotation_json|summary|editorial`)
+* `rep_type` (`raw_text|extracted_markdown|transcript|annotation_text|annotation_json|summary|editorial|recognition`)
 * `rep_hash` (stable; changes when rep changes)
 * `created_unix`
 * `meta_json` (must include provider/model for OCR/transcription/annotations when applicable)
@@ -694,6 +694,24 @@ records `source`, `key_kind`, `key`, optional `match`, `record_hash`,
 `name_folds`,
 `imported_unix` and the detected-language fields below, and no provider or
 model. §7.11.4 is the normative text.
+
+**Recognition meta_json requirements (§8.9)**
+
+A `recognition` representation holds the annotations that the recognition
+capability (§8.9) returned for one media document. It is model-derived. Its
+`meta_json` records:
+
+* `source`: `recognize`.
+* `provider`: the configured `recognize.provider` value (`serve`).
+* `model`: the backend's `recognizer.name` from the response (§8.9.3).
+* `model_version`: the backend's `recognizer.version` from the response.
+* `entities`: the entity dictionary (§8.9.4), an array of `{id, label,
+  aliases?}`. It is present when at least one persisted annotation references
+  an id that the response's dictionary defines, and absent otherwise.
+
+The per-annotation attribution (`entities`, `event`, `attributes`, `sources`,
+`derivation`) lives on each chunk's `time` span `extra_json` (§5.4, df-005),
+not in `meta_json`.
 
 **Summary meta_json requirements (hierarchical retrieval, §9.7)**
 
@@ -2594,6 +2612,10 @@ extraction engine is the active `ocr` provider (selected per §8.1.3), and the
 audio extraction path binds `stt` (§7.4.C, §8.2). No `extract`/`CapExtract`
 capability cell is added.
 
+**Recognition is not a cell in this matrix either.** The `recognize` capability
+(§8.9) binds through its own `recognize.provider` selector to a served backend.
+It has no provider profile and no `kind`.
+
 #### 8.1.3 Provider selection
 
 For each capability, with `<cap>.provider`:
@@ -4049,6 +4071,10 @@ stable across re-indexing.
   sidecar trust class: no derivation identity, and no provider, model or prompt
   change invalidates them. Only a new import of the same source for the document
   replaces them, and a duration change rebuilds their spans (§7.11.3).
+* **`recognition` representations are model-derived** (§8.9). Their derivation
+  identity is `{recognize, provider, recognizer.name, recognizer.version}`. The
+  backend declares the name and version only in a response, so the comparison at
+  load time does not apply to them. §8.9.7 gives their re-derivation rule.
 * **A route-fallback transcript is provisional.** A transcript, or a window of
   one, that the default profile decoded after a route candidate failed
   (§8.2.4, `route_fallback_from` or `coverage.languages[].fallback_from`) has
@@ -5126,6 +5152,236 @@ MUST NOT make ingestion fail.
   item. A `detected` language is **not** part of the identity: a pure detector
   change MAY refresh `language` opportunistically without forcing re-embedding
   (language metadata does not change chunk `text`).
+
+### 8.9 Recognition (optional)
+
+Promoted from design 0004 in 0.102.0. Design 0004 keeps the motivation and the
+retrieval measurements (its §6.1 and §6.2). This section is normative.
+
+The `recognize` capability gives a media file to a **recognition backend**
+during ingest. The backend returns **annotations**: statements about the
+content, each with a time range. dir2mcp persists them as one `recognition`
+representation per document (§5.2). Each annotation becomes one text chunk with
+one `time` span. Search, `ask` and citations treat these chunks as ordinary text
+hits (§9.2, §9.3). The filters in §9.9, §9.10 and §9.11 select on the
+attribution that each annotation carries.
+
+The capability is **domain-neutral**. The core gives the backend a media path
+and indexes what the backend returns. Domain configuration (rosters, image
+banks, event vocabularies) and confidence floors belong to the backend, not to
+dir2mcp.
+
+#### 8.9.1 Binding and configuration
+
+| Key | Default | Meaning |
+|---|---|---|
+| `recognize.provider` | `off` | `off` or `serve`. |
+| `recognize.base_url` | none | The backend's `http` or `https` root. REQUIRED for `serve`. |
+| `recognize.serve_command` | none | OPTIONAL. A shell command that starts the backend. When it is set, dir2mcp manages the backend (§8.9.2). |
+| `recognize.timeout` | `10m` | The flat floor of the bound on one call (§8.9.5). |
+| `recognize.timeout_per_media_second` | `2.0` | Wall-clock seconds that one second of media adds to the bound (§8.9.5). |
+
+Recognition is **not** a cell of the §8.1.2 capability matrix. It has no
+provider profile, no credential and no auto-selection (§8.1.3). It is on only
+when `recognize.provider` is `serve`. An implementation MAY accept an empty
+value, `none` and `disabled` as other spellings of `off`.
+
+These configurations are `CONFIG_INVALID` at startup:
+
+* a `recognize.provider` value other than `off` or `serve`;
+* `serve` with a `recognize.base_url` that is not an absolute `http` or `https`
+  URL with a host;
+* a `recognize.base_url` that holds user information (`user:password@host`).
+  The error MUST NOT repeat the URL, because the URL holds a secret;
+* a `recognize.serve_command` while the provider is `off`;
+* a negative `recognize.timeout` or a negative
+  `recognize.timeout_per_media_second`.
+
+The configuration snapshot (§16) MAY write these keys in their flat spellings
+`recognize_provider`, `recognize_serve_url`, `recognize_serve_command`,
+`recognize_timeout` and `recognize_timeout_per_media_second`. A loader MUST
+accept each flat spelling as an alias of its key. `recognize_serve_url` is the
+alias of `recognize.base_url`.
+
+A hosted recognition service MAY become a new provider value later. The
+capability and the wire contract below do not change for it.
+
+#### 8.9.2 Backend lifecycle
+
+There are two modes.
+
+* **Connect-only** (no `recognize.serve_command`). An operator starts the
+  backend. At startup the daemon sends one `GET {base_url}/health`. When the
+  probe fails, the daemon logs a warning and continues. Per-document errors
+  (§8.9.6) are the hard signal.
+* **Managed** (`recognize.serve_command` is set). The daemon starts the command
+  in its own process group and sends the backend's output to the daemon log. It
+  then sends `GET {base_url}/health` again and again until one answer is `200`.
+  This wait has a bound (the reference implementation waits 30 seconds). When
+  the bound passes first, the daemon stops the process group and startup fails.
+  When the backend exits first, startup fails with its exit status. At
+  shutdown the daemon sends `SIGTERM` to the process group, and `SIGKILL` after
+  a grace period.
+
+A health answer is healthy only when its status is `200`.
+
+#### 8.9.3 Wire contract
+
+The daemon sends `POST {base_url}/recognize` with `Content-Type:
+application/json` and the body `{"path": "<absolute media path>"}`. The backend
+reads the file at that path, so it MUST run where that path is readable (the
+same host or a shared mount). For a corpus source that is not a local
+filesystem (§7.8, §7.10), the daemon first makes a local copy, sends the
+absolute path of the copy, and removes the copy after the call returns. The
+call is synchronous: when the backend answers, it has finished with the file.
+
+A conforming backend answers `200` with a JSON body that validates against
+[`spec/recognize/response.schema.json`](../spec/recognize/response.schema.json):
+
+* `recognizer`: `{name, version}`, the backend's identity (§8.9.7).
+* `entities`: OPTIONAL. The entity dictionary, an array of
+  `{id, label, aliases?}`.
+* `annotations`: an array of `{start_s, end_s, text, event?, entities?,
+  attributes?, confidence?, sources?, derivation?}`. Times are seconds from the
+  start of the media, as numbers.
+
+Any status other than `200`, a body that does not decode, and a transport error
+are failures (§8.9.6). The daemon MUST NOT copy the response body into an error
+or a log, because a backend error can hold local paths. The daemon MUST bound
+the response size that it reads (the reference implementation reads at most
+64 MiB).
+
+`confidence` is not persisted. The backend applies its own confidence floor
+before it answers.
+
+The daemon MUST treat the response as untrusted input. It applies the rules of
+§8.9.4 itself and does not rely on the backend's conformance to the schema.
+
+#### 8.9.4 Ingestion and representation
+
+**Scope.** Recognition runs on documents of `doc_type` `video`. Images and audio
+are out of scope for this version. Recognition runs after transcript handling.
+It runs also when the document has no transcript (no audio track, STT off, or
+multimodal `replace`, §8.1.7), so a video whose only source is recognition is
+still searchable.
+
+**Time.** `start_ms = round(start_s * 1000)` and `end_ms = round(end_s * 1000)`,
+each rounded to the nearest millisecond.
+
+**Normalization.** The daemon trims `text` and `event`. In `entities` and
+`sources` it trims each value, removes empty values and keeps the first of
+each repeated value. `attributes` follow §9.10.
+
+**Malformed annotations.** The daemon drops an annotation (it does not persist
+it) when one of these is true. The other annotations of the document continue.
+
+* `text` is empty or holds only whitespace;
+* `start_ms` is negative;
+* `end_ms` is less than `start_ms`;
+* an attribute key has the reserved `dir2mcp:` prefix, or two attribute keys
+  trim to the same key with different values (§9.10);
+* `derivation` is present with a value other than `observed` or `generated`.
+
+A zero-length span (`end_ms` equals `start_ms`) is valid. It is an instantaneous
+event.
+
+**Chunks.** Each annotation that remains becomes one chunk with `index_kind`
+`text`. The chunk text is the annotation's `text`. The chunk has exactly one
+`time` span, and its `extra_json` carries the annotation's `entities`, `event`,
+`attributes` and `sources` when present (df-005). A `derivation` of
+`generated` MUST be stored on the span. A `derivation` of `observed` and an
+absent `derivation` both leave the field absent, because absent means
+`observed` (df-005).
+
+**Entity dictionary.** The daemon MUST keep the dictionary entries that a
+persisted annotation references, in the representation's `meta_json`
+`entities` (§5.2). It drops an entry with an empty `id` or an empty `label`.
+When the dictionary defines one `id` more than once, the first definition
+applies. An annotation can reference an id that the dictionary does not define:
+the id stays on the span and no error occurs. Without the dictionary, a client
+that filters on an id (§9.9) cannot show the entity's name.
+
+**Order.** The daemon sorts the chunks by `start_ms`, then `end_ms`, then
+`text`, then the remaining attribution. The order of the annotations in the
+response MUST NOT change the persisted representation.
+
+**`rep_hash`.** The `rep_hash` covers every persisted value: the time range,
+the text and the attribution of each annotation, and the entity dictionary.
+These rules apply:
+
+* The hash MUST NOT depend on the order of the annotations in the response.
+* The encoding MUST keep field boundaries. Entity ids, tags and attribute
+  values are opaque and can hold any delimiter, so two different attributions
+  MUST NOT give the same hash input.
+* An optional field that a later spec version adds joins the hash input only
+  when it is present. Then an annotation without the field keeps its earlier
+  hash, and a spec upgrade does not cause the whole corpus to be recognized
+  again.
+
+**No annotations.** When no annotation remains, the daemon persists no
+`recognition` representation for this run.
+
+**Secrets.** The annotation texts are derived text. The daemon screens them in
+full before persistence (§7.2). On a match the document is withheld as for any
+other derived text.
+
+#### 8.9.5 Bound on one call
+
+The bound on one `/recognize` call is
+
+`max(recognize.timeout, media_duration_s * recognize.timeout_per_media_second)`
+
+* A `recognize.timeout` of zero means the default floor (`10m`).
+* A `recognize.timeout_per_media_second` of zero turns the scaling off, and the
+  floor applies alone.
+* The daemon reads the duration from the media container (the reference
+  implementation uses `ffprobe`). This read has its own short bound. When the
+  duration is unknown, the floor applies alone.
+* No call is without a bound. The HTTP client MUST NOT add a second, shorter
+  limit, because that limit would replace the duration-scaled bound.
+
+#### 8.9.6 Failure semantics
+
+A **recognition failure** is one of these: the local copy fails, the request
+fails in transport, the status is not `200`, the body does not decode, or the
+bound of §8.9.5 expires.
+
+* **The daemon stops.** When the daemon's own context ends (shutdown or an
+  outer deadline), the failure says nothing about the document. The run's abort
+  handling applies.
+* **The document has no active representation.** The document gets
+  `status="error"` with `RECOGNIZE_FAILED` (§7.7, §14.4) and is retried on the
+  next scan.
+* **The document has at least one active representation**, from this run or an
+  earlier one. The daemon MUST NOT set `status="error"`, because that status
+  hides every chunk of the document (§7.7). The daemon:
+  * logs a warning that names the document and the cause;
+  * counts the failure in the run's error total;
+  * records `RECOGNIZE_FAILED` on the run manifest record when a batch run is
+    active (§8.6.11);
+  * does not mark the document as done, so the next incremental scan retries
+    recognition.
+
+  The representations that the document already has stay searchable.
+
+A video with no representation of any kind after recognition (no transcript, no
+sidecar, no media chunks and no recognition) MUST be recorded durably and MUST
+NOT be reported as indexed (§7.7). The reference implementation records
+`status="error"`.
+
+#### 8.9.7 Derivation identity and re-derivation
+
+The derivation identity of a `recognition` representation is `{capability:
+recognize, provider, model: recognizer.name, version: recognizer.version}`
+(§8.6.7).
+
+The backend declares its name and version only in a response. Thus the daemon
+cannot compare a configured identity with the stored one at load time, as
+§8.6.7 does for STT. Instead, recognition runs each time that the daemon
+generates the document's representations: for new or changed content and for a
+forced reindex (§7.6). The new result replaces the stored representation when
+its `rep_hash` is different. An operator who changes the backend and wants the
+existing documents recognized again runs a reindex.
 
 ---
 
@@ -6444,6 +6700,11 @@ Example tool execution error:
   errored. Distinct from `CLIP_TOO_LARGE` (a bounds rejection) and
   `MEDIA_NO_TEXT` (a missing-text condition on `open_file`).
 * `ANNOTATE_FAILED`
+* `RECOGNIZE_FAILED`: recognition failed (§8.9.6): the local copy, the
+  transport, a status other than `200`, a body that does not decode, or the
+  expired bound of §8.9.5. Set as the document error only when the document has
+  no active representation; otherwise it is recorded on the run manifest record
+  and the document stays searchable. The next scan retries the document.
 * `FILE_TOO_LARGE`
 * `BINARY_SKIPPED`
 
@@ -8039,6 +8300,14 @@ x402:
     enabled: false
     metadata:
       description: ""
+
+# Recognition (§8.9; design 0004). Off by default.
+recognize:
+  provider: off                 # off | serve
+  base_url: ""                  # REQUIRED for serve: the backend's http(s) root; no user:password@
+  serve_command: ""             # optional: dir2mcp starts and stops the backend itself
+  timeout: 10m                  # flat floor of the bound on one /recognize call
+  timeout_per_media_second: 2.0 # seconds of bound per second of media; 0 = floor only
 
 annotations:
   name_folds: []                # §7.11.4: optional single-character folds for editorial person ids, "<from>=<to>" (for example "ё=е"); empty = none

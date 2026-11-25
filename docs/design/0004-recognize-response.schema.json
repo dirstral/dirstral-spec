@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dirstral.dev/design/0004-recognize-response.schema.json",
-  "title": "Recognize response (design 0004 v1 \u2014 DRAFT, non-normative)",
-  "description": "Draft wire contract for the recognize capability's serve provider (design 0004 \u00a75): the JSON a served recognizer returns from POST /recognize. Non-normative while the design is Proposed; the normative copy lands under spec/ with the v1 spec deltas.",
+  "title": "Recognize response (design 0004 draft, superseded)",
+  "description": "Superseded in spec 0.102.0 by the normative copy at spec/recognize/response.schema.json. Kept for the history of design 0004; do not validate against this file.",
   "type": "object",
   "required": [
     "recognizer",

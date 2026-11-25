@@ -1,7 +1,7 @@
 # df-008: Error taxonomy (canonical codes)
 
 - **ID:** df-008
-- **Version:** 0.5.0
+- **Version:** 0.6.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -97,6 +97,10 @@ Each tool error returns an object with:
   segment extraction errored. Distinct from `CLIP_TOO_LARGE` (a bounds rejection)
   and `MEDIA_NO_TEXT` (a missing-text condition on `open_file`).
 - `ANNOTATE_FAILED`
+- `RECOGNIZE_FAILED`: recognition failed (SPEC.md §8.9.6). It is the document
+  error only when the document has no active representation; otherwise it is
+  recorded on the run manifest record and the document stays searchable. The
+  next scan retries the document.
 - `FILE_TOO_LARGE`
 - `BINARY_SKIPPED`
 
@@ -136,6 +140,7 @@ every error.
 
 ## Changelog
 
+- **0.6.0**: spec 0.102.0: added `RECOGNIZE_FAILED` (ingestion/extraction), which the reference implementation already writes (SPEC.md §8.9.6).
 - **0.5.0**: spec 0.99.0: `MEDIA_NO_TEXT` is also the `dir2mcp_open_file`
   outcome for a document skipped as `no_speech` (td-003 §8.6.6, §8.6.13). No new code.
 - **0.4.0**: added `TOOL_UNAVAILABLE` (index/state) for a tool the running
