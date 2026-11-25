@@ -51,8 +51,8 @@ degenerate-output quality gate (SPEC §8.6.6) also surfaces through these codes.
 
 In this table, `Retryable` applies only where a tool call returns the code: it
 says whether the same call can succeed after the documented recovery step. It
-does not describe ingestion. A document that fails with any of these codes is
-retried on a later scan, whatever this column says.
+does not describe ingestion. A document recorded with `status='error'` is
+processed again on a later scan (§7.7), whatever this column says.
 
 | Code string | Retryable | Description |
 |-------------|-----------|-------------|
