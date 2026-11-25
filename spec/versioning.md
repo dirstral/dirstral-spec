@@ -83,8 +83,8 @@ one new error code and five config keys that the implementation already reads
   §8.9.5 the duration-scaled bound on one call; §8.9.6 failure routing (a
   document with active representations is never set to `status="error"` by a
   recognition failure); §8.9.7 re-derivation.
-- Two requirements of §8.9.4 are new for the reference implementation, and its
-  code follow-up closes them:
+- Three requirements of §8.9.4 are new for the reference implementation, and
+  its code follow-up closes them:
   - a `derivation` of `generated` on the wire MUST reach the span (df-005
     defined the field; the implementation did not read it from the wire), and
     an unknown `derivation` value drops the annotation;
@@ -92,6 +92,10 @@ one new error code and five config keys that the implementation already reads
     required it; the implementation dropped it).
   Both join the `rep_hash` only when present, so an existing corpus is not
   recognized again.
+  - a successful call that leaves no annotation retires the earlier
+    `recognition` representation (the implementation kept it, so statements
+    that the backend withdrew kept answering). The sign and order checks on a
+    span use the raw seconds, before rounding.
 - §8.1.2 states that recognition is not a cell of the capability matrix.
   §8.6.7 adds the `recognition` bullet. §14.4 adds `RECOGNIZE_FAILED`, which the
   implementation already writes. §16.2 adds the `recognize:` block.

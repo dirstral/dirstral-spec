@@ -5276,8 +5276,10 @@ each repeated value. `attributes` follow §9.10.
 it) when one of these is true. The other annotations of the document continue.
 
 * `text` is empty or holds only whitespace;
-* `start_ms` is negative;
-* `end_ms` is less than `start_ms`;
+* `start_s` is negative, or `end_s` is less than `start_s`. These checks use
+  the raw seconds, before the rounding above. After rounding, a reversed span
+  such as `1.0004` to `1.0001` would look like an instantaneous event, and a
+  start of `-0.0001` would look like `0`;
 * an attribute key has the reserved `dir2mcp:` prefix, or two attribute keys
   trim to the same key with different values (§9.10);
 * `derivation` is present with a value other than `observed` or `generated`.
@@ -5318,8 +5320,13 @@ These rules apply:
   hash, and a spec upgrade does not cause the whole corpus to be recognized
   again.
 
-**No annotations.** When no annotation remains, the daemon persists no
-`recognition` representation for this run.
+**No annotations.** When a successful call leaves no annotation (the response
+has none, or every one is malformed), the daemon persists no `recognition`
+representation. It MUST retire the document's active `recognition`
+representation from an earlier run, with its chunks and the summaries derived
+from it (§8.6.7), so statements that the backend no longer makes stop
+answering queries. This is an answer, not a failure: a failed call keeps the
+earlier representation (§8.9.6).
 
 **Secrets.** The annotation texts are derived text. The daemon screens them in
 full before persistence (§7.2). On a match the document is withheld as for any
@@ -5380,7 +5387,8 @@ cannot compare a configured identity with the stored one at load time, as
 §8.6.7 does for STT. Instead, recognition runs each time that the daemon
 generates the document's representations: for new or changed content and for a
 forced reindex (§7.6). The new result replaces the stored representation when
-its `rep_hash` is different. An operator who changes the backend and wants the
+its `rep_hash` is different, and a successful result with no annotation retires
+it (§8.9.4). An operator who changes the backend and wants the
 existing documents recognized again runs a reindex.
 
 ---
