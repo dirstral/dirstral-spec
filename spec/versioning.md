@@ -89,13 +89,14 @@ one new error code and five config keys that the implementation already reads
     defined the field; the implementation did not read it from the wire), and
     an unknown `derivation` value drops the annotation;
   - the entity dictionary MUST be kept in `meta_json.entities` (design 0004 §7
-    required it; the implementation dropped it).
-  Both join the `rep_hash` only when present, so an existing corpus is not
-  recognized again.
+    required it; the implementation dropped it);
   - a successful call that leaves no annotation retires the earlier
     `recognition` representation (the implementation kept it, so statements
-    that the backend withdrew kept answering). The sign and order checks on a
-    span use the raw seconds, before rounding.
+    that the backend withdrew kept answering).
+
+  The derivation and the dictionary join the `rep_hash` only when present, so
+  an existing corpus is not recognized again. The sign and order checks on a
+  span now use the raw seconds, before rounding.
 - §8.1.2 states that recognition is not a cell of the capability matrix.
   §8.6.7 adds the `recognition` bullet. §14.4 adds `RECOGNIZE_FAILED`, which the
   implementation already writes. §16.2 adds the `recognize:` block.
