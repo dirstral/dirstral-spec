@@ -91,8 +91,10 @@ one new error code and five config keys that the implementation already reads
   - the entity dictionary MUST be kept in `meta_json.entities` (design 0004 §7
     required it; the implementation dropped it);
   - a successful call that leaves no annotation retires the earlier
-    `recognition` representation (the implementation kept it, so statements
-    that the backend withdrew kept answering).
+    `recognition` representation when the media changed (the implementation
+    kept it, so statements about replaced media kept answering). For the same
+    media it is kept with a warning, so a faulty backend cannot erase a corpus
+    on a reindex.
 
   The derivation and the dictionary join the `rep_hash` only when present, so
   an existing corpus is not recognized again. The sign and order checks on a

@@ -5322,11 +5322,21 @@ These rules apply:
 
 **No annotations.** When a successful call leaves no annotation (the response
 has none, or every one is malformed), the daemon persists no `recognition`
-representation. It MUST retire the document's active `recognition`
-representation from an earlier run, with its chunks and the summaries derived
-from it (§8.6.7), so statements that the backend no longer makes stop
-answering queries. This is an answer, not a failure: a failed call keeps the
-earlier representation (§8.9.6).
+representation. An active `recognition` representation from an earlier run
+then depends on the media:
+
+* **The media changed.** The document's stored `content_hash` (§5.1) is not
+  empty and differs from the content that this run recognized. The daemon MUST
+  retire the earlier representation, with its chunks and the summaries derived
+  from it (§8.6.7). Its statements describe content that is gone.
+* **The media is the same, or the daemon cannot tell** (the stored
+  `content_hash` is empty, for example because an earlier failed run withheld
+  it, §8.9.6). The daemon MUST keep the earlier representation and SHOULD log
+  a warning that names the document. For unchanged media an empty answer is
+  more probably a backend fault than a real change, and a reindex against a
+  faulty backend must not erase the annotations of a whole corpus.
+
+This is not a failure: §8.9.6 does not apply, and the document is done.
 
 **Secrets.** The annotation texts are derived text. The daemon screens them in
 full before persistence (§7.2). On a match the document is withheld as for any
@@ -5387,8 +5397,8 @@ cannot compare a configured identity with the stored one at load time, as
 §8.6.7 does for STT. Instead, recognition runs each time that the daemon
 generates the document's representations: for new or changed content and for a
 forced reindex (§7.6). The new result replaces the stored representation when
-its `rep_hash` is different, and a successful result with no annotation retires
-it (§8.9.4). An operator who changes the backend and wants the
+its `rep_hash` is different. A successful result with no annotation retires it
+only when the media changed (§8.9.4). An operator who changes the backend and wants the
 existing documents recognized again runs a reindex.
 
 ---
