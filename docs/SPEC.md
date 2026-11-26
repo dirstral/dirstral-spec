@@ -5468,7 +5468,7 @@ These configurations are `CONFIG_INVALID` at startup:
 * a `media.shots.threshold` outside `(0, 1]`;
 * a negative `media.shots.min_shot_s`, `media.shots.timeout` or
   `media.shots.timeout_per_media_second`;
-* a `media.shots.max_keyframe_gap_s` that is not greater than zero.
+* a `media.shots.max_keyframe_gap_s` less than `1`.
 
 The `ffmpeg` detector needs the `ffmpeg` tool on the host. When it is not
 there, the daemon logs one warning at startup and detects no shots for the
@@ -5509,6 +5509,11 @@ The bound on one call is
 with the same rules as §8.9.5 (a zero floor means `10m`; an unknown duration
 leaves the floor alone; the HTTP client adds no shorter limit).
 
+The daemon MUST bound the response size that it reads (the reference
+implementation reads at most 16 MiB, far above the cuts of a long broadcast).
+A response over the bound is a failure (§8.10.7); the earlier shots and every
+representation stay.
+
 The daemon treats the response as untrusted input. It drops a cut that is not
 a finite number, is not greater than zero, or is not less than the media
 duration. Then it applies §8.10.4.
@@ -5547,8 +5552,10 @@ shot `[s, e)` of length `L = e - s` and `G = media.shots.max_keyframe_gap_s`
 in milliseconds:
 
 * the shot has `k = ceil(L / G)` keyframes (at least `1`);
-* keyframe `i` (from `0`) is at `s + round((i + 0.5) * L / k)` milliseconds,
-  the middle of the `i`-th of `k` equal parts.
+* keyframe `i` (from `0`) is at `min(s + round((i + 0.5) * L / k), e - 1)`
+  milliseconds: the middle of the `i`-th of `k` equal parts, clamped to the
+  last millisecond of the shot. (Without the clamp, rounding can put the
+  keyframe of a 1 ms shot on its exclusive end.)
 
 A short shot has one keyframe at its middle. A long static shot, for example
 a studio discussion, has one keyframe for each `G` seconds, so a per-shot step
