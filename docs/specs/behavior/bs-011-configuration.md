@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.22.0
+- **Version:** 0.23.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -328,6 +328,14 @@ media:
     two_phase: false          # opt-in: transcribe-all pass, then translate/export pass; output-equivalent to single-pass
     progress: false           # opt-in side-channel progress reporting (never affects output)
     manifest: ""              # path to a JSONL run manifest (per-asset status/duration/outputs); empty => disabled
+  shots:                      # shot detection and keyframes (SPEC.md §8.10). Off by default.
+    detector: off             # off | ffmpeg | serve
+    threshold: 0.2            # ffmpeg only: scene score that starts a new shot, (0, 1]
+    min_shot_s: 0.5           # shortest shot; a nearer cut is dropped
+    base_url: ""              # serve only, REQUIRED: the backend's http(s) root (POST /shots)
+    timeout: 10m              # serve only: flat floor of the bound on one call
+    timeout_per_media_second: 1.0  # serve only: seconds of bound per second of media
+    max_keyframe_gap_s: 60    # longest time between two keyframes of one shot
 
 rerank:
   # Reranking auto-activates when a provider credential is present
@@ -445,6 +453,7 @@ security:
 
 ## Changelog
 
+- **0.23.0**: mirrors spec 0.103.0 (SPEC.md §8.10.1, §16.2): the template lists the `media.shots` block (`detector` `off` by default, `threshold` `0.2`, `min_shot_s` `0.5`, `base_url`, `timeout` `10m`, `timeout_per_media_second` `1.0`, `max_keyframe_gap_s` `60`).
 - **0.22.0**: mirrors spec 0.102.0 (SPEC.md §8.9.1, §16.2): the template lists the `recognize` block (`provider` `off` by default, `base_url`, `serve_command`, `timeout` `10m`, `timeout_per_media_second` `2.0`), which the reference implementation already reads.
 - **0.21.0**: mirrors spec 0.101.0 (SPEC.md §7.11.4, §16.2): the template lists `annotations.name_folds` (default empty), the optional character folds for editorial person ids.
 - **0.20.0**: mirrors spec 0.99.0 (bs-002 §7.2, td-004, and the configuration template of SPEC.md §16.2): the `security.secret_patterns` defaults change (the `sk-` key format with a left boundary; a left boundary on `sk_`/`api_`), and the new `security.secret_allow_patterns` list releases the `redir_token` parameter of a YouTube redirect link. `ingest.extractor` lists `pandoc` (missing here since spec 0.31.0) and the new `libreoffice`; the template lists the `ingest.pandoc` block and the new `ingest.libreoffice.{command, timeout_sec}` block.

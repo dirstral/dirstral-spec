@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.102.0`
+**Current spec version:** `0.103.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,43 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.103.0: shot detection and keyframes
+
+One new optional feature, two additive tables, one new error code, seven
+config keys and one new wire schema (`MINOR` per the pre-1.0 policy). It is off
+by default: an index without it has no rows and no change in any result.
+
+- §8.10 (new) **Shots and keyframes.** A shot is the time range of one camera
+  take. Shots are structure, not text: they produce no chunk and no hit, and
+  later per-shot outputs align to them.
+  - §8.10.1: `media.shots.{detector, threshold, min_shot_s, base_url,
+    timeout, timeout_per_media_second, max_keyframe_gap_s}` and their
+    `CONFIG_INVALID` rules. `detector` is `off` (default), `ffmpeg` or `serve`.
+  - §8.10.2: the built-in `ffmpeg` detector (the `select` scene score on a
+    360-pixel decode, default threshold 0.2), with its measured limits.
+  - §8.10.3: the served detector, `POST {base_url}/shots`, which returns cut
+    times (`spec/shots/response.schema.json`).
+  - §8.10.4: cuts to shots: sort, remove repeats, apply `min_shot_s` against
+    the previous cut and the end, then cover the video with no gap.
+  - §8.10.5: keyframes, derived and not stored: the middle of each of
+    `ceil(L / max_keyframe_gap_s)` equal parts of a shot.
+  - §8.10.6: persistence and the shot identity. Detection is its own step:
+    a video with no shot set, an out-of-date one or a failed one is detected
+    on the next scan without reprocessing its other representations.
+  - §8.10.7: a failure never sets `status="error"`, never retires a
+    representation and never holds back the done marker.
+- §5.7 (new): the additive tables `media_shot_sets` and `media_shots`. No
+  `PRAGMA user_version` bump (§5.6: additive).
+- §14.4 adds `SHOTS_FAILED`. §16.2 adds the `media.shots` block.
+- Design 0007 (new) records the measurement: on 71 films (50.6 h) the
+  `ffmpeg` default agrees with a learned detector at F1 0.947, and a hand
+  check shows that it misses real cuts inside inset pictures and between dark
+  shots, which a tile grid does not recover.
+- Mirrors: bs-011 0.23.0, df-003 0.11.0, df-008 0.7.0, errors taxonomy. The
+  new §8.10 has no numbered document yet (MIGRATION.md: To do).
+- Motivation: per-shot captions and on-screen text for archive enrichment
+  need shot boundaries and keyframes first.
 
 ## 0.102.0: the recognition capability is normative (design 0004 promoted)
 

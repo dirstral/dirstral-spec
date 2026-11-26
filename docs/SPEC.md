@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.102.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.103.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -960,6 +960,31 @@ enforce it on open (§1.3; closes #405):
 of both the wire `format_version` (§1.3) and the settings-row
 `index_format_version` (§5.5, which fences **index/embedding** compatibility, not
 table shape).
+
+### 5.7 `media_shots` and `media_shot_sets` (additive, §8.10)
+
+Two additive tables hold the shots of a video (§8.10). An index without shot
+detection has no rows and behaves as before. Neither table is searched.
+
+**`media_shot_sets`**, one row for each document that has shots:
+
+* `doc_id` (PK, FK)
+* `detector`: `ffmpeg` or `serve`
+* `identity_json`: the shot identity (§8.10.6)
+* `content_hash`: the document content the shots were detected on
+* `created_unix`
+* `failed_unix`: OPTIONAL. Set when the last detection failed (§8.10.7) and
+  cleared by the next successful one. A row can exist with a failure and no
+  shots.
+
+**`media_shots`**, one row for each shot:
+
+* `doc_id` (FK)
+* `shot_index`: from `0`, in time order
+* `start_ms`, `end_ms`: the shot is `[start_ms, end_ms)`
+
+`(doc_id, shot_index)` is unique. A new detection replaces all rows of the
+document in one transaction, so a reader never sees shots from two detections.
 
 ---
 
@@ -5403,6 +5428,205 @@ its `rep_hash` is different. A successful result with no annotation retires it
 only when the media changed (§8.9.4). An operator who changes the backend and wants the
 existing documents recognized again runs a reindex.
 
+### 8.10 Shots and keyframes (optional)
+
+New in 0.103.0. Design rationale and measurements:
+[Design 0007](design/0007-shots-and-keyframes.md).
+
+A **shot** is a continuous run of frames from one camera take, bounded by
+cuts. When shot detection is on, dir2mcp finds the shots of each video and
+derives **keyframes** from them: the frames that later per-shot steps (for
+example a caption or the on-screen text of a shot) read.
+
+Shots are **structure, not text**. A shot produces no chunk, no hit and no
+citation of its own, and no search or `ask` result changes when detection is
+turned on. Per-shot outputs that later sections define are what make shots
+visible, and they carry the shot's time range as their `time` span.
+
+#### 8.10.1 Configuration
+
+| Key | Default | Meaning |
+|---|---|---|
+| `media.shots.detector` | `off` | `off`, `ffmpeg` (§8.10.2) or `serve` (§8.10.3). |
+| `media.shots.threshold` | `0.2` | `ffmpeg` only. The scene score at which a frame starts a new shot, in `(0, 1]`. |
+| `media.shots.min_shot_s` | `0.5` | The shortest shot, in seconds. A cut nearer than this to the previous kept cut is dropped (§8.10.4). |
+| `media.shots.base_url` | none | `serve` only, REQUIRED. The backend's `http` or `https` root. |
+| `media.shots.timeout` | `10m` | `serve` only. The flat floor of the bound on one call (§8.10.3). |
+| `media.shots.timeout_per_media_second` | `1.0` | `serve` only. Wall-clock seconds that one second of media adds to the bound. |
+| `media.shots.max_keyframe_gap_s` | `60` | The longest time between two keyframes of one shot (§8.10.5). |
+
+Shot detection is **not** a cell of the §8.1.2 capability matrix. It has no
+provider profile and no credential, and it is on only when
+`media.shots.detector` is not `off`.
+
+These configurations are `CONFIG_INVALID` at startup:
+
+* a `media.shots.detector` value other than `off`, `ffmpeg` or `serve`;
+* `serve` with a `media.shots.base_url` that is not an absolute `http` or
+  `https` URL with a host, or one that holds user information. The error MUST
+  NOT repeat the URL;
+* a `media.shots.threshold` outside `(0, 1]`;
+* a negative `media.shots.min_shot_s`, `media.shots.timeout` or
+  `media.shots.timeout_per_media_second`;
+* a `media.shots.max_keyframe_gap_s` less than `1`.
+
+The `ffmpeg` detector needs the `ffmpeg` tool on the host. When it is not
+there, the daemon logs one warning at startup and detects no shots for the
+whole run. This is not a per-document failure (§8.10.7): no document is
+counted as an error or retried for it.
+
+#### 8.10.2 The `ffmpeg` detector
+
+The daemon decodes the video, scales it to a height of 360 pixels, and reads
+the per-frame scene score of the `ffmpeg` `select` filter
+(`lavfi.scene_score`, a value in `[0, 1]`). A frame whose score is at or above
+`media.shots.threshold` is a **candidate cut** at that frame's presentation
+time. §8.10.4 turns candidate cuts into shots.
+
+The detector needs no model and no GPU. It compares pixels, so it misses some
+cuts that a learned detector finds: cuts inside an inset or split-screen
+picture where most of the frame stays the same, and cuts between two dark or
+low-contrast shots. Design 0007 records the measurement. A corpus that needs
+those cuts SHOULD use a served detector.
+
+#### 8.10.3 The `serve` detector
+
+The daemon sends `POST {base_url}/shots` with `Content-Type:
+application/json` and the body `{"path": "<absolute media path>"}`. The path
+rules, the local copy for a corpus source that is not a local filesystem, and
+the rule that the daemon MUST NOT copy a response body into an error or a log
+are the same as for recognition (§8.9.3).
+
+A conforming backend answers `200` with a JSON body that validates against
+[`spec/shots/response.schema.json`](../spec/shots/response.schema.json):
+
+* `detector`: `{name, version}`, the backend's identity (§8.10.6).
+* `cuts`: an array of numbers, the times in seconds at which a new shot
+  starts.
+
+The bound on one call is
+`max(media.shots.timeout, media_duration_s * media.shots.timeout_per_media_second)`,
+with the same rules as §8.9.5 (a zero floor means `10m`; an unknown duration
+leaves the floor alone; the HTTP client adds no shorter limit).
+
+The daemon MUST bound the response size that it reads (the reference
+implementation reads at most 16 MiB, far above the cuts of a long broadcast).
+A response over the bound is a failure (§8.10.7); the earlier shots and every
+representation stay.
+
+The daemon treats the response as untrusted input. It drops a cut that is not
+a finite number, is not greater than zero, or is not less than the media
+duration. Then it applies §8.10.4.
+
+The reference backend is `dirstral-annotator serve` (§8.9.1), which MAY answer
+`/shots` with a learned detector. A served detector MAY share its process and
+`base_url` with the recognition backend.
+
+#### 8.10.4 From cuts to shots
+
+The input is the set of candidate cuts and the media duration `D` in
+milliseconds. Each cut time converts to milliseconds by rounding to the
+nearest millisecond.
+
+1. Keep only the cuts with `0 < cut_ms < D` after rounding. A cut that rounds
+   to `0` or to `D` would start or end an empty shot.
+2. Sort the cuts and remove repeated values.
+3. Walk the cuts in order. Keep a cut only when it is at least
+   `media.shots.min_shot_s` after the previous kept cut (the first cut is
+   compared with `0`), and at least `media.shots.min_shot_s` before `D`.
+4. With the kept cuts `c1 < c2 < ... < cn`, the shots are `[0, c1)`,
+   `[c1, c2)`, ..., `[cn, D)`, numbered from `0`. With no kept cut, the whole
+   video is one shot.
+
+The shots of a video cover it with no gap and no overlap. The same input,
+configuration and detector identity give the same shots on every run, so
+spans that later steps cite stay stable.
+
+The duration is REQUIRED. When the daemon cannot read it, it detects no shots
+for that document and logs a warning.
+
+#### 8.10.5 Keyframes
+
+The daemon derives keyframes from the shots; it does not store them. For a
+shot `[s, e)` of length `L = e - s` and `G = media.shots.max_keyframe_gap_s`
+in milliseconds:
+
+* the shot has `k = ceil(L / G)` keyframes (at least `1`);
+* keyframe `i` (from `0`) is at `min(s + round((i + 0.5) * L / k), e - 1)`
+  milliseconds: the middle of the `i`-th of `k` equal parts, clamped to the
+  last millisecond of the shot. (Without the clamp, rounding can put the
+  keyframe of a 1 ms shot on its exclusive end.)
+
+A short shot has one keyframe at its middle. A long static shot, for example
+a studio discussion, has one keyframe for each `G` seconds, so a per-shot step
+does not describe a long shot from one frame.
+
+A step that needs the image of a keyframe decodes the frame at that time. The
+daemon MAY cache the images in the state directory (§4.1). A cache entry is
+valid only for the same media content and the same keyframe time.
+
+#### 8.10.6 Persistence and re-derivation
+
+The shots of a document are stored in `media_shots` and their identity in
+`media_shot_sets` (§5.7). The **shot identity** is:
+
+* for `ffmpeg`: `{detector: ffmpeg, version: <ffmpeg version string>,
+  threshold, min_shot_s, height: 360}`;
+* for `serve`: `{detector: serve, name, version, min_shot_s}` from the
+  response.
+
+**Shot detection is its own step.** It does not depend on the done marker of
+the document (the `content_hash`, §7.6), and it never causes the other
+representations of a document to be derived again. On each scan, while
+detection is on, the daemon detects the shots of a video when one of these is
+true:
+
+* the video has no stored shot set (for example, detection was just turned on
+  for an indexed corpus);
+* the stored set's `content_hash` differs from the current content;
+* the last detection for the video failed (§8.10.7);
+* a field of the shot identity that the configuration alone decides differs
+  from the stored one: the detector kind and `min_shot_s` in both modes, and
+  also the `ffmpeg` version and `threshold` for `ffmpeg`;
+* the scan is a forced reindex (§7.6).
+
+A served detector declares its `name` and `version` only in a response, so a
+changed backend is used for the existing documents after a reindex (the same
+as §8.9.7). An unchanged video with a current shot set is not decoded for
+shots again.
+
+`media.shots.max_keyframe_gap_s` is not part of the shot identity, because it
+does not change the shots. It is part of the identity of every per-shot output
+that reads keyframes.
+
+When detection is turned `off`, the stored shots stay and are not used. A
+tombstoned document's shots are deleted with it.
+
+#### 8.10.7 Failures
+
+A **shot detection failure** is one of these: `ffmpeg` exits with an error,
+the local copy fails, the request fails in transport, the status is not
+`200`, the body does not decode, or the bound expires.
+
+Shots are not searchable, so a failure MUST NOT set `status="error"` on the
+document and MUST NOT retire any representation. The daemon:
+
+* logs a warning that names the document and the cause;
+* counts the failure in the run's error total;
+* records `SHOTS_FAILED` on the run manifest record when a batch run is active
+  (§8.6.11);
+* keeps the shots from an earlier run, if any;
+* records that the last detection failed, so the next scan retries shot
+  detection alone (§8.10.6).
+
+A shot failure MUST NOT hold back the done marker of the document. Otherwise
+the next scan would process the whole document again, and every step without
+a cache, such as recognition (§8.9.7), would run again because of a failure
+that does not concern it.
+
+When the daemon stops (its own context ends), the failure says nothing about
+the document, and the run's abort handling applies.
+
 ---
 
 ## 9) Retrieval and answer generation
@@ -6725,6 +6949,10 @@ Example tool execution error:
   expired bound of §8.9.5. Set as the document error only when the document has
   no active representation; otherwise it is recorded on the run manifest record
   and the document stays searchable. The next scan retries the document.
+* `SHOTS_FAILED`: shot detection failed (§8.10.7). It is never the document
+  error: shots are not searchable, so the document keeps its status and its
+  representations. It is recorded on the run manifest record, and the next
+  scan retries shot detection alone.
 * `FILE_TOO_LARGE`
 * `BINARY_SKIPPED`
 
@@ -8208,6 +8436,14 @@ media:
     two_phase: false          # opt-in: transcribe-all pass, then translate/export pass; output-equivalent to single-pass
     progress: false           # opt-in side-channel progress reporting (never affects output)
     manifest: ""              # path to a JSONL run manifest (per-asset status/duration/outputs); empty => disabled
+  shots:                      # shot detection and keyframes (§8.10). Off by default.
+    detector: off             # off | ffmpeg | serve
+    threshold: 0.2            # ffmpeg only: scene score that starts a new shot, (0, 1]
+    min_shot_s: 0.5           # shortest shot; a nearer cut is dropped
+    base_url: ""              # serve only, REQUIRED: the backend's http(s) root (POST /shots)
+    timeout: 10m              # serve only: flat floor of the bound on one call
+    timeout_per_media_second: 1.0  # serve only: seconds of bound per second of media
+    max_keyframe_gap_s: 60    # longest time between two keyframes of one shot
 
 rerank:
   # Reranking auto-activates when a provider credential is present

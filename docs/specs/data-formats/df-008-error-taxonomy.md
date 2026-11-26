@@ -1,7 +1,7 @@
 # df-008: Error taxonomy (canonical codes)
 
 - **ID:** df-008
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -101,6 +101,9 @@ Each tool error returns an object with:
   error only when the document has no active representation; otherwise it is
   recorded on the run manifest record and the document stays searchable. The
   next scan retries the document.
+- `SHOTS_FAILED`: shot detection failed (SPEC.md §8.10.7). Never the document
+  error: shots are not searchable. Recorded on the run manifest record; the
+  next scan retries shot detection alone.
 - `FILE_TOO_LARGE`
 - `BINARY_SKIPPED`
 
@@ -140,6 +143,7 @@ every error.
 
 ## Changelog
 
+- **0.7.0**: spec 0.103.0: added `SHOTS_FAILED` (ingestion/extraction), SPEC.md §8.10.7.
 - **0.6.0**: spec 0.102.0: added `RECOGNIZE_FAILED` (ingestion/extraction), which the reference implementation already writes (SPEC.md §8.9.6).
 - **0.5.0**: spec 0.99.0: `MEDIA_NO_TEXT` is also the `dir2mcp_open_file`
   outcome for a document skipped as `no_speech` (td-003 §8.6.6, §8.6.13). No new code.

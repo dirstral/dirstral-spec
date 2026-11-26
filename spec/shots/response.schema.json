@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dirstral.dev/spec/shots/response.schema.json",
+  "title": "Shots response",
+  "description": "Wire contract of the served shot detector (SPEC 8.10.3): the JSON body that a backend returns with status 200 from POST /shots. Last changed in spec version 0.103.0. The ingesting side validates every cut itself (SPEC 8.10.3, 8.10.4) and does not rely on this schema alone.",
+  "type": "object",
+  "required": [
+    "detector",
+    "cuts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "detector": {
+      "type": "object",
+      "description": "Detector identity (SPEC 8.10.6): part of the shot identity stored with the shots.",
+      "required": [
+        "name",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cuts": {
+      "type": "array",
+      "description": "The times, in seconds from the start of the media, at which a new shot starts. Order and repeats do not matter: the ingesting side sorts them, removes repeats, drops a cut at or before 0 or at or after the media duration, and applies the minimum shot length (SPEC 8.10.4). An empty array means the whole video is one shot.",
+      "items": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      }
+    }
+  }
+}
