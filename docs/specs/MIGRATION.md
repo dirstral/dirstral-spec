@@ -27,6 +27,7 @@ migration aid only and are not citable.
 | §8.6 Transcription/translation/subtitle | 1331–1657 | **`td-003`** | **Done** |
 | §8.7 Distributed embedding | 1658–1776 | **`td-005`** | **Done** |
 | §8.9 Recognition (new in 0.102.0) | n/a | a technique doc (td-006) | To do |
+| §8.10 Shots and keyframes (new in 0.103.0) | n/a | a technique doc (td-006 or its own) | To do |
 | §9 Retrieval & answer generation | 1808–1959 | **`bs-003`** | **Done** |
 | §10 MCP Streamable HTTP | 1960–2023 | **`bs-004`** | **Done** |
 | §11 MCP lifecycle (wire) | 2024–2095 | **`bs-005`** | **Done** |

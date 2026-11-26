@@ -62,6 +62,7 @@ processed again on a later scan (§7.7), whatever this column says.
 | `TRANSLATE_FAILED` | No | Translation failed, **or** translated output rejected by the degenerate-output quality gate (SPEC §8.6.6) |
 | `ANNOTATE_FAILED` | No | Structured annotation/extraction failed |
 | `RECOGNIZE_FAILED` | No | Recognition failed: local copy, transport, a status other than 200, an undecodable body, or the expired call bound (SPEC §8.9.6). The document error only when the document has no active representation. No tool call returns it; a later scan retries the document |
+| `SHOTS_FAILED` | No | Shot detection failed (SPEC §8.10.7). Never the document error, because shots are not searchable; recorded on the run manifest record, and the next scan retries detection |
 | `FILE_TOO_LARGE` | No | File exceeds the configured per-type size limit |
 | `BINARY_SKIPPED` | No | File classified as binary and skipped |
 

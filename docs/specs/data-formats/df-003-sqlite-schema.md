@@ -1,7 +1,7 @@
 # df-003: SQLite metadata schema
 
 - **ID:** df-003
-- **Version:** 0.10.0
+- **Version:** 0.11.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -315,6 +315,7 @@ and behaves exactly as before.
 
 ## Changelog
 
+- **0.11.0**: mirrors spec 0.103.0: the additive tables `media_shot_sets` (one row per document with shots: `detector`, `identity_json`, `content_hash`, `created_unix`) and `media_shots` (`doc_id`, `shot_index`, `start_ms`, `end_ms`; unique per document and index), SPEC.md §5.7 and §8.10. Not searched; no `user_version` bump.
 - **0.10.0**: mirrors spec 0.102.0: the `recognition` `rep_type` and its `meta_json` (SPEC.md §5.2, §8.9). The reference implementation has written this type since design 0004; the enum now lists it. Additive.
 - **0.9.0**: mirrors spec 0.101.0: the `editorial` `rep_type` and its `meta_json` (SPEC.md §7.11), and the `document` `span_kind`, written for an `editorial` chunk with whole-document scope so that it can carry the annotation fields. Additive; an index with no import is unchanged.
 - **0.8.0** — Added the additive `emitted_artifacts` table (§5.6) that records
