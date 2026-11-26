@@ -1,7 +1,7 @@
 # td-001: Provider model & capability activation
 
 - **ID:** td-001
-- **Version:** 0.12.0
+- **Version:** 0.13.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -51,12 +51,13 @@ Defined `kind`s:
   chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and
   `/v1/embeddings`). Endpoints that expose audio also serve STT
   (`/v1/audio/transcriptions`, Whisper / `gpt-4o-transcribe`) and TTS
-  (`/v1/audio/speech`) — endpoint-dependent, see 8.1.2.
+  (`/v1/audio/speech`) — endpoint-dependent, see 8.1.2. A model that reads
+  images also serves image input (8.1.10), endpoint- and model-dependent.
 * `mistral` — native `/v1/ocr` (and Voxtral STT); the only genuinely non-OpenAI
   Mistral surface.
-* `anthropic` — Messages API (chat only).
+* `anthropic` — Messages API (chat, and image input, 8.1.10).
 * `gemini` — native embed (**asymmetric** via `taskType`, with Matryoshka output
-  dimensionality — see 8.1.5/8.1.6), chat, STT (audio transcription), and TTS.
+  dimensionality — see 8.1.5/8.1.6), chat, image input (8.1.10), STT (audio transcription), and TTS.
   The native embed surface (`models/{model}:batchEmbedContents`) is required for
   `taskType`/`outputDimensionality`; STT and TTS likewise use the native
   `models/{model}:generateContent` surface (see 8.2/8.3) — Gemini's
@@ -91,15 +92,15 @@ credential.
 
 #### 8.1.2 Capability matrix (normative)
 
-| `kind` | embed | chat | ocr | stt | tts | rerank |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|
-| `openai` | ✅ | ✅ | ❌ | ✅³ | ✅³ | ❌ |
-| `mistral` | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| `anthropic` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `gemini` | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| `tei` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `kind` | embed | chat | vision | ocr | stt | tts | rerank |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| `openai` | ✅ | ✅ | ✅⁴ | ❌ | ✅³ | ✅³ | ❌ |
+| `mistral` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `anthropic` | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `gemini` | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `elevenlabs` | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| `tei` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 Binding a capability to a `kind` whose cell is `❌` MUST be rejected as
 `CONFIG_INVALID` (static validation). ³ = `kind: openai` audio (STT/TTS) is
@@ -109,6 +110,12 @@ if the configured endpoint lacks it, the failure surfaces **at first use** as a
 provider error — a required STT path fails that ingest item, optional TTS fails
 open (8.3) — never as `CONFIG_INVALID`. All other `✅` cells are statically
 valid.
+
+⁴ = `kind: openai` vision (8.1.10) is **endpoint- and
+model-dependent**: an OpenAI-compatible server accepts image content parts only
+for a model that reads images (for example a Qwen-VL model on vLLM). Like ³, it
+cannot be statically validated, and a model that rejects images fails **at first
+use** as a provider error, never as `CONFIG_INVALID`.
 
 **Extraction is not a cell in this matrix.** Document/image *extraction-engine*
 selection (docling / docling-serve / mistral-ocr / pandoc / libreoffice) is a
@@ -403,6 +410,60 @@ identity (§8.1.4). The full normative text is SPEC §8.1.9; the rules it fixes:
   component as before and read the document text and spans from the shared store;
   a chunk's pooled vector does not depend on which siblings share its batch.
 
+#### 8.1.10 Image input (`vision`, optional)
+
+New in 0.104.0. The `vision` capability is a chat completion whose input holds
+one or more **images** next to the text prompt. It serves the per-shot steps
+that describe or read keyframes (§8.10.5). In this version no step uses it: it
+is defined first so that those steps can bind to it.
+
+**Binding: an explicit choice only.** `vision` is **off** until
+`model.vision.provider` names a profile. It is **never auto-selected**, also
+when a profile with a vision-capable kind has a credential. This is a
+deliberate exception to 8.1.3 step 2: images of a corpus (video frames, which
+can show faces) MUST NOT leave the host for a provider that nobody named,
+merely because a key for it is present for another capability.
+
+* The model is `model.vision.model`, or else the named profile's
+  `vision_model` (8.1.1). A chat model is not assumed to read images, and no
+  built-in profile declares a `vision_model`.
+* `model.vision.provider` set with no known vision model is `CONFIG_INVALID`,
+  and so is a provider whose kind has `❌` in the `vision` column (8.1.2).
+* A step that needs `vision` while it is off reports that it is unavailable;
+  it does not fall back to another provider.
+
+**Request.** A request is one user turn with the prompt text and the images, in
+that order, and no conversation history. Each image is sent **inline**, base64
+encoded, in the provider's native shape:
+
+* `openai`: content parts `{"type": "text"}` and
+  `{"type": "image_url", "image_url": {"url": "data:<mime>;base64,<data>"}}`;
+* `anthropic`: content blocks `{"type": "image", "source": {"type": "base64",
+  "media_type": "<mime>", "data": "<data>"}}` after the text block;
+* `gemini`: parts `{"inline_data": {"mime_type": "<mime>", "data": "<data>"}}`
+  after the text part.
+
+The daemon sends `image/jpeg` or `image/png` only. It MUST bound the images of
+one request (the reference implementation sends at most 8 images, and at most
+4 MiB for each image after encoding) and reject a larger request before it
+sends it. An image is never fetched by URL, so a provider never reads a
+location that the corpus did not give it.
+
+**Response.** The text of the first answer, as for `chat`. An empty answer is a
+valid answer. A model that rejects images, an HTTP error and a body that does
+not decode are provider errors, with the codes of the chat path (§14.5).
+
+**Identity.** The vision provider, the normalized `base_url` and the model are
+part of the derivation identity (§8.6.7) of every output that a vision step
+produces, together with that step's own prompt. A change re-derives those
+outputs only. `vision` is **not** part of the embed identity (8.1.4): it is
+runtime-swappable, like `chat`.
+
+**Privacy.** Images leave the host for a cloud provider in the same way as text
+does for `chat`. A deployment that must not send pixels out binds `vision` to a
+local endpoint (8.5), or leaves it off. Every step that uses it is off by
+default.
+
 ### 8.2 STT providers
 
 * STT provider is selected per 8.1.3 among STT-capable profiles (8.1.2):
@@ -652,6 +713,7 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
+- **0.13.0**: mirrors spec 0.104.0: §8.1.2 gains the `vision` column (footnote ⁴: `kind: openai` vision is endpoint- and model-dependent); §8.1.10 (new) image input: an explicit binding only (never auto-selected), inline base64 request shapes per kind, the request bound, errors, identity and privacy.
 - **0.12.0**: §8.2 (spec 0.99.0): a well-formed STT response with empty text and no segment that holds text is a **no-speech result**, a successful decode, not a provider error; a malformed response stays an error. §8.2.3/§8.2.4: a no-speech identifier response that reports no language is no signal. §8.1.2: the extraction-engine list names `libreoffice`. A segment with a `start` or an `end` but no `text` is malformed. The Gemini generated text is the text field of the normalized response.
 - **0.11.0**: §8.8 (spec 0.85.0): pointers to the `media.language` pin rules and
   the sampled-detection rule for a long text.

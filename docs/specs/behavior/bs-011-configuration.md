@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.23.0
+- **Version:** 0.24.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -109,6 +109,9 @@ model:
   chat:
     provider: mistral
     model: mistral-small-2506
+  vision:                                  # image input (SPEC.md 8.1.10). Off until provider is set:
+    provider: ""                           # never auto-selected, so frames never leave for a
+    model: ""                              # provider nobody named. e.g. a Qwen-VL model on vLLM
   ocr:
     provider: mistral-ocr
     model: mistral-ocr-latest
@@ -453,6 +456,7 @@ security:
 
 ## Changelog
 
+- **0.24.0**: mirrors spec 0.104.0 (SPEC.md §8.1.10, §16.2): the template lists the `model.vision` block (`provider`, `model`); vision is off until `provider` is set and is never auto-selected.
 - **0.23.0**: mirrors spec 0.103.0 (SPEC.md §8.10.1, §16.2): the template lists the `media.shots` block (`detector` `off` by default, `threshold` `0.2`, `min_shot_s` `0.5`, `base_url`, `timeout` `10m`, `timeout_per_media_second` `1.0`, `max_keyframe_gap_s` `60`).
 - **0.22.0**: mirrors spec 0.102.0 (SPEC.md §8.9.1, §16.2): the template lists the `recognize` block (`provider` `off` by default, `base_url`, `serve_command`, `timeout` `10m`, `timeout_per_media_second` `2.0`), which the reference implementation already reads.
 - **0.21.0**: mirrors spec 0.101.0 (SPEC.md §7.11.4, §16.2): the template lists `annotations.name_folds` (default empty), the optional character folds for editorial person ids.
