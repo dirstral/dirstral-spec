@@ -1,7 +1,9 @@
 # Design 0004 — Recognition capability (`recognize`)
 
-**Status:** Proposed (targets a future MINOR spec bump; supersedes this
-note's earlier annotation-sidecar draft)
+**Status:** Promoted in spec 0.102.0. SPEC §8.9 is normative; this note keeps
+the motivation and the measurements (§6.1, §6.2). The representation type is
+`recognition`, not the `annotation` of §4 below. (This note also supersedes
+its earlier annotation-sidecar draft.)
 **Author:** dirstral maintainers
 **Extends:** SPEC §8 (capabilities & provider bindings, [Design 0001](0001-multi-provider.md)), §8.6.7 (derivation identity), §5.2 (representation sources), §5.4 (spans)
 **Related:** [Design 0002](0002-structured-extraction.md) (entity-aware querying, future), [Design 0003](0003-multimodal-embeddings.md) (fuzzy visual recall; media-fetch open question)

@@ -1,7 +1,7 @@
 # bs-011: Configuration (single file)
 
 - **ID:** bs-011
-- **Version:** 0.21.0
+- **Version:** 0.22.0
 - **Status:** Draft
 - **Supersedes:** —
 - **Superseded-by:** —
@@ -371,6 +371,14 @@ x402:
     metadata:
       description: ""
 
+# Recognition (SPEC.md §8.9; design 0004). Off by default.
+recognize:
+  provider: off                 # off | serve
+  base_url: ""                  # REQUIRED for serve: the backend's http(s) root; no user:password@
+  serve_command: ""             # optional: dir2mcp starts and stops the backend itself
+  timeout: 10m                  # flat floor of the bound on one /recognize call
+  timeout_per_media_second: 2.0 # seconds of bound per second of media; 0 = floor only
+
 annotations:
   name_folds: []                # SPEC.md §7.11.4: optional single-character folds for editorial person ids, "<from>=<to>" (for example "ё=е"); empty = none
 
@@ -437,6 +445,7 @@ security:
 
 ## Changelog
 
+- **0.22.0**: mirrors spec 0.102.0 (SPEC.md §8.9.1, §16.2): the template lists the `recognize` block (`provider` `off` by default, `base_url`, `serve_command`, `timeout` `10m`, `timeout_per_media_second` `2.0`), which the reference implementation already reads.
 - **0.21.0**: mirrors spec 0.101.0 (SPEC.md §7.11.4, §16.2): the template lists `annotations.name_folds` (default empty), the optional character folds for editorial person ids.
 - **0.20.0**: mirrors spec 0.99.0 (bs-002 §7.2, td-004, and the configuration template of SPEC.md §16.2): the `security.secret_patterns` defaults change (the `sk-` key format with a left boundary; a left boundary on `sk_`/`api_`), and the new `security.secret_allow_patterns` list releases the `redir_token` parameter of a YouTube redirect link. `ingest.extractor` lists `pandoc` (missing here since spec 0.31.0) and the new `libreoffice`; the template lists the `ingest.pandoc` block and the new `ingest.libreoffice.{command, timeout_sec}` block.
 - **0.19.0**: mirrors spec 0.96.0 (SPEC.md §7.1, §16.2): the template lists `ingest.priority_list` (default empty).

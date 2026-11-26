@@ -49,6 +49,11 @@ These are returned with HTTP 200. The `isError: true` flag is set on the result.
 Per-document, non-fatal (§7.7). Recorded against `documents.status='error'`; the
 degenerate-output quality gate (SPEC §8.6.6) also surfaces through these codes.
 
+In this table, `Retryable` applies only where a tool call returns the code: it
+says whether the same call can succeed after the documented recovery step. It
+does not describe ingestion. A document recorded with `status='error'` is
+processed again on a later scan (§7.7), whatever this column says.
+
 | Code string | Retryable | Description |
 |-------------|-----------|-------------|
 | `EXTRACT_FAILED` | No | Document extraction (e.g. docling) failed |
@@ -56,6 +61,7 @@ degenerate-output quality gate (SPEC §8.6.6) also surfaces through these codes.
 | `TRANSCRIBE_FAILED` | No | Transcription failed, **or** transcript rejected by the degenerate-output quality gate (empty/repetition/low-density, SPEC §8.6.6) |
 | `TRANSLATE_FAILED` | No | Translation failed, **or** translated output rejected by the degenerate-output quality gate (SPEC §8.6.6) |
 | `ANNOTATE_FAILED` | No | Structured annotation/extraction failed |
+| `RECOGNIZE_FAILED` | No | Recognition failed: local copy, transport, a status other than 200, an undecodable body, or the expired call bound (SPEC §8.9.6). The document error only when the document has no active representation. No tool call returns it; a later scan retries the document |
 | `FILE_TOO_LARGE` | No | File exceeds the configured per-type size limit |
 | `BINARY_SKIPPED` | No | File classified as binary and skipped |
 

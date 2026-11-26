@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.101.0`
+**Current spec version:** `0.102.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,54 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.102.0: the recognition capability is normative (design 0004 promoted)
+
+The `recognize` capability has shipped in the reference implementation since
+design 0004, and §9.9 to §9.11 already filter on its output. This version puts
+the capability itself into SPEC.md: one new `rep_type` value, one new section,
+one new error code and five config keys that the implementation already reads
+(`MINOR` per the pre-1.0 policy). No default changes: recognition stays off.
+
+- §5.2 adds `recognition` to the `rep_type` enum, with its `meta_json`
+  (`source: recognize`, `provider`, `model`, `model_version`, and the entity
+  dictionary `entities`). Design 0004 §4 named the type `annotation`; the
+  implementation has always written `recognition`, and the spec follows it.
+- §8.9 (new) **Recognition.** §8.9.1 the keys and their `CONFIG_INVALID` rules;
+  §8.9.2 the connect-only and managed backend lifecycles; §8.9.3 the wire
+  contract, `POST {base_url}/recognize`, with the normative response schema at
+  `spec/recognize/response.schema.json` (moved from the design folder); §8.9.4
+  ingestion: video only, millisecond rounding, the malformed-annotation drops,
+  one chunk per annotation, order-independent `rep_hash`, secret screening;
+  §8.9.5 the duration-scaled bound on one call; §8.9.6 failure routing (a
+  document with active representations is never set to `status="error"` by a
+  recognition failure); §8.9.7 re-derivation.
+- Three requirements of §8.9.4 are new for the reference implementation, and
+  its code follow-up closes them:
+  - a `derivation` of `generated` on the wire MUST reach the span (df-005
+    defined the field; the implementation did not read it from the wire), and
+    an unknown `derivation` value drops the annotation;
+  - the entity dictionary MUST be kept in `meta_json.entities` (design 0004 §7
+    required it; the implementation dropped it);
+  - a successful call that leaves no annotation retires the earlier
+    `recognition` representation when the media changed (the implementation
+    kept it, so statements about replaced media kept answering). For the same
+    media it is kept with a warning, so a faulty backend cannot erase a corpus
+    on a reindex.
+
+  The derivation and the dictionary join the `rep_hash` only when present, so
+  an existing corpus is not recognized again. The sign and order checks on a
+  span now use the raw seconds, before rounding.
+- §8.1.2 states that recognition is not a cell of the capability matrix.
+  §8.6.7 adds the `recognition` bullet. §14.4 adds `RECOGNIZE_FAILED`, which the
+  implementation already writes. §16.2 adds the `recognize:` block.
+- `spec/recognize/response.schema.json` is new. `spec/errors/taxonomy.md` adds
+  `RECOGNIZE_FAILED`. The tool schemas are unchanged.
+- Mirrors: bs-011 0.22.0, df-003 0.10.0, df-008 0.6.0. The new §8.9 has no
+  numbered document yet (MIGRATION.md: To do).
+- Motivation: archive enrichment. Shots, keyframe captions and on-screen text
+  per shot are recognition output with time spans, so they build on this
+  capability, and it must be specified first.
 
 ## 0.101.0: import external editorial annotations
 
