@@ -82,8 +82,11 @@ by default: an index without it has no rows and no change in any result.
     the previous cut and the end, then cover the video with no gap.
   - §8.10.5: keyframes, derived and not stored: the middle of each of
     `ceil(L / max_keyframe_gap_s)` equal parts of a shot.
-  - §8.10.6: persistence and the shot identity. §8.10.7: a failure never sets
-    `status="error"` and never retires a representation.
+  - §8.10.6: persistence and the shot identity. Detection is its own step:
+    a video with no shot set, an out-of-date one or a failed one is detected
+    on the next scan without reprocessing its other representations.
+  - §8.10.7: a failure never sets `status="error"`, never retires a
+    representation and never holds back the done marker.
 - §5.7 (new): the additive tables `media_shot_sets` and `media_shots`. No
   `PRAGMA user_version` bump (§5.6: additive).
 - §14.4 adds `SHOTS_FAILED`. §16.2 adds the `media.shots` block.

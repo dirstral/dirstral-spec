@@ -973,6 +973,9 @@ detection has no rows and behaves as before. Neither table is searched.
 * `identity_json`: the shot identity (§8.10.6)
 * `content_hash`: the document content the shots were detected on
 * `created_unix`
+* `failed_unix`: OPTIONAL. Set when the last detection failed (§8.10.7) and
+  cleared by the next successful one. A row can exist with a failure and no
+  shots.
 
 **`media_shots`**, one row for each shot:
 
@@ -5565,13 +5568,25 @@ The shots of a document are stored in `media_shots` and their identity in
 * for `serve`: `{detector: serve, name, version, min_shot_s}` from the
   response.
 
-The daemon detects shots again when the media content changes, on a forced
-reindex (§7.6), and when a field of the shot identity that the configuration
-alone decides differs from the stored one: the detector kind and `min_shot_s`
-in both modes, and also the `ffmpeg` version and `threshold` for `ffmpeg`. A
-served detector declares its `name` and `version` only in a response, so a
+**Shot detection is its own step.** It does not depend on the done marker of
+the document (the `content_hash`, §7.6), and it never causes the other
+representations of a document to be derived again. On each scan, while
+detection is on, the daemon detects the shots of a video when one of these is
+true:
+
+* the video has no stored shot set (for example, detection was just turned on
+  for an indexed corpus);
+* the stored set's `content_hash` differs from the current content;
+* the last detection for the video failed (§8.10.7);
+* a field of the shot identity that the configuration alone decides differs
+  from the stored one: the detector kind and `min_shot_s` in both modes, and
+  also the `ffmpeg` version and `threshold` for `ffmpeg`;
+* the scan is a forced reindex (§7.6).
+
+A served detector declares its `name` and `version` only in a response, so a
 changed backend is used for the existing documents after a reindex (the same
-as §8.9.7).
+as §8.9.7). An unchanged video with a current shot set is not decoded for
+shots again.
 
 `media.shots.max_keyframe_gap_s` is not part of the shot identity, because it
 does not change the shots. It is part of the identity of every per-shot output
@@ -5594,9 +5609,13 @@ document and MUST NOT retire any representation. The daemon:
 * records `SHOTS_FAILED` on the run manifest record when a batch run is active
   (§8.6.11);
 * keeps the shots from an earlier run, if any;
-* does not mark the document as done, so the next incremental scan retries
-  detection. The derivation caches (§8.6.7) keep that retry cheap for the
-  other representations of the document.
+* records that the last detection failed, so the next scan retries shot
+  detection alone (§8.10.6).
+
+A shot failure MUST NOT hold back the done marker of the document. Otherwise
+the next scan would process the whole document again, and every step without
+a cache, such as recognition (§8.9.7), would run again because of a failure
+that does not concern it.
 
 When the daemon stops (its own context ends), the failure says nothing about
 the document, and the run's abort handling applies.
@@ -6926,7 +6945,7 @@ Example tool execution error:
 * `SHOTS_FAILED`: shot detection failed (§8.10.7). It is never the document
   error: shots are not searchable, so the document keeps its status and its
   representations. It is recorded on the run manifest record, and the next
-  scan retries detection.
+  scan retries shot detection alone.
 * `FILE_TOO_LARGE`
 * `BINARY_SKIPPED`
 

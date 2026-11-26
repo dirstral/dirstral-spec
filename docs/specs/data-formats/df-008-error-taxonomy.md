@@ -103,7 +103,7 @@ Each tool error returns an object with:
   next scan retries the document.
 - `SHOTS_FAILED`: shot detection failed (SPEC.md §8.10.7). Never the document
   error: shots are not searchable. Recorded on the run manifest record; the
-  next scan retries detection.
+  next scan retries shot detection alone.
 - `FILE_TOO_LARGE`
 - `BINARY_SKIPPED`
 
