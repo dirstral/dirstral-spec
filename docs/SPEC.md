@@ -5520,11 +5520,13 @@ The input is the set of candidate cuts and the media duration `D` in
 milliseconds. Each cut time converts to milliseconds by rounding to the
 nearest millisecond.
 
-1. Sort the cuts and remove repeated values.
-2. Walk the cuts in order. Keep a cut only when it is at least
+1. Keep only the cuts with `0 < cut_ms < D` after rounding. A cut that rounds
+   to `0` or to `D` would start or end an empty shot.
+2. Sort the cuts and remove repeated values.
+3. Walk the cuts in order. Keep a cut only when it is at least
    `media.shots.min_shot_s` after the previous kept cut (the first cut is
    compared with `0`), and at least `media.shots.min_shot_s` before `D`.
-3. With the kept cuts `c1 < c2 < ... < cn`, the shots are `[0, c1)`,
+4. With the kept cuts `c1 < c2 < ... < cn`, the shots are `[0, c1)`,
    `[c1, c2)`, ..., `[cn, D)`, numbered from `0`. With no kept cut, the whole
    video is one shot.
 
@@ -5564,10 +5566,12 @@ The shots of a document are stored in `media_shots` and their identity in
   response.
 
 The daemon detects shots again when the media content changes, on a forced
-reindex (§7.6), and, for `ffmpeg`, when the configured shot identity differs
-from the stored one. A served detector declares its identity only in a
-response, so a changed backend is used for the existing documents after a
-reindex (the same as §8.9.7).
+reindex (§7.6), and when a field of the shot identity that the configuration
+alone decides differs from the stored one: the detector kind and `min_shot_s`
+in both modes, and also the `ffmpeg` version and `threshold` for `ffmpeg`. A
+served detector declares its `name` and `version` only in a response, so a
+changed backend is used for the existing documents after a reindex (the same
+as §8.9.7).
 
 `media.shots.max_keyframe_gap_s` is not part of the shot identity, because it
 does not change the shots. It is part of the identity of every per-shot output
