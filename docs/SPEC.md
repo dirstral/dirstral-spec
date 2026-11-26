@@ -3045,13 +3045,20 @@ one or more **images** next to the text prompt. It serves the per-shot steps
 that describe or read keyframes (§8.10.5). In this version no step uses it: it
 is defined first so that those steps can bind to it.
 
-**Binding.** `model.vision.provider` names the profile and `model.vision.model`
-the model; a profile MAY declare a default `vision_model` (8.1.1). Selection
-follows 8.1.3, with one more condition for auto-selection: a profile qualifies
-only when a vision model is known for it (`model.vision.model` or the
-profile's `vision_model`). A chat model is not assumed to read images. The
-capability is **optional**: when no profile qualifies, `vision` stays off, and a
-step that needs it reports that it is unavailable.
+**Binding: an explicit choice only.** `vision` is **off** until
+`model.vision.provider` names a profile. It is **never auto-selected**, also
+when a profile with a vision-capable kind has a credential. This is a
+deliberate exception to 8.1.3 step 2: images of a corpus (video frames, which
+can show faces) MUST NOT leave the host for a provider that nobody named,
+merely because a key for it is present for another capability.
+
+* The model is `model.vision.model`, or else the named profile's
+  `vision_model` (8.1.1). A chat model is not assumed to read images, and no
+  built-in profile declares a `vision_model`.
+* `model.vision.provider` set with no known vision model is `CONFIG_INVALID`,
+  and so is a provider whose kind has `❌` in the `vision` column (8.1.2).
+* A step that needs `vision` while it is off reports that it is unavailable;
+  it does not fall back to another provider.
 
 **Request.** A request is one user turn with the prompt text and the images, in
 that order, and no conversation history. Each image is sent **inline**, base64
@@ -8220,9 +8227,9 @@ model:
   chat:
     provider: mistral
     model: mistral-small-2506
-  vision:                                  # image input (8.1.10); optional, off when no
-    provider: ""                           # profile has a vision model. Unset = auto.
-    model: ""                              # e.g. gemini-2.5-flash, or a Qwen-VL model on vLLM
+  vision:                                  # image input (8.1.10). Off until provider is set:
+    provider: ""                           # never auto-selected, so frames never leave for a
+    model: ""                              # provider nobody named. e.g. a Qwen-VL model on vLLM
   ocr:
     provider: mistral-ocr
     model: mistral-ocr-latest

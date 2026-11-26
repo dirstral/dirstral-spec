@@ -417,13 +417,20 @@ one or more **images** next to the text prompt. It serves the per-shot steps
 that describe or read keyframes (§8.10.5). In this version no step uses it: it
 is defined first so that those steps can bind to it.
 
-**Binding.** `model.vision.provider` names the profile and `model.vision.model`
-the model; a profile MAY declare a default `vision_model` (8.1.1). Selection
-follows 8.1.3, with one more condition for auto-selection: a profile qualifies
-only when a vision model is known for it (`model.vision.model` or the
-profile's `vision_model`). A chat model is not assumed to read images. The
-capability is **optional**: when no profile qualifies, `vision` stays off, and a
-step that needs it reports that it is unavailable.
+**Binding: an explicit choice only.** `vision` is **off** until
+`model.vision.provider` names a profile. It is **never auto-selected**, also
+when a profile with a vision-capable kind has a credential. This is a
+deliberate exception to 8.1.3 step 2: images of a corpus (video frames, which
+can show faces) MUST NOT leave the host for a provider that nobody named,
+merely because a key for it is present for another capability.
+
+* The model is `model.vision.model`, or else the named profile's
+  `vision_model` (8.1.1). A chat model is not assumed to read images, and no
+  built-in profile declares a `vision_model`.
+* `model.vision.provider` set with no known vision model is `CONFIG_INVALID`,
+  and so is a provider whose kind has `❌` in the `vision` column (8.1.2).
+* A step that needs `vision` while it is off reports that it is unavailable;
+  it does not fall back to another provider.
 
 **Request.** A request is one user turn with the prompt text and the images, in
 that order, and no conversation history. Each image is sent **inline**, base64
@@ -706,7 +713,7 @@ it MUST NOT make ingestion fail.
 
 ## Changelog
 
-- **0.13.0**: mirrors spec 0.104.0: §8.1.2 gains the `vision` column (footnote ⁴: `kind: openai` vision is endpoint- and model-dependent); §8.1.10 (new) image input: binding, inline base64 request shapes per kind, the request bound, errors, identity and privacy.
+- **0.13.0**: mirrors spec 0.104.0: §8.1.2 gains the `vision` column (footnote ⁴: `kind: openai` vision is endpoint- and model-dependent); §8.1.10 (new) image input: an explicit binding only (never auto-selected), inline base64 request shapes per kind, the request bound, errors, identity and privacy.
 - **0.12.0**: §8.2 (spec 0.99.0): a well-formed STT response with empty text and no segment that holds text is a **no-speech result**, a successful decode, not a provider error; a malformed response stays an error. §8.2.3/§8.2.4: a no-speech identifier response that reports no language is no signal. §8.1.2: the extraction-engine list names `libreoffice`. A segment with a `start` or an `end` but no `text` is malformed. The Gemini generated text is the text field of the normalized response.
 - **0.11.0**: §8.8 (spec 0.85.0): pointers to the `media.language` pin rules and
   the sampled-detection rule for a long text.

@@ -69,10 +69,12 @@ One new optional capability, one new profile field and two config keys
 
 - §8.1.2: the matrix gains a `vision` column: `openai` (endpoint- and
   model-dependent, footnote ⁴), `anthropic` and `gemini`.
-- §8.1.10 (new) **Image input.** Binding through `model.vision.provider` and
-  `model.vision.model`, with a profile default `vision_model`; auto-selection
-  needs a known vision model, because a chat model is not assumed to read
-  images. Images go inline, base64, in each provider's native shape, never by
+- §8.1.10 (new) **Image input.** Off until `model.vision.provider` is set:
+  `vision` is never auto-selected, a deliberate exception to 8.1.3, so that
+  corpus images (frames can show faces) never leave the host for a provider
+  that nobody named. The model is `model.vision.model` or the profile's
+  `vision_model`; no built-in profile declares one, and a provider with no
+  known vision model is `CONFIG_INVALID`. Images go inline, base64, in each provider's native shape, never by
   URL; the daemon bounds the images of one request. Errors are those of the
   chat path. The vision provider, endpoint and model join the derivation
   identity of the outputs that use them; `vision` is runtime-swappable.
