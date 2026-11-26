@@ -12,7 +12,7 @@ The spec uses [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 **Pre-1.0 (beta) policy.** While the spec is `0.x` the project is pre-institutional and treated as **beta**: the `MAJOR` component stays `0`; **both** breaking wire/schema changes **and** new optional fields/tools bump the `MINOR` (e.g. `0.4.0 → 0.5.0`); only clarifications/doc-fixes bump the `PATCH`. (The SemVer table above describes post-`1.0` semantics — breaking → `MAJOR`, new optional → `MINOR` — and takes effect at `1.0.0`. The "Non-breaking additions" section below remains accurate: new optional surface is a `MINOR` bump in either regime.)
 
-**Current spec version:** `0.103.0`
+**Current spec version:** `0.104.0`
 
 This file is the **single source** for the current spec version. Every other
 document points here. An artifact under `spec/` carries a **Last changed in
@@ -61,6 +61,25 @@ Spec gaps identified during the review (see `<!-- spec-gap: ... -->` comments in
 - Error `data` envelope (`{"code": ..., "retryable": ...}`) was not documented
 - Tool execution errors return HTTP 200 with `isError: true`; this was not explicitly stated
 - Several error codes (`MISSING_FIELD`, `INVALID_FIELD`, `INVALID_RANGE`, `STORE_CORRUPT`, `INTERNAL_ERROR`, `FORBIDDEN_ORIGIN`, `METHOD_NOT_FOUND`) were absent from the taxonomy
+
+## 0.104.0: image input (`vision`) as a capability
+
+One new optional capability, one new profile field and two config keys
+(`MINOR` per the pre-1.0 policy). No default changes and no step uses it yet.
+
+- §8.1.2: the matrix gains a `vision` column: `openai` (endpoint- and
+  model-dependent, footnote ⁴), `anthropic` and `gemini`.
+- §8.1.10 (new) **Image input.** Binding through `model.vision.provider` and
+  `model.vision.model`, with a profile default `vision_model`; auto-selection
+  needs a known vision model, because a chat model is not assumed to read
+  images. Images go inline, base64, in each provider's native shape, never by
+  URL; the daemon bounds the images of one request. Errors are those of the
+  chat path. The vision provider, endpoint and model join the derivation
+  identity of the outputs that use them; `vision` is runtime-swappable.
+- §16.2 adds the `model.vision` block.
+- Mirrors: td-001 0.13.0, bs-011 0.24.0.
+- Motivation: per-shot captions (archive enrichment) describe keyframes with a
+  vision model, local (a Qwen-VL model on vLLM) or hosted.
 
 ## 0.103.0: shot detection and keyframes
 

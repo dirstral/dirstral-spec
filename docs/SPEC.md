@@ -15,7 +15,7 @@
 > docs are **Draft**; this file stays authoritative until each is reviewed and
 > marked **Stable**.
 
-**Spec version:** `0.103.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
+**Spec version:** `0.104.0` (single source: [`spec/versioning.md`](../spec/versioning.md))  
 **MCP protocol target:** `2025-11-25` (Streamable HTTP transport, sessions, tools, structured tool output)  
 **Primary goal:** one-command “deploy-now” directory RAG exposed as an **MCP Streamable HTTP** server, with an embedded on-disk index by default (**zero external infra required beyond model providers**; an external vector store MAY be configured but is never required — §6) and a single config file.  
 **Implementation goal:** a **provider-agnostic** model pipeline (embeddings, chat/RAG, OCR, STT, rerank) where each capability binds to a configurable provider profile. An OpenAI-compatible adapter is the backbone for chat + embeddings (OpenAI, OpenRouter, Groq, Azure, local Ollama/vLLM, **and Mistral**); bespoke adapters cover genuinely non-OpenAI surfaces (Mistral OCR, Anthropic, Cohere rerank, ElevenLabs). Mistral is the default profile but not privileged. See [Design 0001](design/0001-multi-provider.md).  
@@ -2603,10 +2603,10 @@ dir2mcp is **provider-agnostic**. Each model capability — `embed`, `chat`, `oc
 
 A profile declares a `kind` (the adapter / wire protocol), a `base_url` (defaulted per kind; overridable), an **optional** `api_key` secret reference (resolved per 16.1.1, never persisted), and per-capability default model names. A profile with no `api_key` is **credential-less** (e.g. a local Ollama/vLLM/LM Studio endpoint that requires no key); credential-less profiles are first-class and count as **eligible** for selection and preflight (8.1.3). Defined `kind`s:
 
-* `openai` — the OpenAI-compatible **backbone**: OpenAI, OpenRouter, Groq, Together, Azure-style, and local Ollama/vLLM/LM Studio — **and Mistral chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and `/v1/embeddings`). Endpoints that expose audio also serve STT (`/v1/audio/transcriptions`, Whisper / `gpt-4o-transcribe`) and TTS (`/v1/audio/speech`) — endpoint-dependent, see 8.1.2.
+* `openai` — the OpenAI-compatible **backbone**: OpenAI, OpenRouter, Groq, Together, Azure-style, and local Ollama/vLLM/LM Studio — **and Mistral chat/embeddings** (`api.mistral.ai` already serves `/v1/chat/completions` and `/v1/embeddings`). Endpoints that expose audio also serve STT (`/v1/audio/transcriptions`, Whisper / `gpt-4o-transcribe`) and TTS (`/v1/audio/speech`) — endpoint-dependent, see 8.1.2. A model that reads images also serves image input (8.1.10), endpoint- and model-dependent.
 * `mistral` — native `/v1/ocr` (and Voxtral STT); the only genuinely non-OpenAI Mistral surface.
-* `anthropic` — Messages API (chat only).
-* `gemini` — native embed (**asymmetric** via `taskType`, with Matryoshka output dimensionality — see 8.1.5/8.1.6), chat, STT (audio transcription), and TTS. The native embed surface (`models/{model}:batchEmbedContents`) is required for `taskType`/`outputDimensionality`; STT and TTS likewise use the native `models/{model}:generateContent` surface (see 8.2/8.3) — Gemini's OpenAI-compatible layer does **not** expose `/v1/audio/*`, so only chat may ride the `kind: openai` path. A `gemini` profile MAY alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint, which serves chat only and forgoes `taskType` (and thus the asymmetric/role behavior).
+* `anthropic` — Messages API (chat, and image input, 8.1.10).
+* `gemini` — native embed (**asymmetric** via `taskType`, with Matryoshka output dimensionality — see 8.1.5/8.1.6), chat, image input (8.1.10), STT (audio transcription), and TTS. The native embed surface (`models/{model}:batchEmbedContents`) is required for `taskType`/`outputDimensionality`; STT and TTS likewise use the native `models/{model}:generateContent` surface (see 8.2/8.3) — Gemini's OpenAI-compatible layer does **not** expose `/v1/audio/*`, so only chat may ride the `kind: openai` path. A `gemini` profile MAY alternatively be configured as a `kind: openai` profile via Gemini's OpenAI-compatible endpoint, which serves chat only and forgoes `taskType` (and thus the asymmetric/role behavior).
 * `cohere` — embed, chat, and rerank (8.4). Cohere embeddings are **asymmetric** (see 8.1.5).
 * `elevenlabs` — STT/TTS.
 * `tei` — a self-hosted [Hugging Face Text Embeddings Inference](https://github.com/huggingface/text-embeddings-inference) server on its **native** surface: `POST /embed` (pooled, normalized embeddings), `POST /embed_all` (one vector per token, no pooling), `POST /tokenize` (token offsets) and `GET /info` (served model, pooling, maximum input length). It is the first kind that exposes **token-level embeddings**, so it is the first kind that can serve late chunking (8.1.9). Embed only. Credential-optional: a Bearer token is sent only when an `api_key` is configured. No shipped default `base_url` (§8.5): the operator declares the endpoint, and the normalized endpoint is always a non-empty component of the embed identity (8.1.4). **Transport.** Late chunking sends whole documents to this endpoint, so the §8.5 trust rule applies with force: a `tei` endpoint that is not loopback, link-local or private-network (RFC 1918 / RFC 4193) MUST use `https`; an `api_key` on a plain-`http` remote endpoint is `CONFIG_INVALID`. The Bearer token is sent only to the configured scheme and host, and never across a redirect that changes either (the adapter does not follow redirects, as no provider adapter does). A TEI server also exposes an OpenAI-compatible `/v1/embeddings`; a `kind: openai` profile pointed at it keeps working, but it cannot serve late chunking, because that surface returns pooled vectors only.
@@ -2615,17 +2615,21 @@ Built-in profiles ship for common providers so operators typically only supply a
 
 #### 8.1.2 Capability matrix (normative)
 
-| `kind` | embed | chat | ocr | stt | tts | rerank |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|
-| `openai` | ✅ | ✅ | ❌ | ✅³ | ✅³ | ❌ |
-| `mistral` | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| `anthropic` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `gemini` | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| `elevenlabs` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| `tei` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `kind` | embed | chat | vision | ocr | stt | tts | rerank |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| `openai` | ✅ | ✅ | ✅⁴ | ❌ | ✅³ | ✅³ | ❌ |
+| `mistral` | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `anthropic` | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `gemini` | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| `cohere` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `elevenlabs` | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| `tei` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-Binding a capability to a `kind` whose cell is `❌` MUST be rejected as `CONFIG_INVALID` (static validation). ³ = `kind: openai` audio (STT/TTS) is **endpoint-dependent** and cannot be statically validated (an arbitrary OpenAI-compatible `base_url` may omit `/v1/audio/*`). The adapter implements it; if the configured endpoint lacks it, the failure surfaces **at first use** as a provider error — a required STT path fails that ingest item, optional TTS fails open (8.3) — never as `CONFIG_INVALID`. All other `✅` cells are statically valid.
+Binding a capability to a `kind` whose cell is `❌` MUST be rejected as `CONFIG_INVALID` (static validation). ³ = `kind: openai` audio (STT/TTS) is **endpoint-dependent** and cannot be statically validated (an arbitrary OpenAI-compatible `base_url` may omit `/v1/audio/*`). The adapter implements it; if the configured endpoint lacks it, the failure surfaces **at first use** as a provider error — a required STT path fails that ingest item, optional TTS fails open (8.3) — never as `CONFIG_INVALID`. ⁴ = `kind: openai` vision (8.1.10) is **endpoint- and
+model-dependent**: an OpenAI-compatible server accepts image content parts only
+for a model that reads images (for example a Qwen-VL model on vLLM). Like ³, it
+cannot be statically validated, and a model that rejects images fails **at first
+use** as a provider error, never as `CONFIG_INVALID`. All other `✅` cells are statically valid.
 
 **Extraction is not a cell in this matrix.** Document/image *extraction-engine*
 selection (docling / docling-serve / mistral-ocr / pandoc / libreoffice) is a
@@ -3033,6 +3037,53 @@ that granularity: a re-delivered document job re-pools every chunk and overwrite
 identical vectors, because a chunk's pooled vector depends only on the document
 text and its own span, so at-least-once delivery cannot leave a mixed set. The
 worker reads the document text and rune spans from the shared store (8.7.4).
+
+#### 8.1.10 Image input (`vision`, optional)
+
+New in 0.104.0. The `vision` capability is a chat completion whose input holds
+one or more **images** next to the text prompt. It serves the per-shot steps
+that describe or read keyframes (§8.10.5). In this version no step uses it: it
+is defined first so that those steps can bind to it.
+
+**Binding.** `model.vision.provider` names the profile and `model.vision.model`
+the model; a profile MAY declare a default `vision_model` (8.1.1). Selection
+follows 8.1.3, with one more condition for auto-selection: a profile qualifies
+only when a vision model is known for it (`model.vision.model` or the
+profile's `vision_model`). A chat model is not assumed to read images. The
+capability is **optional**: when no profile qualifies, `vision` stays off, and a
+step that needs it reports that it is unavailable.
+
+**Request.** A request is one user turn with the prompt text and the images, in
+that order, and no conversation history. Each image is sent **inline**, base64
+encoded, in the provider's native shape:
+
+* `openai`: content parts `{"type": "text"}` and
+  `{"type": "image_url", "image_url": {"url": "data:<mime>;base64,<data>"}}`;
+* `anthropic`: content blocks `{"type": "image", "source": {"type": "base64",
+  "media_type": "<mime>", "data": "<data>"}}` after the text block;
+* `gemini`: parts `{"inline_data": {"mime_type": "<mime>", "data": "<data>"}}`
+  after the text part.
+
+The daemon sends `image/jpeg` or `image/png` only. It MUST bound the images of
+one request (the reference implementation sends at most 8 images, and at most
+4 MiB for each image after encoding) and reject a larger request before it
+sends it. An image is never fetched by URL, so a provider never reads a
+location that the corpus did not give it.
+
+**Response.** The text of the first answer, as for `chat`. An empty answer is a
+valid answer. A model that rejects images, an HTTP error and a body that does
+not decode are provider errors, with the codes of the chat path (§14.5).
+
+**Identity.** The vision provider, the normalized `base_url` and the model are
+part of the derivation identity (§8.6.7) of every output that a vision step
+produces, together with that step's own prompt. A change re-derives those
+outputs only. `vision` is **not** part of the embed identity (8.1.4): it is
+runtime-swappable, like `chat`.
+
+**Privacy.** Images leave the host for a cloud provider in the same way as text
+does for `chat`. A deployment that must not send pixels out binds `vision` to a
+local endpoint (8.5), or leaves it off. Every step that uses it is off by
+default.
 
 ### 8.2 STT providers
 
@@ -8169,6 +8220,9 @@ model:
   chat:
     provider: mistral
     model: mistral-small-2506
+  vision:                                  # image input (8.1.10); optional, off when no
+    provider: ""                           # profile has a vision model. Unset = auto.
+    model: ""                              # e.g. gemini-2.5-flash, or a Qwen-VL model on vLLM
   ocr:
     provider: mistral-ocr
     model: mistral-ocr-latest
